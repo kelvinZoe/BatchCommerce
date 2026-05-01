@@ -142,6 +142,34 @@ app/
 └── tsconfig.json
 ```
 
+Vercel deployment
+-----------------
+
+This project is configured for Vercel as a monorepo. The repository root contains `vercel.json` which tells Vercel to use `app/package.json` to build the SPA and publish `dist/shakhis-commerce`.
+
+Quick setup:
+
+1. In the Vercel dashboard, import the GitHub repository `kelvinZoe/BatchCommerce`.
+2. Set the Project Root to `app` (Vercel will detect `app/package.json`).
+3. Build Command: `npm run build` (the project runs a small `scripts/generate-env.js` before build).
+4. Output Directory: `dist/shakhis-commerce` (this is also configured in `vercel.json`).
+5. Add environment variables (via Dashboard or CLI): see `vercel.env.example` in repo root.
+
+If you prefer CLI:
+
+```bash
+# install vercel CLI
+npm i -g vercel
+
+# login and deploy from the repo root
+vercel login
+vercel --cwd app
+```
+
+Notes:
+- Do NOT store sensitive keys in the repository. Use the Vercel dashboard to add `SUPABASE_URL`, `SUPABASE_KEY`, and `ADMIN_API_URL` for `Preview` and `Production` environments.
+- The `app/scripts/generate-env.js` script writes `environment.prod.ts` at build time from those environment variables so the Angular build picks them up.
+
 ## Database
 
 The app uses SQLite for local data storage. The database file is stored in:
