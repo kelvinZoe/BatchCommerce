@@ -1,0 +1,101 @@
+table_name,column_name,data_type,is_nullable,column_default
+app_users,id,bigint,NO,nextval('app_users_id_seq'::regclass)
+app_users,auth_id,uuid,YES,null
+app_users,username,text,NO,null
+app_users,full_name,text,NO,null
+app_users,phone,text,YES,''::text
+app_users,role_id,bigint,NO,null
+app_users,is_active,boolean,YES,true
+app_users,created_at,timestamp with time zone,YES,now()
+app_users,updated_at,timestamp with time zone,YES,now()
+app_users,email,text,YES,null
+app_users,metadata,jsonb,YES,'{}'::jsonb
+arrival_items,id,integer,NO,nextval('arrival_items_id_seq'::regclass)
+arrival_items,arrival_id,integer,NO,null
+arrival_items,product_id,integer,NO,null
+arrival_items,expected_quantity,integer,NO,0
+arrival_items,received_quantity,integer,NO,0
+arrival_items,created_at,timestamp with time zone,NO,now()
+arrival_items,confirmed,boolean,NO,false
+arrivals,id,integer,NO,nextval('arrivals_id_seq'::regclass)
+arrivals,product_id,integer,YES,null
+arrivals,product_name,text,YES,null
+arrivals,ordered_quantity,integer,NO,0
+arrivals,received_quantity,integer,NO,0
+arrivals,batch_name,text,YES,null
+arrivals,confirmed,boolean,NO,false
+arrivals,created_at,timestamp with time zone,NO,now()
+arrivals,updated_at,timestamp with time zone,NO,now()
+arrivals,batch_id,integer,YES,null
+buying_list,id,bigint,NO,nextval('buying_list_id_seq'::regclass)
+buying_list,product_id,bigint,YES,null
+buying_list,product_name,text,NO,null
+buying_list,requested_quantity,integer,YES,0
+buying_list,quantity_arrived,integer,YES,0
+buying_list,batch_name,text,YES,''::text
+buying_list,status,text,YES,'pending'::text
+buying_list,created_at,timestamp with time zone,YES,now()
+buying_list,updated_at,timestamp with time zone,YES,now()
+buying_list,order_count,integer,YES,0
+buying_list,source,text,NO,'client'::text
+buying_list,ordered_quantity,integer,NO,0
+buying_list,moved_to_arrivals,boolean,NO,false
+buying_list,quantity,integer,NO,0
+clients,id,bigint,NO,nextval('clients_id_seq'::regclass)
+clients,name,text,NO,null
+clients,phone,text,NO,null
+clients,whatsapp_number,text,YES,null
+clients,address,text,YES,''::text
+clients,notes,text,YES,''::text
+clients,created_at,timestamp with time zone,YES,now()
+clients,updated_at,timestamp with time zone,YES,now()
+damaged_items,id,integer,NO,nextval('damaged_items_id_seq'::regclass)
+damaged_items,arrival_item_id,integer,YES,null
+damaged_items,product_id,integer,YES,null
+damaged_items,batch_name,text,YES,null
+damaged_items,expected_quantity,integer,NO,0
+damaged_items,damaged_quantity,integer,NO,0
+damaged_items,notes,text,YES,null
+damaged_items,created_at,timestamp with time zone,NO,now()
+damaged_items,quantity,integer,NO,0
+damaged_items,reason,text,YES,null
+deliveries,id,bigint,NO,nextval('deliveries_id_seq'::regclass)
+deliveries,order_id,bigint,YES,null
+deliveries,client_id,bigint,NO,null
+deliveries,items,text,YES,null
+deliveries,quantity,integer,YES,1
+deliveries,delivery_fee,numeric,YES,0
+deliveries,delivery_address,text,YES,''::text
+deliveries,delivery_date,date,YES,null
+deliveries,status,text,YES,'pending'::text
+deliveries,notes,text,YES,''::text
+deliveries,created_at,timestamp with time zone,YES,now()
+deliveries,delivery_category,text,YES,null
+deliveries,batch_name,text,YES,''::text
+deliveries,delivery_item_status,text,YES,'pending'::text
+expenses,id,bigint,NO,nextval('expenses_id_seq'::regclass)
+expenses,category,text,NO,'other'::text
+expenses,description,text,NO,null
+expenses,amount,numeric,NO,0
+expenses,recipient,text,YES,''::text
+expenses,payment_method,text,YES,'cash'::text
+expenses,reference,text,YES,''::text
+expenses,expense_date,date,NO,CURRENT_DATE
+expenses,notes,text,YES,''::text
+expenses,created_by,bigint,YES,null
+expenses,created_at,timestamp with time zone,YES,now()
+expenses,updated_at,timestamp with time zone,YES,now()
+order_batches,id,bigint,NO,nextval('order_batches_id_seq'::regclass)
+order_batches,name,text,NO,null
+order_batches,status,text,NO,'open'::text
+order_batches,closed_at,timestamp with time zone,YES,null
+order_batches,created_at,timestamp with time zone,YES,now()
+order_batches,updated_at,timestamp with time zone,YES,now()
+order_batches,order_status,text,NO,'pending'::text
+order_batches,delivery_status,text,NO,'not_sent'::text
+order_batches,buying_status,text,NO,'pending'::text
+order_batches,stock_applied,boolean,NO,false
+order_items,id,bigint,NO,nextval('order_items_id_seq'::regclass)
+order_items,order_id,bigint,NO,null
+order_items,product_id,bigint,NO,null
+order_items,quantity,integer,YES,1

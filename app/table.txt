@@ -1,0 +1,943 @@
+import {
+  Component,
+  EventEmitter,
+  Input,
+  Output,
+  OnChanges,
+  SimpleChanges,
+} from "@angular/core";
+import { CommonModule } from "@angular/common";
+import { FormsModule } from "@angular/forms";
+import { NgbDropdownModule } from "@ng-bootstrap/ng-bootstrap";
+import { EmptyComponent } from "../empty/empty.component";
+import { OptionsComponent } from "../options/options.component";
+import { NzPaginationModule } from "ng-zorro-antd/pagination";
+import { prefixImageUrl } from "src/app/pages/adminPages/website/websiteUtils/image-url.utils";
+import { TableLoaderComponent } from "../table-loader/table-loader.component";
+import { SharedModule } from "../shared.module";
+import type {
+  ReportTableFilterConfig,
+  ReportTableFilterValue,
+} from "../report-table/report-table.component";
+
+export type TagColor = "red" | "green" | "orange" | "gray" | "blue" | "violet";
+
+export interface StatusOption {
+  value: string | number | boolean;
+  label?: string; // text inside the tag (optional; defaults to value)
+  color: TagColor; // one of 'red' | 'green' | 'orange' | 'gray'
+}
+
+export interface TableColumn {
+  key: string; // unique field key
+  label?: string; // header text (optional for backward-compat)
+  header?: string; // backward-compat alias used by existing pages
+  type?:
+    | "string"
+    | "date"
+    | "time"
+    | "boolean"
+    | "custom"
+    | "growth"
+    | "actions"
+    | "status"
+    | "image";
+  customTemplate?: any;
+  searchable?: boolean; // show search input below header
+  filterable?: boolean; // show filter icon button
+  // Status tag configuration (used when type === 'status')
+  statusOptions?: StatusOption[]; // mapping from raw values to tag label + color
+  statusDefault?: { label?: string; color: TagColor }; // fallback when value not in options
+}
+
+export interface TableMetadata {
+  pageNumber: number;
+  totalCount: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface ActionOption {
+  buttonName: string;
+  icon: string;
+}
+
+@Component({
+  selector: "app-table",
+  standalone: true,
+  imports: [
+    CommonModule,
+    FormsModule,
+    NgbDropdownModule,
+    EmptyComponent,
+    OptionsComponent,
+    NzPaginationModule,
+    SharedModule,
+  ],
+  templateUrl: `
+<div class="table-wrapper mt-3" style="position: relative;">
+  @if (tableLabel || summaryLabel || summaryValue !== null || (filters && filters.length > 0) || showExportButton || showDownloadButton) {
+      <div class="table-toolbar ">
+         @if(tableLabel || summaryLabel || summaryValue !== null) {
+           <div class="table-toolbar__row ms-3 me-3 mt-2">
+             <div class="table-toolbar__left">
+               @if (tableLabel) {
+                 <span class="table-toolbar__label">{{ tableLabel }}</span>
+               }
+             </div>
+             <div class="table-toolbar__right">
+               @if (summaryLabel || summaryValue !== null) {
+                 <span class="table-toolbar__summary">
+                   <span class="table-toolbar__summary-label">{{ summaryLabel }}</span>
+                   @if (summaryValue !== null && summaryValue !== undefined) {
+                     <span class="table-toolbar__summary-value">{{ summaryValue }}</span>
+                   }
+                 </span>
+               }
+             </div>
+           </div>
+         }
+        @if(tableLabel || summaryLabel || summaryValue !== null) {
+        <div class="table-toolbar__divider"></div>}
+
+        @if(filters && filters.length>0 || showExportButton || showDownloadButton ){
+        @if(!tableLabel && !(summaryLabel || summaryValue !== null)){
+          <div class="mt"></div>
+        }
+          <div class="table-toolbar__row ms-2 me-2">
+          <div class="table-toolbar__left">
+            @if (filters && filters.length > 0) {
+              <div class="table-filters">
+                @for (filter of filters; track filter.key) {
+                  <div class="btn-group" ngbDropdown #dd="ngbDropdown" [autoClose]="true" container="body">
+                    <button
+                      type="button"
+                      class="table-filters__btn table-filters__btn--pill table-filters__btn--filter"
+                      ngbDropdownToggle
+                      [disabled]="!!filter.disabled">
+                      <span class="table-filters__btn-text">{{ getFilterButtonLabel(filter) }}</span>
+                      <i class="ri-arrow-down-s-line table-filters__btn-icon"></i>
+                    </button>
+
+                    <div ngbDropdownMenu>
+                      @if (!filter.disableAll) {
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          [class.active]="isFilterAll(filter.key)"
+                          (click)="onFilterSelectionChange(filter.key, null); dd.close()">
+                          All
+                        </button>
+                      }
+
+                      @for (opt of filter.options; track opt.value) {
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          [class.active]="isFilterActive(filter.key, opt.value)"
+                          (click)="onFilterSelectionChange(filter.key, opt.value); dd.close()">
+                          {{ opt.label }}
+                        </button>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+          <div class="table-toolbar__right">
+            @if (showExportButton) {
+              <button
+                type="button"
+                class="btn btn-sm table-toolbar__btn table-toolbar__btn--rect"
+                (click)="onExportClick()">
+                Export
+                <i class="ri-file-excel-2-line ms-1"></i>
+              </button>
+            }
+            @if (showDownloadButton) {
+              <button
+                type="button"
+                class="btn btn-sm table-toolbar__btn table-toolbar__btn--rect"
+                (click)="onDownloadClick()">
+                Download
+                <i class="ri-download-2-line ms-1"></i>
+              </button>
+            }
+          </div>
+        </div>
+        <div class="table-toolbar__divider"></div>
+      }
+
+      </div>
+    }
+  <!-- <ng-container *ngIf="searching">
+    <div class="table-preloader-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.7); z-index: 10; display: flex; align-items: center; justify-content: center;">
+      <app-table-loader></app-table-loader>
+    </div>
+  </ng-container> -->
+  <table class="data-table">
+    <thead>
+      <tr style="background: #faf8f9;border-bottom: 1px solid #e7e8e8;">
+        <!-- header labels -->
+        @for (col of columns; track col.key) {
+          <th
+            class="table-head"
+            [class.sortable]="isSortable(col)"
+            (click)="onSort(col)">
+            <span class="table-head__label">{{ col.label || col.header }}</span>
+            <i class="table-head__icon" [ngClass]="getSortIcon(col)" *ngIf="isSortable(col)"></i>
+          </th>
+        }
+      </tr>
+
+      @if (showSearchRow) {
+        <tr class="table-search-row">
+          @for (col of columns; track col.key) {
+            <th class="search-cell">
+              @if (col.searchable || col.filterable) {
+                <div class="search-filter">
+                  @if (col.searchable) {
+                    <div class="input-group input-group-sm search-input padding-0 mt-2">
+                      <span class="input-group-text ms-2">
+                        <i class="ri-search-line"></i>
+                      </span>
+                      <input
+                        type="text"
+                        class="form-control "
+                        placeholder="Search by keyword"
+                        [value]="columnQueries[col.key] || ''"
+                        (input)="onSearchInput(col.key, $any($event.target).value)"
+                      />
+                    </div>
+                  }
+                  @if (col.filterable) {
+                    <button
+                      type="button"
+                      class="btn btn-light btn-sm ms-2"
+                      title="Filter"
+                      (click)="onFilterClick(col.key)"
+                    >
+                      <i class="ri-filter-3-line"></i>
+                    </button>
+                  }
+                </div>
+              }
+            </th>
+          }
+        </tr>
+      }
+    </thead>
+@if(!data){
+    <tbody>
+        <tr>
+            <td [attr.colspan]="columns.length" class="no-data">
+                <app-preloader></app-preloader>
+            </td>
+        </tr>
+    </tbody>
+}
+@else{
+  <tbody *ngIf="data.length > 0; else noData" [style.opacity]="searching ? 0.2 : 1">
+    <tr *ngFor="let item of sortedData; let i = index">
+        <td *ngFor="let col of columns">
+            <ng-container [ngSwitch]="col.type">
+              <ng-container *ngSwitchCase="'date'">
+                {{ getCellValue(item, col.key) | date: 'mediumDate' }}
+              </ng-container>
+              <ng-container *ngSwitchCase="'time'">
+                {{ getCellValue(item, col.key, col) }}
+              </ng-container>
+              <ng-container *ngSwitchCase="'boolean'">
+                <span [class.text-success]="getCellValue(item, col.key)" [class.text-danger]="!getCellValue(item, col.key)">
+                  {{ getCellValue(item, col.key) ? 'Yes' : 'No' }}
+                </span>
+              </ng-container>
+              <ng-container *ngSwitchCase="'growth'">
+                <span class="growth-badge" [class.positive]="getCellValue(item, col.key) >= 0" [class.negative]="getCellValue(item, col.key) < 0">
+                  <i class="ri-arrow-up-line" *ngIf="getCellValue(item, col.key) >= 0"></i>
+                  <i class="ri-arrow-down-line" *ngIf="getCellValue(item, col.key) < 0"></i>
+                  {{ getCellValue(item, col.key) | number: '1.1-1' }}%
+                </span>
+              </ng-container>
+              <ng-container *ngSwitchCase="'status'">
+                <ng-container *ngIf="true as _">
+                  <span class="status-tag" [ngClass]="'tag-' + getStatusTag(col, getCellValue(item, col.key)).color">
+                    {{ getStatusTag(col, getCellValue(item, col.key)).label }}
+                  </span>
+                </ng-container>
+              </ng-container>
+              <ng-container *ngSwitchCase="'actions'">
+                <app-options 
+                  [options]="item.actions && item.actions.length ? item.actions : actionOptions" 
+                  [exclude]="excludeActions"
+                  [includeDefaults]="false"
+                  (optionClickEvent)="onActionClick($event, item)"
+                ></app-options>
+              </ng-container>
+              <ng-container *ngSwitchCase="'custom'">
+                  <ng-template
+                    [ngTemplateOutlet]="col.customTemplate"
+                    [ngTemplateOutletContext]="{ $implicit: item, item: item, row: item }"
+                  ></ng-template>
+              </ng-container>
+              <ng-container *ngSwitchCase="'image'">
+                <img
+                  class="table-image"
+                  [src]="buildImageSrc(getCellValue(item, col.key))"
+                  [alt]="col.label || col.header || col.key"
+                  (error)="onImgError($event)"
+                />
+              </ng-container>
+              <ng-container *ngSwitchDefault>
+                {{ getCellValue(item, col.key) }}
+              </ng-container>
+            </ng-container>
+        </td>
+      </tr>
+    </tbody>
+
+    <ng-template #noData>
+        <tbody>
+            <tr>
+                <td [attr.colspan]="columns.length" class="no-data">
+                    <app-empty></app-empty>
+                </td>
+            </tr>
+        </tbody>
+    </ng-template>
+  }
+  </table>
+</div>
+
+@if (metadata && metadata.pageSize > 0 && metadata.totalPages > 0) {
+  <nz-pagination
+    class="mt-2 d-flex justify-content-center"
+    [nzPageIndex]="metadata.pageNumber"
+    [nzPageSize]="metadata.pageSize"
+    [nzTotal]="(metadata.totalPages && metadata.pageSize) ? metadata.totalPages * metadata.pageSize : metadata.totalCount"
+    [nzShowSizeChanger]="true"
+    [nzPageSizeOptions]="pageSizeOptions"
+    (nzPageIndexChange)="onPageChange($event)"
+    (nzPageSizeChange)="onPageSizeChange($event)"
+  ></nz-pagination>
+}
+
+
+`,
+  styleUrl: "./table.component.scss",
+})
+export class TableComponent implements OnChanges {
+  @Input() columns: TableColumn[] = [];
+  // Allow undefined/null as an explicit "loading" state.
+  @Input() data: any[] | undefined | null = undefined;
+  @Input() metadata: TableMetadata | null = null;
+  @Input() actionOptions: ActionOption[] = [];
+  @Input() excludeActions: string[] = [];
+  @Input() showSearchRow = true;
+  @Input() searchDebounce = 300;
+  @Input() searching = false; // dims tbody and shows preloader overlay when true
+  @Input() useNzPagination = false; // use ng-zorro pagination instead of built-in
+  @Input() imagePrefix: string = ""; // prefix for image paths when type === 'image'
+  @Input() pageSizeOptions: number[] = [10, 20, 50, 100];
+  @Input() filters: ReportTableFilterConfig[] = [];
+  @Input() tableLabel = "";
+  @Input() summaryLabel = "";
+  @Input() summaryValue: string | number | null = null;
+  @Input() showExportButton = false;
+  @Input() showDownloadButton = false;
+
+  @Output() pageChange = new EventEmitter<number>();
+  @Output() pageSizeChange = new EventEmitter<number>();
+  @Output() actionClick = new EventEmitter<{ action: number; item: any }>();
+  @Output() searchChange = new EventEmitter<Record<string, string>>();
+  @Output() filterClick = new EventEmitter<string>();
+  @Output() filterChange = new EventEmitter<Record<string, any>>();
+  @Output() exportClick = new EventEmitter<void>();
+  @Output() downloadClick = new EventEmitter<void>();
+
+  pages: number[] = [];
+  columnQueries: Record<string, string> = {};
+  sortKey: string | null = null;
+  sortDir: "asc" | "desc" | null = null;
+  filterSelections: Record<
+    string,
+    ReportTableFilterValue | ReportTableFilterValue[] | null
+  > = {};
+  // debounce timers per column
+  private timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  ngOnInit(): void {}
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes["metadata"] && this.metadata) {
+      // Guard: totalPages should be at least 1
+      const totalPages =
+        this.metadata.totalPages && this.metadata.totalPages > 0
+          ? this.metadata.totalPages
+          : 1;
+      this.pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    if (changes["filters"] && Array.isArray(this.filters)) {
+      this.filters.forEach((filter) => {
+        const hasSelection = Object.prototype.hasOwnProperty.call(
+          this.filterSelections,
+          filter.key,
+        );
+        if (!hasSelection) {
+          if (typeof filter.value !== "undefined") {
+            this.filterSelections[filter.key] = filter.value;
+          } else if (
+            filter.selection === "multi" &&
+            Array.isArray(filter.values)
+          ) {
+            this.filterSelections[filter.key] = filter.values;
+          }
+        }
+      });
+    }
+    // Note: data can be undefined/null to signal loading.
+  }
+
+  onFilterSelectionChange(key: string, value: any): void {
+    this.filterSelections[key] = value;
+    this.filterChange.emit({ ...this.filterSelections });
+  }
+
+  onExportClick(): void {
+    this.exportClick.emit();
+  }
+
+  onDownloadClick(): void {
+    this.downloadClick.emit();
+  }
+
+  isFilterAll(key: string): boolean {
+    const value = this.filterSelections?.[key];
+    return value === null || typeof value === "undefined";
+  }
+
+  isFilterActive(key: string, value: ReportTableFilterValue): boolean {
+    const current = this.filterSelections?.[key];
+    if (Array.isArray(current)) return current.includes(value);
+    return current === value;
+  }
+
+  getFilterButtonLabel(filter: ReportTableFilterConfig): string {
+    const value = this.filterSelections?.[filter.key];
+    if (value === null || typeof value === "undefined") {
+      return `${filter.label} (All)`;
+    }
+    if (Array.isArray(value)) {
+      return `${filter.label} (${value.length})`;
+    }
+    const option = (filter.options ?? []).find((o) => o.value === value);
+    return option?.label ?? filter.label;
+  }
+
+  onPageChange(page: number): void {
+    if (
+      this.metadata &&
+      this.metadata.totalPages &&
+      this.metadata.totalPages > 0 &&
+      page >= 1 &&
+      page <= this.metadata.totalPages &&
+      page !== this.metadata.pageNumber
+    ) {
+      this.pageChange.emit(page);
+    }
+  }
+
+  onPageSizeChange(size: number): void {
+    this.pageSizeChange.emit(size);
+  }
+
+  onActionClick(action: number, item: any): void {
+    this.actionClick.emit({ action, item });
+  }
+
+  onSearchInput(columnKey: string, value: string): void {
+    this.columnQueries[columnKey] = value;
+
+    // debounce per column
+    const prev = this.timers.get(columnKey);
+    if (prev) clearTimeout(prev);
+
+    const t = setTimeout(() => {
+      this.searchChange.emit({ ...this.columnQueries });
+    }, this.searchDebounce);
+
+    this.timers.set(columnKey, t);
+  }
+
+  onFilterClick(columnKey: string): void {
+    this.filterClick.emit(columnKey);
+  }
+
+  onSort(column: TableColumn): void {
+    if (!this.isSortable(column)) return;
+    if (this.sortKey !== column.key) {
+      this.sortKey = column.key;
+      this.sortDir = "asc";
+      return;
+    }
+    if (this.sortDir === "asc") {
+      this.sortDir = "desc";
+      return;
+    }
+    if (this.sortDir === "desc") {
+      this.sortDir = null;
+      this.sortKey = null;
+      return;
+    }
+    this.sortDir = "asc";
+  }
+
+  isSortable(column: TableColumn): boolean {
+    return column.type !== "actions" && column.type !== "custom";
+  }
+
+  getSortIcon(column: TableColumn): string {
+    if (this.sortKey !== column.key || !this.sortDir)
+      return "ri-arrow-up-down-line";
+    return this.sortDir === "asc"
+      ? "ri-arrow-up-s-line"
+      : "ri-arrow-down-s-line";
+  }
+
+  get sortedData(): any[] {
+    const data = this.data ?? [];
+    if (!this.sortKey || !this.sortDir) return data;
+    const column = this.columns.find((c) => c.key === this.sortKey);
+    const dir = this.sortDir === "asc" ? 1 : -1;
+    const sorted = [...data];
+    sorted.sort((a, b) => {
+      const av = this.getSortValue(a, this.sortKey!, column);
+      const bv = this.getSortValue(b, this.sortKey!, column);
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1 * dir;
+      if (bv === null) return -1 * dir;
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+    return sorted;
+  }
+
+  private getSortValue(item: any, key: string, column?: TableColumn): any {
+    const raw = key.split(".").reduce((acc, part) => acc && acc[part], item);
+    if (raw === undefined || raw === null) return null;
+    if (column?.type === "date" || column?.type === "time") {
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? String(raw).toLowerCase() : d.getTime();
+    }
+    if (typeof raw === "number") return raw;
+    return String(raw).trim().toLowerCase();
+  }
+
+  getCellValue(item: any, key: string, column?: TableColumn) {
+    if (key === "No." && this.metadata) {
+      const pageSize =
+        this.metadata.pageSize && this.metadata.pageSize > 0
+          ? this.metadata.pageSize
+          : 1;
+      const index = (this.data ?? []).indexOf(item);
+      return (
+        (this.metadata.pageNumber - 1) * pageSize + (index >= 0 ? index : 0) + 1
+      );
+    }
+    const value = key.split(".").reduce((acc, part) => acc && acc[part], item);
+    if (column?.type === "time" && value) {
+      // Format ISO datetime as h:mm A
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        let hours = date.getHours();
+        const minutes = date.getMinutes();
+        const ampm = hours >= 12 ? "PM" : "AM";
+        hours = hours % 12;
+        hours = hours ? hours : 12; // the hour '0' should be '12'
+        const mins = minutes < 10 ? "0" + minutes : minutes;
+        return `${hours}:${mins} ${ampm}`;
+      }
+    }
+    return value;
+  }
+
+  private toKey(val: any): string {
+    return String(val).trim().toLowerCase();
+  }
+
+  getStatusTag(
+    column: TableColumn,
+    value: any,
+  ): { label: string; color: TagColor } {
+    const opts = column.statusOptions || [];
+    const key = this.toKey(value);
+    const match = opts.find((o) => this.toKey(o.value) === key);
+    if (match) {
+      return {
+        label: match.label ?? String(value),
+        color: match.color,
+      };
+    }
+    const fallbackColor = column.statusDefault?.color ?? "gray";
+    const fallbackLabel = column.statusDefault?.label ?? String(value);
+    return { label: fallbackLabel, color: fallbackColor };
+  }
+
+  buildImageSrc(raw: any): string {
+    return prefixImageUrl(raw);
+  }
+
+  onImgError(event: Event): void {
+    const target = event.target as HTMLImageElement;
+    target.src = prefixImageUrl(null);
+  }
+}
+
+
+
+/**************** END OF Component
+
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid #e5e7e8;
+  overflow: hidden;
+}
+
+.table-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.table-toolbar__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.table-toolbar__divider {
+  height: 1px;
+  background: #e5e7e8;
+  width: 100%;
+}
+
+.table-toolbar__left {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.table-toolbar__label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2f3337;
+}
+
+.table-toolbar__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.table-toolbar__summary-label {
+  font-weight: 500;
+}
+
+.table-toolbar__summary-value {
+  font-weight: 600;
+  color: #111827;
+}
+
+.table-toolbar__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.table-toolbar__btn {
+ border: 1px solid #e5e7e8;
+    background: #fff;
+    color: #3a3c3f;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 0px 12px;
+}
+
+.table-toolbar__btn--rect {
+  border-radius: 4px;
+}
+
+.table-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.table-filters__btn {
+  display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #e5e7e8;
+    background: #fff;
+    color: #3a3c3f;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 0px 10px;
+}
+
+.table-filters__btn--pill {
+  border-radius: 4px;
+}
+
+.table-filters__btn--filter {
+  box-shadow: 0 1px 0 rgba(16, 24, 40, 0.04);
+}
+
+.table-filters__btn--filter.dropdown-toggle::after {
+  display: none;
+}
+
+.table-filters__btn-text {
+  white-space: nowrap;
+}
+
+.table-filters__btn-icon {
+  font-size: 16px;
+  color: #9aa0a6;
+  transition: transform 0.15s ease;
+}
+
+.table-filters .dropdown.show .table-filters__btn-icon {
+  transform: rotate(180deg);
+}
+
+.data-table {
+  width: 100%;
+  background-color: #fff;
+  border-collapse: collapse;
+
+  thead {
+    th {
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 400;
+      font-size: 13px;
+      color: #555a61;
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom: 1px solid #e9ecef;
+
+      &:hover {
+        background-color: #f8f9fa;
+      }
+    }
+    tr:last-child {
+      border-bottom: none;
+    }
+
+    td {
+      padding: 8px 16px;
+      font-size: 14px;
+      color: #212529;
+    }
+  }
+
+  .no-data {
+    text-align: center;
+    padding: 0;
+    height: 320px;
+    vertical-align: middle;
+  }
+}
+
+.growth-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+
+  &.positive {
+    color: #28a745;
+    background-color: #d4edda;
+  }
+
+  &.negative {
+    color: #dc3545;
+    background-color: #f8d7da;
+  }
+
+  i {
+    margin-right: 4px;
+    font-size: 12px;
+  }
+}
+
+.text-success {
+  color: #28a745;
+}
+
+.text-danger {
+  color: #dc3545;
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 16px;
+  gap: 4px;
+
+  .pagination-btn {
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e5e7e8;
+    background-color: #fff;
+    color: #555a61;
+    font-size: 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover:not(:disabled):not(.active) {
+      background-color: #f8f9fa;
+      border-color: #dee2e6;
+    }
+
+    &.active {
+      background-color: #fff;
+      color: #000;
+      border-color: #000;
+      font-weight: 500;
+    }
+
+    &:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    &.next-btn,
+    &.prev-btn {
+      i {
+        font-size: 18px;
+      }
+    }
+  }
+}
+
+.table-search-row th {
+  padding-top: 0.25rem;
+  padding-bottom: 0.75rem;
+  background: transparent;
+}
+
+.table-head {
+  cursor: default;
+  user-select: none;
+}
+
+.table-head.sortable {
+  cursor: pointer;
+}
+
+.table-head__label {
+  margin-right: 6px;
+}
+
+.table-head__icon {
+  font-size: 14px;
+  color: #9aa0a6;
+}
+
+.search-filter {
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  max-width: 220px;
+}
+
+.search-input .input-group-text {
+  background: #fff;
+  border-right: 0;
+}
+
+.search-input .form-control {
+  border-left: 0;
+}
+
+/* Status tags */
+.status-tag {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  line-height: 1.4;
+  border-radius: 999px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  text-align: center;
+}
+
+.tag-green {
+  color: #1f7620;
+  background-color: #f2fcf1;
+  border-color: #c2f1c1;
+}
+.tag-blue {
+  border-color: #b8e4ff;
+  background-color: #eff8ff;
+  color: #062c4b;
+}
+.tag-red {
+  color: #b52022;
+  background-color: #fef2f2;
+  border-color: #fdcbcc;
+}
+.tag-orange {
+  color: #ae7c33;
+  background-color: #fff4e5;
+  border-color: #f5dcb8;
+}
+.tag-gray {
+  color: #3a3c3f;
+  background-color: #faf8f9;
+  border-color: #d4dae3;
+}
+.tag-violet {
+  color: #5b2e91;
+  background-color: #f5f0fc;
+  border-color: #d9caf6;
+}
+.search-cell {
+  padding: 0 !important;
+}
+
+/* Image cells */
+.table-image {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+  transition: transform 0.15s ease;
+}
+.table-image:hover {
+  transform: scale(1.2);
+}

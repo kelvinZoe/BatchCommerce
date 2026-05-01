@@ -1,0 +1,39 @@
+Product Page : {
+roles : [  create new batch, delete batch, edit batch name, add proucts to batch whether existing or new, add new products at the manage products section, edit product at the manage products section, delete a batch product, allow editing product prices and stock when adding to a batch, editing the prices and stock of a batch product, allow edit of a batch prouct after batch is closed,allow edit of a batch prouct after batch is closed, delete product after batch is closed]
+}
+
+Orders Page : {
+    roles : [create new order, editing an order by adding more items to an existing order, delete an order, close batch, reopen batch, allowing order edit after batch closed]
+}
+
+Buying List Page : {
+    roles: [edit quantity ordered, change status, allowing to edit quantity ordered after status changed to "arrived", adding new item to buying list, sending items to arrivals]
+}
+
+Arrivals List Page : {
+    roles: [changing recieved value, confirming recieved items, sending to shipping, ]
+}
+
+Shipping Page : {
+    roles: [editing an item and changing its shipping value]
+}
+
+Shipping ledger : {
+    roles: [adding an ammount paid, moving item to deliveries, editing amount paid after item moved to deliveries]
+}
+
+Stock Sales : {
+    roles: [deleting a sale, editing a sale, adding a new sale]
+}   
+Manage Bacthes page: {
+    roles: [deleting a batch]
+}
+
+Roles page: {
+    roles: [editing a role, adding new role, deleting role]
+}
+
+Complete the AuthService method signatures
+Build the Roles component UI with all 9 operation panels
+Add permission checks to specific page components
+Run the database migration

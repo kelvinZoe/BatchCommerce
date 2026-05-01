@@ -1,0 +1,14 @@
+node_modules/
+dist/
+release/
+app/dist/
+app/release/
+dist-*
+.env
+server/.env
+.vscode/
+.idea/
+.DS_Store
+npm-debug.log
+yarn-error.log
+coverage/

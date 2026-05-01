@@ -1,0 +1,119 @@
+Plan: Convert to Multi-Shop SaaS
+
+Migrate the current single-shop Electron/Angular/Supabase app into a shared Supabase, multi-tenant product where multiple shops can sign up, sign in, and operate in isolation. The right shape here is not a brand-new codebase; it is a tenantization rewrite inside the current repo, with a clean schema reset allowed because the data is disposable. The main design choice is to keep one shared Supabase project and add explicit shop scoping everywhere, while moving privileged admin actions fully server-side.
+
+Phase 1: Core Platform
+
+
+Lock the tenancy contract first: treat shops as the top-level tenant, make every business record belong to one shop, and define whether roles are shop-scoped or shared. This depends on the selected model and should be finalized before touching queries or migrations.
+
+Rebuild the database around tenant isolation. Create a shops table, a shop_memberships or equivalent link from auth users to shops, and add shop_id to all shop-owned tables. Collapse the legacy batches versus order_batches split into one canonical batch model so the workflow has a single source of truth.
+
+Replace the current single-shop setup flow with a shop onboarding flow. The first login should create a shop and an initial admin membership, not just save one shop config in local storage. The app shell should then load the current shop from the user’s accessible shops and let them switch shops if they belong to more than one.
+
+Refactor the frontend service layer so every read/write is shop-aware by default. Centralize the active shop context, inject it into all database queries, and stop relying on global unscoped queries in database.service.ts.
+
+Move privileged user and shop provisioning into the server only. Remove the admin secret from client-side environment files, keep it only on the backend, and make the Express API responsible for creating shops, creating members, and managing shop-level administrative actions.
+
+Update guards, routing, and navigation to respect tenant context. The app should block access until a shop is selected, and the sidebar should show the active shop plus a switcher. Page access should still use RBAC, but now within the selected shop.
+
+Clean up the schema and docs in one pass. Because the current data is test-only, use a fresh tenant-aware migration path and delete legacy SQLite guidance and obsolete single-shop assumptions.
+
+Verify isolation end to end. Test that two shops can create the same product names without collision, that users only see their own shop’s data, and that switching shops changes every downstream page consistently.
+
+
+Phase 2: Web App
+
+
+Convert the app into a web-first product with the browser as the primary runtime. Keep the Electron shell only if you want a desktop wrapper later; otherwise remove desktop-specific assumptions from the deployment path.
+
+Replace desktop setup and packaging flows with web onboarding and hosting workflows. The app should be deployable as a normal web app with environment-driven config, browser login, and tenant selection on first use.
+
+Review Electron-only features and decide which stay, which become optional, and which are removed. File dialogs, desktop packaging, and any local-only behaviors should be isolated so they do not block the browser version.
+
+Update docs, deployment notes, and release flow for the web version. The repo should explain how to host the app, provision tenants, and run it without requiring a desktop installer.
+
+
+Phase 3: Mobile App
+
+
+Build the mobile app on top of the tenant-aware web/backend foundation instead of treating it as a separate product. Reuse the same authentication, shop selection, and RBAC model so the mobile client sees the same tenant boundaries.
+
+Decide the mobile delivery approach before implementation. A hybrid wrapper or cross-platform client is preferable if you want to reuse logic and APIs; native-only should be chosen only if you need mobile-specific UX or offline behavior that the web app cannot support.
+
+Reduce the mobile scope to the flows that actually matter on phones. Start with login, shop switching, dashboard summaries, customers, orders, arrivals, and shipping status, then expand to admin and reporting features later.
+
+Keep mobile UI and sync concerns isolated from the web app. Any mobile-specific caching, push notifications, camera scanning, or offline queues should sit behind mobile-only modules so they do not pollute the core business services.
+
+Add a mobile release and testing path after the web version is stable. The mobile app should be treated as a consumer of the same backend contracts, not a forked implementation.
+
+
+Relevant files
+
+
+/Users/qliq/Desktop/shakis/comerce/app/src/app/services/database.service.ts — central query layer; every method needs shop scoping or tenant helpers.
+
+/Users/qliq/Desktop/shakis/comerce/app/src/app/services/auth.service.ts — login, session restore, user creation/deletion, and permission loading all need tenant-awareness.
+
+/Users/qliq/Desktop/shakis/comerce/app/src/app/services/shop-config.service.ts — current single-shop config holder; should become platform config or be replaced with tenant context.
+
+/Users/qliq/Desktop/shakis/comerce/app/src/app/app.component.ts — shell/sidebar should show active shop and switcher.
+
+/Users/qliq/Desktop/shakis/comerce/app/src/app/app.routes.ts — routes and guards should require an active shop context.
+
+/Users/qliq/Desktop/shakis/comerce/app/src/app/pages/setup/setup.component.ts — should become shop onboarding instead of one-time local configuration.
+
+/Users/qliq/Desktop/shakis/comerce/app/src/environments/environment.ts — remove hardcoded admin secret and any shop-specific secrets.
+
+/Users/qliq/Desktop/shakis/comerce/app/src/environments/environment.prod.ts — same secret cleanup for production builds.
+
+/Users/qliq/Desktop/shakis/comerce/server/index.js — move privileged provisioning and member management fully server-side.
+
+/Users/qliq/Desktop/shakis/comerce/app/supabase-migration-workflow.sql — best place to replace the current schema with tenant-aware tables and RLS.
+
+/Users/qliq/Desktop/shakis/comerce/app/supabase-init.sql — initial schema reference for the clean rebuild.
+
+/Users/qliq/Desktop/shakis/comerce/app/README.md — must be rewritten to describe the new multi-shop deployment model.
+
+
+Verification
+
+
+Create a fresh Supabase schema and confirm that a new shop can be provisioned from scratch without manual database edits.
+
+Create two shops and two users, then confirm that each user only sees their own shop’s products, batches, orders, and deliveries.
+
+Switch a user who belongs to multiple shops and verify the active shop changes all page data, counts, and permissions.
+
+Confirm the admin secret is no longer present in client build artifacts and that privileged API calls fail without server-side auth.
+
+Run a full business-flow smoke test: create shop, add product, create batch, add order, close batch, buying list, arrivals, shipping, ledger, delivery.
+
+
+Decisions
+
+
+Use one shared Supabase project with explicit shop isolation, not one database per shop.
+
+Treat the current data as disposable and rebuild the schema cleanly instead of preserving legacy tables that already diverge.
+
+Keep the Angular/Electron stack; the business logic already exists there, so the rewrite should target tenancy and security rather than a new frontend framework.
+
+Remove the admin secret from the renderer completely; privileged operations must live on the backend only.
+
+
+Further Considerations
+
+
+If you want the quickest path to launch, a fresh SaaS rebuild would be simpler than tenantizing every current table and query. The current repo is still the better base if you want to keep the existing workflow and UI.
+
+If you want the least risky conversion, introduce the tenant layer first with a small number of tables and pages, then migrate the rest in phases.
+
+If you want to support both single-shop and multi-shop modes, define that explicitly up front. Otherwise, commit to shared multi-shop only and remove the old single-shop code paths early.
+
+
+Yes, the next useful step is to work through the other pages, but I would do it in this order:
+
+orders.component.ts and products.component.ts, because they create the core records the dashboard depends on.
+clients.component.ts, deliveries.component.ts, and expenses.component.ts, because those feed the summary cards.
+shipping-ledger.component.ts, arrivals.component.ts, and stock-sales.component.ts, because they drive the remaining dashboard charts and counts.

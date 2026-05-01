@@ -1,0 +1,10 @@
+{
+  "name": "Shakhis Commerce",
+  "short_name": "Shakhis",
+  "theme_color": "#2563eb",
+  "background_color": "#f8fafc",
+  "display": "standalone",
+  "scope": "./",
+  "start_url": "./",
+  "icons": []
+}
