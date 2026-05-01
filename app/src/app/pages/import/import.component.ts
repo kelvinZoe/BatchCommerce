@@ -404,7 +404,7 @@ interface SheetMapping {
 export class ImportComponent {
   isDragOver = false;
   selectedFile: File | null = null;
-  workbook: XLSX.WorkBook | null = null;
+  workbook: any | null = null;
   sheetMappings: SheetMapping[] = [];
   batchName = '';
   importing = false;
