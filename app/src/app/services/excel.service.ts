@@ -1,6 +1,5 @@
 import { Injectable, NgZone } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import * as XLSX from 'xlsx';
 import { DatabaseService } from './database.service';
 import { Product, Client, BuyingListItem, Delivery } from '../models';
 
@@ -20,12 +19,13 @@ export class ExcelService {
     private ngZone: NgZone
   ) {}
 
-  parseExcelFromBuffer(buffer: ArrayBuffer): XLSX.WorkBook {
+  async parseExcelFromBuffer(buffer: ArrayBuffer): Promise<any> {
+    const XLSX = await import('xlsx');
     return XLSX.read(buffer, { type: 'array' });
   }
 
-  getSheetNames(workbook: XLSX.WorkBook): string[] {
-    return workbook.SheetNames;
+  getSheetNames(workbook: any): string[] {
+    return workbook?.SheetNames || [];
   }
 
   // ─── Column finder helpers ───────────────────────────
@@ -55,9 +55,10 @@ export class ExcelService {
   // ═══════════════════════════════════════════════════════
   //  PRODUCTS — smart header detection
   // ═══════════════════════════════════════════════════════
-  async importProductsFromSheet(ws: XLSX.WorkSheet): Promise<ImportResult> {
+  async importProductsFromSheet(ws: any): Promise<ImportResult> {
     const result: ImportResult = { success: false, totalRows: 0, importedRows: 0, errors: [] };
     try {
+      const XLSX = await import('xlsx');
       const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
       if (data.length < 2) { result.errors.push('Sheet is empty'); return result; }
 
@@ -107,9 +108,10 @@ export class ExcelService {
   // ═══════════════════════════════════════════════════════
   //  CLIENTS — new
   // ═══════════════════════════════════════════════════════
-  async importClientsFromSheet(ws: XLSX.WorkSheet): Promise<ImportResult> {
+  async importClientsFromSheet(ws: any): Promise<ImportResult> {
     const result: ImportResult = { success: false, totalRows: 0, importedRows: 0, errors: [] };
     try {
+      const XLSX = await import('xlsx');
       const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
       if (data.length < 2) { result.errors.push('Sheet is empty'); return result; }
 
@@ -155,9 +157,10 @@ export class ExcelService {
   // ═══════════════════════════════════════════════════════
   //  BUYING LIST — smart header detection
   // ═══════════════════════════════════════════════════════
-  async importBuyingListFromSheet(ws: XLSX.WorkSheet, batchName: string): Promise<ImportResult> {
+  async importBuyingListFromSheet(ws: any, batchName: string): Promise<ImportResult> {
     const result: ImportResult = { success: false, totalRows: 0, importedRows: 0, errors: [] };
     try {
+      const XLSX = await import('xlsx');
       const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
       if (data.length < 2) { result.errors.push('Sheet is empty'); return result; }
 
@@ -205,9 +208,10 @@ export class ExcelService {
   // ═══════════════════════════════════════════════════════
   //  ITEMS SORTING — smart header detection
   // ═══════════════════════════════════════════════════════
-  async importItemsSortingFromSheet(ws: XLSX.WorkSheet): Promise<ImportResult> {
+  async importItemsSortingFromSheet(ws: any): Promise<ImportResult> {
     const result: ImportResult = { success: false, totalRows: 0, importedRows: 0, errors: [] };
     try {
+      const XLSX = await import('xlsx');
       const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
       if (data.length < 2) { result.errors.push('Sheet is empty'); return result; }
 
@@ -273,9 +277,10 @@ export class ExcelService {
   // ═══════════════════════════════════════════════════════
   //  DELIVERIES — smart header detection
   // ═══════════════════════════════════════════════════════
-  async importDeliveriesFromSheet(ws: XLSX.WorkSheet): Promise<ImportResult> {
+  async importDeliveriesFromSheet(ws: any): Promise<ImportResult> {
     const result: ImportResult = { success: false, totalRows: 0, importedRows: 0, errors: [] };
     try {
+      const XLSX = await import('xlsx');
       const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
       if (data.length < 2) { result.errors.push('Sheet is empty'); return result; }
 
@@ -345,25 +350,25 @@ export class ExcelService {
   }
 
   // ─── Legacy wrappers (keep backward compat) ──────────
-  async importProducts(workbook: XLSX.WorkBook): Promise<ImportResult> {
+  async importProducts(workbook: any): Promise<ImportResult> {
     const ws = workbook.Sheets['PRICES'];
     if (!ws) return { success: false, totalRows: 0, importedRows: 0, errors: ['PRICES sheet not found'] };
     return this.importProductsFromSheet(ws);
   }
 
-  async importBuyingList(workbook: XLSX.WorkBook, batchName: string): Promise<ImportResult> {
+  async importBuyingList(workbook: any, batchName: string): Promise<ImportResult> {
     const ws = workbook.Sheets['Buying List'];
     if (!ws) return { success: false, totalRows: 0, importedRows: 0, errors: ['Buying List sheet not found'] };
     return this.importBuyingListFromSheet(ws, batchName);
   }
 
-  async importItemsSorting(workbook: XLSX.WorkBook): Promise<ImportResult> {
+  async importItemsSorting(workbook: any): Promise<ImportResult> {
     const ws = workbook.Sheets['ITEMS SORTING'];
     if (!ws) return { success: false, totalRows: 0, importedRows: 0, errors: ['ITEMS SORTING sheet not found'] };
     return this.importItemsSortingFromSheet(ws);
   }
 
-  async importDeliveries(workbook: XLSX.WorkBook): Promise<ImportResult> {
+  async importDeliveries(workbook: any): Promise<ImportResult> {
     const ws = workbook.Sheets['Delivery'];
     if (!ws) return { success: false, totalRows: 0, importedRows: 0, errors: ['Delivery sheet not found'] };
     return this.importDeliveriesFromSheet(ws);
@@ -398,14 +403,16 @@ export class ExcelService {
   }
 
   // ─── Export ─────────────────────────────────────────
-  exportToExcel(data: any[], filename: string): void {
+  async exportToExcel(data: any[], filename: string): Promise<void> {
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Data');
     XLSX.writeFile(wb, filename);
   }
 
-  downloadSampleTemplate(): void {
+  async downloadSampleTemplate(): Promise<void> {
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
     // PRICES / Products sheet
@@ -465,5 +472,11 @@ export class ExcelService {
     XLSX.utils.book_append_sheet(wb, wsDelivery, 'Delivery');
 
     XLSX.writeFile(wb, 'Shakhis_Import_Template.xlsx');
+  }
+
+  async getSheetRawData(workbook: any, sheetName: string): Promise<any[][]> {
+    const XLSX = await import('xlsx');
+    const sheet = workbook.Sheets[sheetName];
+    return XLSX.utils.sheet_to_json<any>(sheet, { header: 1 });
   }
 }
