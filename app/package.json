@@ -6,9 +6,9 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --port 4300",
-    "start:web": "npx serve -s dist/shakhis-commerce/browser -l 4300",
-    "build": "ng build",
-    "build:web": "ng build --configuration production",
+    "start:web": "npx serve -s dist/shakhis-commerce -l 4300",
+    "build": "node ./scripts/generate-env.js && ng build --configuration production",
+    "build:web": "npm run build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "electron": "npm run build && electron .",
