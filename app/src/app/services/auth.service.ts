@@ -77,6 +77,7 @@ export interface PhoneVerificationResult {
 export class AuthService {
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   private permissionsSubject = new BehaviorSubject<Permission[]>([]);
+  private readonly emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
   currentUser$ = this.currentUserSubject.asObservable();
   permissions$ = this.permissionsSubject.asObservable();
@@ -205,6 +206,11 @@ export class AuthService {
 
   normalizeEmail(value: string): string {
     return (value || '').trim().toLowerCase();
+  }
+
+  isValidEmail(value: string): boolean {
+    const normalized = this.normalizeEmail(value);
+    return this.emailPattern.test(normalized);
   }
 
   isValidPhoneNumber(value: string): boolean {
@@ -441,7 +447,7 @@ export class AuthService {
 
   private async doResendEmailVerification(email: string): Promise<VerificationDispatchResult> {
     const normalizedEmail = this.normalizeEmail(email);
-    if (!normalizedEmail) {
+    if (!this.isValidEmail(normalizedEmail)) {
       return {
         success: false,
         message: 'Enter a valid email address first.',
@@ -692,9 +698,61 @@ export class AuthService {
       const normalizedEmail = this.normalizeEmail(email);
       const normalizedFullName = fullName.trim();
       const normalizedPhone = this.normalizePhoneNumber(phone);
+      const adminApiUrl = this.getNormalizedAdminApiUrl();
+
+      if (!this.isValidEmail(normalizedEmail)) {
+        return { success: false, message: 'Enter a valid email address like user@example.com' };
+      }
 
       if (!normalizedPhone) {
         return { success: false, message: 'Please enter your phone number' };
+      }
+
+      if (adminApiUrl) {
+        const response = await fetch(`${adminApiUrl}/public/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: normalizedEmail,
+            password,
+            full_name: normalizedFullName,
+            phone: normalizedPhone
+          })
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const rawMessage = String(payload?.detail || payload?.message || payload?.error || '').trim();
+          const message = rawMessage.toLowerCase();
+
+          if (response.status === 409 || message.includes('already registered') || message.includes('user_exists')) {
+            return {
+              success: false,
+              message: 'This email is already registered. Please sign in instead.'
+            };
+          }
+
+          if (response.status === 429 || message.includes('rate limit') || message.includes('too many requests')) {
+            return {
+              success: false,
+              message: 'Too many verification emails were requested. Please wait a bit and try again.'
+            };
+          }
+
+          return {
+            success: false,
+            message: rawMessage || 'Could not create account'
+          };
+        }
+
+        const emailSent = payload?.emailSent !== false;
+        return {
+          success: true,
+          sessionCreated: false,
+          message: emailSent
+            ? `Account created. We sent a verification email to ${normalizedEmail}. Confirm it, then sign in to finish setting up your shop.`
+            : 'Account created, but we could not send the verification email. Contact support or try again later.'
+        };
       }
 
       const { data, error } = await this.sb.auth.signUp({
@@ -714,6 +772,13 @@ export class AuthService {
           return {
             success: false,
             message: 'This email is already registered. Please sign in instead.'
+          };
+        }
+
+        if (message.includes('rate limit') || message.includes('too many requests')) {
+          return {
+            success: false,
+            message: 'Too many verification emails were requested. Please wait a bit and try again.'
           };
         }
 
@@ -738,6 +803,34 @@ export class AuthService {
 
   signInWithOAuth(provider: 'google' | 'github' | 'facebook'): Observable<{ success: boolean; message: string }> {
     return from(this.doSignInWithOAuth(provider));
+  }
+
+  sendPasswordResetEmail(email: string): Observable<{ success: boolean; message: string }> {
+    return from((async () => {
+      const normalized = this.normalizeEmail(email);
+      if (!this.isValidEmail(normalized)) {
+        return { success: false, message: 'Enter a valid email address.' };
+      }
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { error } = await this.sb.auth.resetPasswordForEmail(normalized, { redirectTo });
+      if (error) {
+        return { success: false, message: error.message || 'Could not send reset email.' };
+      }
+      return { success: true, message: `Password reset link sent to ${normalized}. Check your inbox.` };
+    })());
+  }
+
+  updatePassword(newPassword: string): Observable<{ success: boolean; message: string }> {
+    return from((async () => {
+      if (!newPassword || newPassword.length < 6) {
+        return { success: false, message: 'Password must be at least 6 characters.' };
+      }
+      const { error } = await this.sb.auth.updateUser({ password: newPassword });
+      if (error) {
+        return { success: false, message: error.message || 'Could not update password.' };
+      }
+      return { success: true, message: 'Password updated successfully.' };
+    })());
   }
 
   private async doSignInWithOAuth(provider: 'google' | 'github' | 'facebook'): Promise<{ success: boolean; message: string }> {
@@ -1070,6 +1163,59 @@ export class AuthService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  private getNormalizedAdminApiUrl(): string {
+    return (environment.adminApiUrl || '').trim().replace(/\/+$/, '');
+  }
+
+  private async createUserViaAdminApi(user: User, normalizedEmail: string, normalizedPhone: string): Promise<UserCreationResult> {
+    const adminApiSecret = this.adminApiSecret;
+    const adminApiUrl = this.getNormalizedAdminApiUrl();
+
+    if (!adminApiSecret || !adminApiUrl) {
+      throw new Error('Admin API is not configured.');
+    }
+
+    const response = await fetch(`${adminApiUrl}/admin/create-user`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminApiSecret}`
+      },
+      body: JSON.stringify({
+        email: normalizedEmail,
+        password: user.password || 'password123',
+        full_name: user.fullName,
+        phone: normalizedPhone,
+        roleId: user.roleId,
+        autoConfirm: false,
+        username: user.username
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(this.formatUserCreationError(payload));
+    }
+
+    const authUserId = payload?.authUserId;
+    const appUserId = Number(payload?.appUserId || 0);
+    if (!authUserId || !appUserId) {
+      throw new Error('Admin API did not return a valid user payload.');
+    }
+
+    const membershipStatus: MembershipStatus = payload?.membershipStatus === 'active' ? 'active' : 'pending_verification';
+    await this.addUserToActiveShop(authUserId, appUserId, user.roleId, user.isActive, membershipStatus);
+
+    return {
+      id: appUserId,
+      membershipStatus,
+      verificationSent: payload?.verificationSent !== false,
+      verificationMessage: payload?.verificationMessage || (membershipStatus === 'pending_verification'
+        ? `Verification email sent to ${normalizedEmail}.`
+        : undefined)
+    };
+  }
+
   formatUserCreationError(error: any): string {
     const msg = (error?.message || error?.toString() || '').toLowerCase();
     const detail = error?.detail?.toLowerCase() || '';
@@ -1120,12 +1266,16 @@ export class AuthService {
     const email = this.normalizeEmail(user.email || '');
     const normalizedPhone = this.normalizePhoneNumber(user.phone || '');
 
-    if (!email) {
+    if (!this.isValidEmail(email)) {
       throw new Error('Enter a valid email address to create this user.');
     }
 
     if (normalizedPhone && !this.isValidPhoneNumber(normalizedPhone)) {
       throw new Error('Enter a valid phone number like 0241234567 or +233241234567.');
+    }
+
+    if (this.usesManagedPhoneIdentity) {
+      return this.createUserViaAdminApi(user, email, normalizedPhone);
     }
 
     let authData: any = null;

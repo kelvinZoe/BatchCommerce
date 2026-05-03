@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { ShopConfigService } from '../../services/shop-config.service';
+import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-login',
@@ -80,20 +81,57 @@ import { ShopConfigService } from '../../services/shop-config.service';
             </div>
           </div>
 
-          <div class="error-message" *ngIf="errorMessage">
+          <div class="forgot-link">
+            <button type="button" class="link-btn" (click)="showForgotPassword = true" *ngIf="!showForgotPassword">
+              Forgot password?
+            </button>
+          </div>
+
+          <div *ngIf="showForgotPassword" class="forgot-section">
+            <p class="forgot-desc">Enter your email and we'll send you a reset link.</p>
+            <div class="form-group">
+              <label>Email</label>
+              <div class="input-icon">
+                <span class="material-icons">email</span>
+                <input type="email" [(ngModel)]="resetEmail" name="resetEmail" placeholder="your@email.com" />
+              </div>
+            </div>
+            <div class="success-message" *ngIf="successMessage">
+              <span class="material-icons">check_circle</span>
+              {{ successMessage }}
+            </div>
+            <div class="error-message" *ngIf="resetError">
+              <span class="material-icons">error</span>
+              {{ resetError }}
+            </div>
+            <div class="forgot-actions">
+              <button type="button" class="btn btn-primary login-btn" (click)="sendReset()" [disabled]="loading">
+                <span class="material-icons spin" *ngIf="loading">sync</span>
+                <span *ngIf="!loading">Send Reset Link</span>
+                <span *ngIf="loading">Sending...</span>
+              </button>
+              <button type="button" class="link-btn" (click)="showForgotPassword = false; successMessage = ''; resetError = ''">
+                Back to sign in
+              </button>
+            </div>
+          </div>
+
+          <div class="error-message" *ngIf="errorMessage && !showForgotPassword">
             <span class="material-icons">error</span>
             {{ errorMessage }}
           </div>
 
-          <button type="submit" class="btn btn-primary login-btn" [disabled]="loading">
-            <span class="material-icons spin" *ngIf="loading">sync</span>
-            <span *ngIf="!loading">Continue</span>
-            <span *ngIf="loading">Signing in...</span>
-          </button>
+          <ng-container *ngIf="!showForgotPassword">
+            <button type="submit" class="btn btn-primary login-btn" [disabled]="loading">
+              <span class="material-icons spin" *ngIf="loading">sync</span>
+              <span *ngIf="!loading">Continue</span>
+              <span *ngIf="loading">Signing in...</span>
+            </button>
 
-          <button type="button" class="btn btn-secondary register-btn" (click)="goToRegister()" [disabled]="loading">
-            Create a new shop
-          </button>
+            <button type="button" class="btn btn-secondary register-btn" (click)="goToRegister()" [disabled]="loading">
+              Create a new shop
+            </button>
+          </ng-container>
         </form>
 
         <div class="login-footer">
@@ -342,6 +380,49 @@ import { ShopConfigService } from '../../services/shop-config.service';
       color: #334155;
     }
 
+    .forgot-link {
+      text-align: right;
+      margin-top: -12px;
+      margin-bottom: 16px;
+    }
+
+    .link-btn {
+      background: none;
+      border: none;
+      color: #2563eb;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      &:hover { color: #1d4ed8; }
+    }
+
+    .forgot-section {
+      margin-bottom: 16px;
+      .forgot-desc { font-size: 13px; color: #64748b; margin-bottom: 12px; }
+      .forgot-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: center;
+        margin-top: 12px;
+      }
+    }
+
+    .success-message {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      color: #16a34a;
+      font-size: 13px;
+      margin-bottom: 12px;
+      .material-icons { font-size: 18px; }
+    }
+
     .spin {
       animation: spin 1s linear infinite;
     }
@@ -370,6 +451,10 @@ export class LoginComponent {
   loading = false;
   showPassword = false;
   year = new Date().getFullYear();
+  showForgotPassword = false;
+  resetEmail = '';
+  successMessage = '';
+  resetError = '';
 
   get shopTitle(): string {
     return this.shopConfig.isConfigured ? this.shopConfig.shopName : 'Welcome back';
@@ -403,6 +488,23 @@ export class LoginComponent {
       }
       // OAuth will redirect, so no further action needed on success
     });
+  }
+
+  async sendReset() {
+    this.successMessage = '';
+    this.resetError = '';
+    if (!this.resetEmail.trim()) {
+      this.resetError = 'Please enter your email address.';
+      return;
+    }
+    this.loading = true;
+    const result = await firstValueFrom(this.authService.sendPasswordResetEmail(this.resetEmail.trim()));
+    this.loading = false;
+    if (result.success) {
+      this.successMessage = result.message;
+    } else {
+      this.resetError = result.message;
+    }
   }
 
   onLogin() {

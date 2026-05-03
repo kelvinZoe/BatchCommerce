@@ -140,6 +140,13 @@ export class AuthCallbackComponent implements OnInit {
 
   private async handleCallback() {
     try {
+      // Password reset links include type=recovery in the URL hash
+      const hash = window.location.hash;
+      if (hash.includes('type=recovery')) {
+        this.router.navigate(['/reset-password']);
+        return;
+      }
+
       const result = await this.authService.handleOAuthCallback().toPromise();
       
       if (result && result.success) {

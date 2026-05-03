@@ -75,7 +75,7 @@ import { AuthService } from '../../services/auth.service';
 
           <div class="form-group">
             <label>Email *</label>
-            <input type="email" [(ngModel)]="email" (input)="checkEmailVerification()" placeholder="you@example.com" class="input-lg" />
+            <input type="email" [(ngModel)]="email" placeholder="you@example.com" class="input-lg" />
             <div class="email-status" *ngIf="email && emailVerificationChecked">
               <span class="material-icons" [class.verified]="emailVerified" [class.unverified]="!emailVerified">
                 {{ emailVerified ? 'check_circle' : 'error' }}
@@ -639,6 +639,11 @@ export class SetupComponent implements OnInit {
       return;
     }
 
+    if (!this.authService.isValidEmail(this.email)) {
+      this.errorMessage = 'Enter a valid email address like user@example.com';
+      return;
+    }
+
     if (!this.phone.trim()) {
       this.errorMessage = 'Please enter your phone number';
       return;
@@ -739,7 +744,7 @@ export class SetupComponent implements OnInit {
   }
 
   async checkEmailVerification() {
-    if (!this.email || !this.email.includes('@')) {
+    if (!this.authService.isValidEmail(this.email)) {
       this.emailVerificationChecked = false;
       return;
     }
@@ -758,7 +763,7 @@ export class SetupComponent implements OnInit {
         .from('app_users')
         .select('email')
         .eq('email', this.email.trim().toLowerCase())
-        .single();
+        .maybeSingle();
 
       if (!userError && userData) {
         // Email exists in app_users, check if verified

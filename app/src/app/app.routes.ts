@@ -15,6 +15,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/phone-verification/phone-verification.component').then(m => m.PhoneVerificationComponent),
   },
   {
+    path: 'reset-password',
+    loadComponent: () => import('./pages/reset-password/reset-password.component').then(m => m.ResetPasswordComponent),
+  },
+  {
     path: '',
     redirectTo: 'login',
     pathMatch: 'full'

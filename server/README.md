@@ -11,6 +11,9 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ... (service_role key)
 ADMIN_API_SECRET=a-long-secret-only-known-to-admin
 RESEND_API_KEY=re_...
+EMAIL_FROM=Shakhis Commerce <onboarding@resend.dev>
+APP_BASE_URL=https://batchcommerce.vercel.app
+# Optional backward compatible alias
 RESEND_FROM_EMAIL=Shakhis Commerce <no-reply@your-domain.com>
 PORT=3000
 ```
@@ -40,7 +43,7 @@ Response on success:
 { "success": true, "appUserId": 12, "authUserId": "..." }
 ```
 
-When configured, the public registration route also sends a welcome email through Resend after the account is created.
+When configured, the admin and public registration routes send verification emails through Resend after the account is created.
 
 Security notes
 

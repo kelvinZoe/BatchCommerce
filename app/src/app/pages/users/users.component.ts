@@ -853,7 +853,7 @@ export class UsersComponent implements OnInit {
     }
 
     const normalizedEmail = this.authService.normalizeEmail(this.formData.email || '');
-    if (!this.editingUser && !normalizedEmail.includes('@')) {
+    if (!this.editingUser && !this.authService.isValidEmail(normalizedEmail)) {
       this.errorMessage = 'Enter a valid email address like user@example.com';
       return;
     }

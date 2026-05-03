@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const { createClient } = require('@supabase/supabase-js');
+const nodemailer = require('nodemailer');
 
 // Note: Using native Node.js fetch (available in Node 18+)
 // No need to import fetch - it's global
@@ -28,7 +29,11 @@ const {
   SUPABASE_SERVICE_ROLE_KEY,
   ADMIN_API_SECRET,
   RESEND_API_KEY,
+  EMAIL_FROM,
   RESEND_FROM_EMAIL,
+  APP_BASE_URL,
+  GMAIL_USER,
+  GMAIL_APP_PASSWORD,
   PORT = 3000
 } = process.env;
 
@@ -42,7 +47,25 @@ const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 function getResendFromEmail() {
-  return RESEND_FROM_EMAIL || '';
+  return EMAIL_FROM || RESEND_FROM_EMAIL || '';
+}
+
+function getAppBaseUrl() {
+  return String(APP_BASE_URL || '').trim().replace(/\/+$/, '');
+}
+
+function getAuthCallbackUrl() {
+  const baseUrl = getAppBaseUrl();
+  return baseUrl ? `${baseUrl}/auth/callback` : '';
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function normalizePhoneNumber(value) {
@@ -71,7 +94,80 @@ function normalizePhoneNumber(value) {
   return digits.length >= 10 ? `+${digits}` : digits;
 }
 
-async function sendSignupEmail({ email, fullName }) {
+async function generateVerificationLink(email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return '';
+  }
+
+  const redirectTo = getAuthCallbackUrl();
+  const { data, error } = await supa.auth.admin.generateLink({
+    type: 'invite',
+    email: normalizedEmail,
+    options: redirectTo ? { redirectTo } : undefined
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Could not generate verification link.');
+  }
+
+  return data?.properties?.action_link || '';
+}
+
+function buildEmailHtml({ safeName, safeLink, fallbackUrl, hasLink }) {
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #0f172a; background: #f8fafc; padding: 24px;">
+      <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px;">
+        <p style="margin: 0 0 8px; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: #475569;">BatchCommerce</p>
+        <h2 style="margin: 0 0 12px; font-size: 24px; line-height: 1.3; color: #0f172a;">Verify Your Email</h2>
+        <p style="margin: 0 0 12px;">Hello ${safeName},</p>
+        <p style="margin: 0 0 12px;">Your account was created successfully. Confirm your email address to activate your account.</p>
+        ${hasLink ? `<p style="margin: 20px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Verify Email</a></p>` : ''}
+        ${hasLink ? `<p style="margin: 0 0 12px; font-size: 13px; color: #475569;">If the button does not work, copy and paste this link in your browser:</p><p style="margin: 0 0 16px; word-break: break-all;"><a href="${safeLink}" style="color:#2563eb;">${safeLink}</a></p>` : ''}
+        ${!hasLink && fallbackUrl ? `<p style="margin: 0 0 12px;">Open <a href="${fallbackUrl}" style="color:#2563eb;">${fallbackUrl}</a> and continue verification from the sign-in screen.</p>` : ''}
+        <p style="margin: 0; color: #475569;">If you did not request this account, you can ignore this email.</p>
+      </div>
+    </div>
+  `;
+}
+
+async function sendVerificationEmail({ email, fullName, verificationLink }) {
+  const safeName = escapeHtml(fullName || 'there');
+  const safeLink = escapeHtml(verificationLink || '');
+  const fallbackUrl = escapeHtml(getAppBaseUrl() || '');
+  const hasLink = Boolean(safeLink);
+  const plainFallbackUrl = getAppBaseUrl() || '';
+  const subject = 'Verify your BatchCommerce account';
+  const textBody = [
+    `Hello ${fullName || 'there'},`,
+    '',
+    'Your BatchCommerce account was created successfully.',
+    'Please verify your email address to activate your account.',
+    hasLink ? `Verify now: ${verificationLink}` : '',
+    !hasLink && plainFallbackUrl ? `Open this app and continue verification: ${plainFallbackUrl}` : '',
+    '',
+    'If you did not request this, you can ignore this email.'
+  ].filter(Boolean).join('\n');
+  const html = buildEmailHtml({ safeName, safeLink, fallbackUrl, hasLink });
+
+  // --- Gmail (nodemailer) path ---
+  if (GMAIL_USER && GMAIL_APP_PASSWORD) {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD.replace(/\s+/g, '') }
+    });
+    await transporter.sendMail({
+      from: `BatchCommerce <${GMAIL_USER}>`,
+      to: email,
+      subject,
+      text: textBody,
+      html
+    });
+    console.log(`✅ Verification email sent via Gmail to ${email}`);
+    return true;
+  }
+
+  // --- Resend fallback ---
   if (!RESEND_API_KEY || !getResendFromEmail()) {
     return false;
   }
@@ -85,15 +181,9 @@ async function sendSignupEmail({ email, fullName }) {
     body: JSON.stringify({
       from: getResendFromEmail(),
       to: [email],
-      subject: 'Your Shakhis Commerce account is ready',
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #0f172a;">
-          <h2 style="margin: 0 0 12px;">Welcome, ${fullName}</h2>
-          <p style="margin: 0 0 12px;">Your account has been created successfully.</p>
-          <p style="margin: 0 0 12px;">Next, open Shakhis Commerce and create your shop.</p>
-          <p style="margin: 0;">If you did not request this account, you can ignore this email.</p>
-        </div>
-      `
+      subject,
+      text: textBody,
+      html
     })
   });
 
@@ -102,6 +192,7 @@ async function sendSignupEmail({ email, fullName }) {
     throw new Error(`Resend request failed (${response.status}): ${errorText}`);
   }
 
+  console.log(`✅ Verification email sent via Resend to ${email}`);
   return true;
 }
 
@@ -251,7 +342,34 @@ app.post('/admin/create-user', requireAdminAuth, async (req, res) => {
       return res.status(result.status).json(result.body);
     }
 
-    return res.json(result.body);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const wantsVerification = Boolean(normalizedEmail) && !autoConfirm;
+    let verificationSent = false;
+    let verificationMessage = '';
+
+    if (wantsVerification) {
+      try {
+        const verificationLink = await generateVerificationLink(normalizedEmail);
+        verificationSent = await sendVerificationEmail({
+          email: normalizedEmail,
+          fullName: full_name,
+          verificationLink
+        });
+        verificationMessage = verificationSent
+          ? `Verification email sent to ${normalizedEmail}.`
+          : 'User created, but verification email could not be sent because Resend is not fully configured.';
+      } catch (mailErr) {
+        verificationMessage = 'User created, but verification email could not be sent.';
+        console.warn('Verification email send failed:', mailErr?.message || mailErr);
+      }
+    }
+
+    return res.json({
+      ...result.body,
+      membershipStatus: wantsVerification ? 'pending_verification' : 'active',
+      verificationSent,
+      verificationMessage
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'server_error', detail: String(err) });
@@ -271,7 +389,7 @@ app.post('/public/register', async (req, res) => {
       full_name,
       phone,
       roleId: null,
-      autoConfirm: true,
+      autoConfirm: false,
       username: username || undefined,
       createAppUser: false
     });
@@ -281,16 +399,21 @@ app.post('/public/register', async (req, res) => {
     }
 
     let emailSent = false;
+    let emailError = '';
     try {
-      emailSent = await sendSignupEmail({
-        email: email.trim().toLowerCase(),
-        fullName: full_name.trim()
+      const normalizedEmail = email.trim().toLowerCase();
+      const verificationLink = await generateVerificationLink(normalizedEmail);
+      emailSent = await sendVerificationEmail({
+        email: normalizedEmail,
+        fullName: full_name.trim(),
+        verificationLink
       });
     } catch (mailErr) {
-      console.warn('Signup email could not be sent:', mailErr?.message || mailErr);
+      emailError = String(mailErr?.message || mailErr || 'Email send failed');
+      console.warn('Signup email could not be sent:', emailError);
     }
 
-    return res.json({ ...result.body, emailSent });
+    return res.json({ ...result.body, emailSent, emailError: emailSent ? undefined : emailError || 'Email sender is not configured.' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'server_error', detail: String(err) });
