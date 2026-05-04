@@ -1,6 +1,6 @@
 export const environment = {
   "production": true,
-  "adminApiUrl": "https://your-backend-domain.com",
+  "adminApiUrl": "https://batchcommerce-admin.onrender.com",
   "supabaseUrl": "https://hlewyduelyxzkezetnhb.supabase.co",
   "supabaseKey": "sb_publishable_t8EUXaZjCgpI8o-QcMeAnA_tWq_nRNx"
 };
