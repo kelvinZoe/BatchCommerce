@@ -37,6 +37,8 @@ const {
   PORT = 3000
 } = process.env;
 
+const DEFAULT_PRODUCTION_APP_URL = 'https://batchcommerce.vercel.app';
+
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !ADMIN_API_SECRET) {
   console.error('Missing required environment variables. See .env.example');
   process.exit(1);
@@ -51,7 +53,18 @@ function getResendFromEmail() {
 }
 
 function getAppBaseUrl() {
-  return String(APP_BASE_URL || '').trim().replace(/\/+$/, '');
+  const configured = String(APP_BASE_URL || '').trim().replace(/\/+$/, '');
+  const isLocalhost = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configured);
+
+  if (configured && !(process.env.NODE_ENV === 'production' && isLocalhost)) {
+    return configured;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return DEFAULT_PRODUCTION_APP_URL;
+  }
+
+  return configured;
 }
 
 function getAuthCallbackUrl() {
