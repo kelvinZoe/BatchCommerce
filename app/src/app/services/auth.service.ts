@@ -75,6 +75,7 @@ export interface PhoneVerificationResult {
   providedIn: 'root'
 })
 export class AuthService {
+  private readonly productionAdminApiUrl = 'https://batchcommerce-admin.onrender.com';
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   private permissionsSubject = new BehaviorSubject<Permission[]>([]);
   private readonly emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -1164,7 +1165,19 @@ export class AuthService {
   }
 
   private getNormalizedAdminApiUrl(): string {
-    return (environment.adminApiUrl || '').trim().replace(/\/+$/, '');
+    const configured = (environment.adminApiUrl || '').trim().replace(/\/+$/, '');
+    const isLocalApi = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(configured);
+    const isLocalOrigin = /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+
+    if (isLocalApi && !isLocalOrigin) {
+      return this.productionAdminApiUrl;
+    }
+
+    if (!configured && !isLocalOrigin) {
+      return this.productionAdminApiUrl;
+    }
+
+    return configured;
   }
 
   private async createUserViaAdminApi(user: User, normalizedEmail: string, normalizedPhone: string): Promise<UserCreationResult> {
