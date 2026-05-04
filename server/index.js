@@ -32,6 +32,7 @@ const {
   EMAIL_FROM,
   RESEND_FROM_EMAIL,
   APP_BASE_URL,
+  AUTH_CALLBACK_URL,
   GMAIL_USER,
   GMAIL_APP_PASSWORD,
   PORT = 3000
@@ -99,6 +100,11 @@ function isLocalUrl(value) {
 }
 
 function resolveCallbackBaseUrl(req) {
+  const explicitCallback = String(AUTH_CALLBACK_URL || '').trim();
+  if (explicitCallback && /^https?:\/\//i.test(explicitCallback) && !isLocalUrl(explicitCallback)) {
+    return explicitCallback.replace(/\/auth\/callback\/?$/i, '').replace(/\/+$/, '');
+  }
+
   const configuredBaseUrl = getAppBaseUrl();
   if (configuredBaseUrl && !isLocalUrl(configuredBaseUrl)) {
     return configuredBaseUrl;
