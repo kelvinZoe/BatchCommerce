@@ -72,6 +72,50 @@ function getAuthCallbackUrl() {
   return baseUrl ? `${baseUrl}/auth/callback` : '';
 }
 
+function getRequestOrigin(req) {
+  const rawOrigin = String(req?.headers?.origin || '').trim();
+  const rawForwardedProto = String(req?.headers?.['x-forwarded-proto'] || '').trim();
+  const rawForwardedHost = String(req?.headers?.['x-forwarded-host'] || '').trim();
+  const rawHost = String(req?.headers?.host || '').trim();
+
+  if (/^https?:\/\//i.test(rawOrigin)) {
+    return rawOrigin.replace(/\/+$/, '');
+  }
+
+  if (rawForwardedProto && rawForwardedHost) {
+    return `${rawForwardedProto}://${rawForwardedHost}`.replace(/\/+$/, '');
+  }
+
+  if (rawHost) {
+    const protocol = rawForwardedProto || 'https';
+    return `${protocol}://${rawHost}`.replace(/\/+$/, '');
+  }
+
+  return '';
+}
+
+function isLocalUrl(value) {
+  return /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(String(value || '').trim());
+}
+
+function resolveCallbackBaseUrl(req) {
+  const configuredBaseUrl = getAppBaseUrl();
+  if (configuredBaseUrl && !isLocalUrl(configuredBaseUrl)) {
+    return configuredBaseUrl;
+  }
+
+  const requestOrigin = getRequestOrigin(req);
+  if (requestOrigin && !isLocalUrl(requestOrigin)) {
+    return requestOrigin;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return DEFAULT_PRODUCTION_APP_URL;
+  }
+
+  return configuredBaseUrl;
+}
+
 function escapeHtml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -107,13 +151,14 @@ function normalizePhoneNumber(value) {
   return digits.length >= 10 ? `+${digits}` : digits;
 }
 
-async function generateVerificationLink(email) {
+async function generateVerificationLink(email, req) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (!normalizedEmail) {
     return '';
   }
 
-  const redirectTo = getAuthCallbackUrl();
+  const callbackBaseUrl = resolveCallbackBaseUrl(req);
+  const redirectTo = callbackBaseUrl ? `${callbackBaseUrl}/auth/callback` : '';
   const { data, error } = await supa.auth.admin.generateLink({
     type: 'invite',
     email: normalizedEmail,
@@ -362,7 +407,7 @@ app.post('/admin/create-user', requireAdminAuth, async (req, res) => {
 
     if (wantsVerification) {
       try {
-        const verificationLink = await generateVerificationLink(normalizedEmail);
+        const verificationLink = await generateVerificationLink(normalizedEmail, req);
         verificationSent = await sendVerificationEmail({
           email: normalizedEmail,
           fullName: full_name,
@@ -415,7 +460,7 @@ app.post('/public/register', async (req, res) => {
     let emailError = '';
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      const verificationLink = await generateVerificationLink(normalizedEmail);
+      const verificationLink = await generateVerificationLink(normalizedEmail, req);
       emailSent = await sendVerificationEmail({
         email: normalizedEmail,
         fullName: full_name.trim(),
