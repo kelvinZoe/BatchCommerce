@@ -213,26 +213,38 @@ async function sendVerificationEmail({ email, fullName, verificationLink }) {
     'If you did not request this, you can ignore this email.'
   ].filter(Boolean).join('\n');
   const html = buildEmailHtml({ safeName, safeLink, fallbackUrl, hasLink });
+  let gmailError = '';
 
   // --- Gmail (nodemailer) path ---
   if (GMAIL_USER && GMAIL_APP_PASSWORD) {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD.replace(/\s+/g, '') }
-    });
-    await transporter.sendMail({
-      from: `BatchCommerce <${GMAIL_USER}>`,
-      to: email,
-      subject,
-      text: textBody,
-      html
-    });
-    console.log(`✅ Verification email sent via Gmail to ${email}`);
-    return true;
+    try {
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        family: 4,
+        auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD.replace(/\s+/g, '') }
+      });
+      await transporter.sendMail({
+        from: `BatchCommerce <${GMAIL_USER}>`,
+        to: email,
+        subject,
+        text: textBody,
+        html
+      });
+      console.log(`✅ Verification email sent via Gmail to ${email}`);
+      return true;
+    } catch (err) {
+      gmailError = String(err?.message || err || 'Unknown Gmail SMTP error');
+      console.warn(`⚠️ Gmail send failed for ${email}: ${gmailError}. Falling back to Resend.`);
+    }
   }
 
   // --- Resend fallback ---
   if (!RESEND_API_KEY || !getResendFromEmail()) {
+    if (gmailError) {
+      throw new Error(`Gmail send failed and Resend is not configured: ${gmailError}`);
+    }
     return false;
   }
 
@@ -253,6 +265,9 @@ async function sendVerificationEmail({ email, fullName, verificationLink }) {
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
+    if (gmailError) {
+      throw new Error(`Gmail send failed (${gmailError}); Resend request failed (${response.status}): ${errorText}`);
+    }
     throw new Error(`Resend request failed (${response.status}): ${errorText}`);
   }
 
