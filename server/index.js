@@ -100,18 +100,21 @@ function isLocalUrl(value) {
 }
 
 function resolveCallbackBaseUrl(req) {
+  // Explicit override always wins (both prod and dev)
   const explicitCallback = String(AUTH_CALLBACK_URL || '').trim();
-  if (explicitCallback && /^https?:\/\//i.test(explicitCallback) && !isLocalUrl(explicitCallback)) {
+  if (explicitCallback && /^https?:\/\//i.test(explicitCallback)) {
     return explicitCallback.replace(/\/auth\/callback\/?$/i, '').replace(/\/+$/, '');
   }
 
+  // Use configured APP_BASE_URL (includes localhost in dev)
   const configuredBaseUrl = getAppBaseUrl();
-  if (configuredBaseUrl && !isLocalUrl(configuredBaseUrl)) {
+  if (configuredBaseUrl) {
     return configuredBaseUrl;
   }
 
+  // Derive from request origin
   const requestOrigin = getRequestOrigin(req);
-  if (requestOrigin && !isLocalUrl(requestOrigin)) {
+  if (requestOrigin) {
     return requestOrigin;
   }
 
@@ -119,7 +122,7 @@ function resolveCallbackBaseUrl(req) {
     return DEFAULT_PRODUCTION_APP_URL;
   }
 
-  return configuredBaseUrl;
+  return '';
 }
 
 function escapeHtml(value) {
@@ -165,8 +168,11 @@ async function generateVerificationLink(email, req) {
 
   const callbackBaseUrl = resolveCallbackBaseUrl(req);
   const redirectTo = callbackBaseUrl ? `${callbackBaseUrl}/auth/callback` : '';
+
+  // Use 'signup' type so Supabase generates a proper email-confirmation link
+  // (not an invite token, which has a very short TTL and a different flow)
   const { data, error } = await supa.auth.admin.generateLink({
-    type: 'invite',
+    type: 'signup',
     email: normalizedEmail,
     options: redirectTo ? { redirectTo } : undefined
   });

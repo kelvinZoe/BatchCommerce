@@ -1,26 +1,16 @@
 {
   "name": "shakhis-commerce",
   "version": "1.0.0",
-  "description": "Shakhis Ventures Commerce Desktop App",
-  "main": "electron/main.js",
+  "description": "Shakhis Ventures Commerce Web App",
   "scripts": {
     "ng": "ng",
     "start": "ng serve --port 4300",
+    "dev": "concurrently \"npm start --prefix ../server\" \"ng serve --port 4400\"",
     "start:web": "npx serve -s dist/shakhis-commerce/browser -l 4300",
     "build": "node ./scripts/generate-env.js && ng build --configuration production",
     "build:web": "npm run build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test",
-    "electron": "npm run build && electron .",
-    "dev:electron": "concurrently \"npm start --prefix ../server\" \"ng serve --port 4300\" \"wait-on http://localhost:3001 http://localhost:4300 && NODE_ENV=development electron .\"",
-    "electron:dev": "concurrently \"npm start --prefix ../server\" \"ng serve --port 4300\" \"wait-on http://localhost:3001 http://localhost:4300 && NODE_ENV=development electron .\"",
-    "start:electron": "npm run electron:dev",
-    "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:linux": "npm run build && electron-builder --linux",
-    "dist:win": "npm run build && electron-builder --win --x64",
-    "dist:all": "npm run build && electron-builder --mac --win --linux"
+    "test": "ng test"
   },
   "author": "Shakhis Ventures",
   "license": "MIT",
@@ -47,29 +37,7 @@
     "@angular/cli": "^17.0.0",
     "@angular/compiler-cli": "^17.0.0",
     "concurrently": "^8.2.0",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.0.0",
     "typescript": "~5.2.0",
     "wait-on": "^7.2.0"
-  },
-  "build": {
-    "appId": "com.shakhis.commerce",
-    "productName": "Shakhis Commerce",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*"
-    ],
-    "mac": {
-      "target": "dmg"
-    },
-    "win": {
-      "target": "portable"
-    },
-    "linux": {
-      "target": "AppImage"
-    }
   }
 }

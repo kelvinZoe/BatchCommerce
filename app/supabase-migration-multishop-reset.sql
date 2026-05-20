@@ -55,48 +55,41 @@ CREATE OR REPLACE FUNCTION current_shop_id()
 RETURNS UUID
 LANGUAGE plpgsql
 STABLE
+SECURITY DEFINER
+SET search_path = public, auth
 AS $$
+DECLARE
+  v_shop_id TEXT;
 BEGIN
+  -- 1. Try to read from JWT user_metadata
+  v_shop_id := auth.jwt() -> 'user_metadata' ->> 'shop_id';
+  IF v_shop_id IS NOT NULL AND v_shop_id <> '' THEN
+    RETURN v_shop_id::UUID;
+  END IF;
+
+  -- 2. Try to read from JWT app_metadata
+  v_shop_id := auth.jwt() -> 'app_metadata' ->> 'shop_id';
+  IF v_shop_id IS NOT NULL AND v_shop_id <> '' THEN
+    RETURN v_shop_id::UUID;
+  END IF;
+
+  -- 3. Fallback to active membership in shop_memberships table
+  SELECT shop_id::text INTO v_shop_id
+  FROM public.shop_memberships
+  WHERE auth_user_id = auth.uid()
+    AND is_active = TRUE
+  ORDER BY last_selected_at DESC NULLS LAST
+  LIMIT 1;
+
+  IF v_shop_id IS NOT NULL AND v_shop_id <> '' THEN
+    RETURN v_shop_id::UUID;
+  END IF;
+
+  -- 4. Fallback to transaction setting (for migration scripts/seeds)
   RETURN NULLIF(current_setting('app.current_shop_id', true), '')::UUID;
 EXCEPTION
   WHEN OTHERS THEN
     RETURN NULL;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION current_app_user_id()
-RETURNS BIGINT
-LANGUAGE plpgsql
-STABLE
-AS $$
-DECLARE
-  app_user_id BIGINT;
-BEGIN
-  SELECT id INTO app_user_id
-  FROM app_users
-  WHERE auth_id = auth.uid();
-
-  RETURN app_user_id;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION has_shop_membership(p_shop_id UUID)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-STABLE
-AS $$
-DECLARE
-  has_membership BOOLEAN := FALSE;
-BEGIN
-  SELECT EXISTS (
-    SELECT 1
-    FROM shop_memberships sm
-    WHERE sm.shop_id = p_shop_id
-      AND sm.auth_user_id = auth.uid()
-      AND sm.is_active = TRUE
-  ) INTO has_membership;
-
-  RETURN has_membership;
 END;
 $$;
 
@@ -248,6 +241,18 @@ BEGIN
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.sync_user_active_shop()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.is_active = TRUE THEN
+    UPDATE auth.users
+    SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('shop_id', NEW.shop_id)
+    WHERE id = NEW.auth_user_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
 
 -- ============================================================
 -- CORE TENANT TABLES
@@ -817,6 +822,10 @@ CREATE TRIGGER trg_role_permissions_actor BEFORE INSERT OR UPDATE ON role_permis
 CREATE TRIGGER trg_shop_memberships_actor BEFORE INSERT OR UPDATE ON shop_memberships
   FOR EACH ROW EXECUTE FUNCTION set_actor_fields();
 
+CREATE TRIGGER trg_sync_user_active_shop
+  AFTER INSERT OR UPDATE OF is_active, shop_id ON shop_memberships
+  FOR EACH ROW EXECUTE FUNCTION sync_user_active_shop();
+
 CREATE TRIGGER trg_batches_shop BEFORE INSERT OR UPDATE ON batches
   FOR EACH ROW EXECUTE FUNCTION set_shop_fields();
 CREATE TRIGGER trg_batches_actor BEFORE INSERT OR UPDATE ON batches
@@ -1020,6 +1029,52 @@ CREATE TRIGGER trg_stock_sale_items_audit
 CREATE TRIGGER trg_expenses_audit
   AFTER INSERT OR UPDATE OR DELETE ON expenses
   FOR EACH ROW EXECUTE FUNCTION audit_log_write();
+
+-- ============================================================
+-- HELPER FUNCTIONS (DEPENDS ON TABLES)
+-- ============================================================
+
+-- ============================================================
+-- HELPER FUNCTIONS (DEPENDS ON TABLES)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION current_app_user_id()
+RETURNS BIGINT
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  app_user_id BIGINT;
+BEGIN
+  SELECT id INTO app_user_id
+  FROM public.app_users
+  WHERE auth_id = auth.uid();
+
+  RETURN app_user_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION has_shop_membership(p_shop_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+  SELECT (
+    (auth.jwt() -> 'user_metadata' ->> 'shop_id') = p_shop_id::text
+    OR
+    EXISTS (
+      SELECT 1
+      FROM public.shop_memberships sm
+      WHERE sm.shop_id = p_shop_id
+        AND sm.auth_user_id = auth.uid()
+        AND sm.is_active = TRUE
+    )
+  );
+$$;
 
 -- ============================================================
 -- RLS

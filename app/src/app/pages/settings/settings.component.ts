@@ -216,7 +216,7 @@ import { firstValueFrom } from 'rxjs';
             </div>
             <div class="info-row">
               <span>Framework</span>
-              <span>Angular + Electron</span>
+              <span>Angular</span>
             </div>
           </div>
         </div>
