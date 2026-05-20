@@ -160,6 +160,84 @@ function normalizePhoneNumber(value) {
   return digits.length >= 10 ? `+${digits}` : digits;
 }
 
+function normalizeUsername(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[._-]+|[._-]+$/g, '')
+    .replace(/[-._]{2,}/g, '-');
+}
+
+function normalizeShopSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+}
+
+async function getSuggestedUsername(baseUsername, excludeUserId) {
+  const normalizedBase = normalizeUsername(baseUsername) || 'user';
+  const { data, error } = await supa.from('app_users')
+    .select('id, username')
+    .ilike('username', `${normalizedBase}%`);
+
+  if (error || !Array.isArray(data) || data.length === 0) {
+    return normalizedBase;
+  }
+
+  const taken = new Set(
+    data
+      .filter((row) => row?.id !== excludeUserId)
+      .map((row) => String(row?.username || '').toLowerCase())
+      .filter(Boolean)
+  );
+
+  if (!taken.has(normalizedBase)) {
+    return normalizedBase;
+  }
+
+  let suffix = 1;
+  while (taken.has(`${normalizedBase}-${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${normalizedBase}-${suffix}`;
+}
+
+async function ensureAdminAccessForShop(req, shopId) {
+  if (req.adminBypass) {
+    return { ok: true };
+  }
+
+  if (!shopId) {
+    return { ok: false, status: 400, body: { error: 'shopId required' } };
+  }
+
+  const { data: membership, error: membershipError } = await supa
+    .from('shop_memberships')
+    .select('is_owner, roles(name)')
+    .eq('shop_id', shopId)
+    .eq('auth_user_id', req.authUserId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return { ok: false, status: 403, body: { error: 'forbidden' } };
+  }
+
+  const roleRow = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
+  const roleName = String(roleRow?.name || '').toLowerCase();
+  const isAdmin = Boolean(membership.is_owner) || roleName === 'admin';
+  if (!isAdmin) {
+    return { ok: false, status: 403, body: { error: 'forbidden' } };
+  }
+
+  return { ok: true };
+}
+
 async function generateVerificationLink(email, req) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (!normalizedEmail) {
@@ -406,25 +484,241 @@ async function createAuthAndAppUser({
   return { ok: true, body: { success: true, appUserId: data.id, authUserId: authId } };
 }
 
-// Simple header-based protection: require `Authorization: Bearer <ADMIN_API_SECRET>`
-function requireAdminAuth(req, res, next) {
-  const auth = req.headers['authorization'] || '';
+function isMissingMembershipColumnError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const msg = String(error?.message || '').toLowerCase();
+  return (code === '42703' || code === 'PGRST204')
+    && ['membership_status', 'invited_at', 'accepted_at', 'invited_by', 'column'].some((part) => msg.includes(part));
+}
+
+async function ensureShopMembership({ shopId, authUserId, appUserId, roleId, isActive = true, membershipStatus = 'active', invitedBy = null }) {
+  const now = new Date().toISOString();
+  const basePayload = {
+    shop_id: shopId,
+    auth_user_id: authUserId,
+    app_user_id: appUserId,
+    role_id: roleId || null,
+    is_owner: false,
+    is_active: membershipStatus === 'active' ? isActive : false
+  };
+
+  const payloads = [
+    {
+      ...basePayload,
+      membership_status: membershipStatus,
+      invited_at: now,
+      accepted_at: membershipStatus === 'active' ? now : null,
+      invited_by: invitedBy
+    },
+    {
+      ...basePayload,
+      membership_status: membershipStatus,
+      invited_at: now,
+      accepted_at: membershipStatus === 'active' ? now : null
+    },
+    {
+      ...basePayload,
+      membership_status: membershipStatus,
+      accepted_at: membershipStatus === 'active' ? now : null
+    },
+    {
+      ...basePayload,
+      membership_status: membershipStatus
+    },
+    basePayload
+  ];
+
+  let lastError = null;
+  for (const payload of payloads) {
+    const { error } = await supa.from('shop_memberships').upsert(payload, {
+      onConflict: 'shop_id,auth_user_id'
+    });
+
+    if (!error) {
+      return { ok: true };
+    }
+
+    lastError = error;
+    if (!isMissingMembershipColumnError(error)) {
+      break;
+    }
+  }
+
+  return {
+    ok: false,
+    error: lastError || new Error('Failed to assign the user to this shop')
+  };
+}
+
+async function findExistingAppUser({ email, phone, username }) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const normalizedPhone = normalizePhoneNumber(phone || '');
+  const normalizedUsername = String(username || '').trim();
+
+  const attempts = [
+    normalizedEmail
+      ? () => supa.from('app_users').select('id, auth_id, email, phone, username').eq('email', normalizedEmail).limit(1).maybeSingle()
+      : null,
+    normalizedPhone
+      ? () => supa.from('app_users').select('id, auth_id, email, phone, username').eq('phone', normalizedPhone).limit(1).maybeSingle()
+      : null,
+    normalizedUsername
+      ? () => supa.from('app_users').select('id, auth_id, email, phone, username').eq('username', normalizedUsername).limit(1).maybeSingle()
+      : null
+  ].filter(Boolean);
+
+  for (const run of attempts) {
+    const { data, error } = await run();
+    if (error) {
+      continue;
+    }
+    if (data?.id && data?.auth_id) {
+      return data;
+    }
+  }
+
+  return null;
+}
+
+async function cleanupCreatedUser(authUserId) {
+  if (!authUserId) return;
+
+  try {
+    await supa.from('app_users').delete().eq('auth_id', authUserId);
+  } catch (error) {
+    console.warn('⚠️ Failed to cleanup app_users row after membership failure:', error?.message || error);
+  }
+
+  try {
+    await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/auth/v1/admin/users/${authUserId}`, {
+      method: 'DELETE',
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+      }
+    });
+  } catch (error) {
+    console.warn('⚠️ Failed to cleanup auth user after membership failure:', error?.message || error);
+  }
+}
+
+// Protect admin routes using either the shared admin secret or a Supabase access token.
+async function requireAdminAuth(req, res, next) {
+  const auth = String(req.headers['authorization'] || '').trim();
   const parts = auth.split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer' || parts[1] !== ADMIN_API_SECRET) {
+
+  if (parts.length !== 2 || parts[0] !== 'Bearer' || !parts[1]) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+
+  const token = parts[1];
+
+  // Backward-compatible support for shared admin secret.
+  if (token === ADMIN_API_SECRET) {
+    req.adminBypass = true;
+    return next();
+  }
+
+  // Primary path: authenticate caller with a Supabase access token.
+  const { data, error } = await supa.auth.getUser(token);
+  if (error || !data?.user?.id) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  req.authUserId = data.user.id;
+  req.adminBypass = false;
   next();
 }
 
 app.post('/admin/create-user', requireAdminAuth, async (req, res) => {
   try {
-    const { email, password, full_name, phone = '', roleId, autoConfirm = true, username } = req.body;
+    const { email, password, full_name, phone = '', roleId, autoConfirm = true, username, shopId } = req.body;
     if ((!email && !phone) || !password || !full_name) {
       return res.status(400).json({ error: 'email_or_phone,password,full_name required' });
     }
+
+    // When not using the shared admin secret, require caller to be active admin/owner in the target shop.
+    const adminAccess = await ensureAdminAccessForShop(req, shopId);
+    if (!adminAccess.ok) {
+      return res.status(adminAccess.status).json(adminAccess.body);
+    }
+
+    let inviterAppUserId = null;
+    if (req.authUserId) {
+      const { data: inviter } = await supa.from('app_users').select('id').eq('auth_id', req.authUserId).maybeSingle();
+      inviterAppUserId = inviter?.id || null;
+    }
+
     const result = await createAuthAndAppUser({ email, password, full_name, phone, roleId, autoConfirm, username });
     if (!result.ok) {
+      const isDuplicate = result.status === 409 || result.body?.error === 'user_exists';
+      if (isDuplicate && shopId) {
+        const existingUser = await findExistingAppUser({ email, phone, username });
+
+        if (existingUser?.id && existingUser?.auth_id) {
+          const { data: existingMembership } = await supa
+            .from('shop_memberships')
+            .select('id')
+            .eq('shop_id', shopId)
+            .eq('auth_user_id', existingUser.auth_id)
+            .limit(1)
+            .maybeSingle();
+
+          if (existingMembership?.id) {
+            return res.status(409).json({
+              error: 'user_exists',
+              detail: 'This user already has access to this shop.'
+            });
+          }
+
+          const membershipResult = await ensureShopMembership({
+            shopId,
+            authUserId: existingUser.auth_id,
+            appUserId: existingUser.id,
+            roleId,
+            isActive: true,
+            membershipStatus: autoConfirm ? 'active' : 'pending_verification',
+            invitedBy: inviterAppUserId
+          });
+
+          if (!membershipResult.ok) {
+            return res.status(500).json({
+              error: 'membership_insert_error',
+              detail: membershipResult.error?.message || 'Failed to assign the existing user to this shop.'
+            });
+          }
+
+          return res.json({
+            success: true,
+            recoveredExistingUser: true,
+            appUserId: existingUser.id,
+            authUserId: existingUser.auth_id,
+            membershipStatus: autoConfirm ? 'active' : 'pending_verification',
+            verificationSent: false,
+            verificationMessage: undefined
+          });
+        }
+      }
+
       return res.status(result.status).json(result.body);
+    }
+
+    const membershipResult = await ensureShopMembership({
+      shopId,
+      authUserId: result.body.authUserId,
+      appUserId: result.body.appUserId,
+      roleId,
+      isActive: true,
+      membershipStatus: autoConfirm ? 'active' : 'pending_verification',
+      invitedBy: inviterAppUserId
+    });
+
+    if (!membershipResult.ok) {
+      await cleanupCreatedUser(result.body.authUserId);
+      return res.status(500).json({
+        error: 'membership_insert_error',
+        detail: membershipResult.error?.message || 'Failed to assign the user to this shop.'
+      });
     }
 
     const normalizedEmail = String(email || '').trim().toLowerCase();
@@ -453,7 +747,100 @@ app.post('/admin/create-user', requireAdminAuth, async (req, res) => {
       ...result.body,
       membershipStatus: wantsVerification ? 'pending_verification' : 'active',
       verificationSent,
-      verificationMessage
+      verificationMessage: wantsVerification ? verificationMessage : undefined
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'server_error', detail: String(err) });
+  }
+});
+
+app.post('/admin/user-availability', requireAdminAuth, async (req, res) => {
+  try {
+    const { username = '', email = '', shopId, excludeUserId } = req.body || {};
+    const adminAccess = await ensureAdminAccessForShop(req, shopId);
+    if (!adminAccess.ok) {
+      return res.status(adminAccess.status).json(adminAccess.body);
+    }
+
+    const normalizedUsername = normalizeUsername(username);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const excludedId = Number(excludeUserId || 0) || null;
+
+    const [usernameResult, emailResult, suggestedUsername] = await Promise.all([
+      normalizedUsername
+        ? supa.from('app_users').select('id').eq('username', normalizedUsername).limit(1).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      normalizedEmail
+        ? supa.from('app_users').select('id').eq('email', normalizedEmail).limit(1).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      getSuggestedUsername(normalizedUsername, excludedId)
+    ]);
+
+    const usernameAvailable = !usernameResult.data || usernameResult.data.id === excludedId;
+    const emailAvailable = !normalizedEmail || !emailResult.data || emailResult.data.id === excludedId;
+
+    return res.json({
+      username: normalizedUsername,
+      email: normalizedEmail,
+      usernameAvailable,
+      emailAvailable,
+      suggestedUsername: usernameAvailable ? normalizedUsername : suggestedUsername
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'server_error', detail: String(err) });
+  }
+});
+
+app.post('/admin/update-shop-profile', requireAdminAuth, async (req, res) => {
+  try {
+    const { shopId, name, slug } = req.body || {};
+    const normalizedName = String(name || '').trim();
+
+    if (!shopId || !normalizedName) {
+      return res.status(400).json({ error: 'shopId and name are required' });
+    }
+
+    const adminAccess = await ensureAdminAccessForShop(req, shopId);
+    if (!adminAccess.ok) {
+      return res.status(adminAccess.status).json(adminAccess.body);
+    }
+
+    const normalizedSlug = normalizeShopSlug(slug || normalizedName);
+    if (!normalizedSlug) {
+      return res.status(400).json({ error: 'Invalid shop slug' });
+    }
+
+    const { data, error } = await supa.from('shops')
+      .update({
+        name: normalizedName,
+        slug: normalizedSlug,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', shopId)
+      .select('id, name, slug')
+      .single();
+
+    if (error) {
+      if (String(error.code) === '23505') {
+        return res.status(409).json({
+          error: 'duplicate_shop_name_or_slug',
+          detail: 'That business name or slug is already used by another shop.'
+        });
+      }
+
+      return res.status(500).json({
+        error: 'shop_update_failed',
+        detail: error.message || 'Could not update this shop profile.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      shopId: data?.id || shopId,
+      shopName: data?.name || normalizedName,
+      shopSlug: data?.slug || normalizedSlug
     });
   } catch (err) {
     console.error(err);

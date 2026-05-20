@@ -5,7 +5,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --port 4300",
-    "dev": "concurrently \"npm start --prefix ../server\" \"ng serve --port 4400\"",
+    "dev": "concurrently \"npm start --prefix ../server\" \"ng serve --port 4300\"",
     "start:web": "npx serve -s dist/shakhis-commerce/browser -l 4300",
     "build": "node ./scripts/generate-env.js && ng build --configuration production",
     "build:web": "npm run build",
@@ -27,6 +27,7 @@
     "@supabase/supabase-js": "^2.95.3",
     "bootstrap": "^5.3.8",
     "bootstrap-icons": "^1.13.1",
+    "remixicon": "^4.9.1",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "xlsx": "^0.18.5",

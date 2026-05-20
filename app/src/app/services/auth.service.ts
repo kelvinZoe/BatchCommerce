@@ -59,6 +59,21 @@ export interface UserCreationResult {
   verificationMessage?: string;
 }
 
+export interface UserIdentityAvailabilityResult {
+  username: string;
+  email: string;
+  usernameAvailable: boolean;
+  emailAvailable: boolean;
+  suggestedUsername?: string | null;
+}
+
+export interface ShopProfileUpdateResult {
+  success: boolean;
+  message: string;
+  shopName: string;
+  shopSlug: string;
+}
+
 export interface VerificationDispatchResult {
   success: boolean;
   message: string;
@@ -139,24 +154,54 @@ export class AuthService {
     return this.mapPermissionRows(data || []);
   }
 
-  private async resolveMembershipForAuthUser(authUserId: string): Promise<any | null> {
-    let query = this.sb.from('shop_memberships')
-      .select('id, shop_id, auth_user_id, app_user_id, role_id, is_owner, is_active, membership_status, accepted_at, last_selected_at, shops(id, name, slug), roles(id, name), app_users(username, full_name, email, phone, phone_verified_at)')
-      .eq('auth_user_id', authUserId)
-      .eq('is_active', true)
-      .order('is_owner', { ascending: false })
-      .order('last_selected_at', { ascending: false, nullsFirst: false })
-      .limit(1);
+  private async resolveMembershipForAuthUser(authUserId: string, preferredShopId?: string | null): Promise<any | null> {
+    const fullSelect = 'id, shop_id, auth_user_id, app_user_id, role_id, is_owner, is_active, membership_status, accepted_at, last_selected_at, shops(id, name, slug), roles(id, name), app_users!shop_memberships_app_user_id_fkey(username, full_name, email, phone)';
+    const fallbackSelect = 'id, shop_id, auth_user_id, app_user_id, role_id, is_owner, is_active, last_selected_at, shops(id, name, slug), roles(id, name), app_users!shop_memberships_app_user_id_fkey(username, full_name, email, phone)';
 
-    if (this.shopConfig.shopId) {
-      const { data } = await query.eq('shop_id', this.shopConfig.shopId);
-      if (data && data.length > 0) {
-        return data[0];
+    const runQuery = async (shopId?: string | null, useFallbackSelect = false): Promise<any | null> => {
+      let query = this.sb.from('shop_memberships')
+        .select(useFallbackSelect ? fallbackSelect : fullSelect)
+        .eq('auth_user_id', authUserId)
+        .eq('is_active', true)
+        .order('is_owner', { ascending: false })
+        .order('last_selected_at', { ascending: false, nullsFirst: false })
+        .limit(1);
+
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        const code = String(error.code || '').toUpperCase();
+        const msg = String(error.message || '').toLowerCase();
+        const missingColumns = (code === '42703' || code === 'PGRST204')
+          && (msg.includes('membership_status') || msg.includes('accepted_at') || msg.includes('column'));
+
+        if (!useFallbackSelect && missingColumns) {
+          return runQuery(shopId, true);
+        }
+
+        throw new Error(error.message || 'Failed to load shop membership');
+      }
+
+      return data && data.length > 0 ? data[0] : null;
+    };
+
+    const scopedCandidates = Array.from(new Set([
+      this.shopConfig.shopId,
+      preferredShopId || null
+    ].filter((value): value is string => !!value)));
+
+    for (const shopId of scopedCandidates) {
+      const scopedMatch = await runQuery(shopId);
+      if (scopedMatch) {
+        return scopedMatch;
       }
     }
 
-    const { data } = await query;
-    return data && data.length > 0 ? data[0] : null;
+    return runQuery();
   }
 
   private buildUserFromMembership(authUser: any, membership: any): User {
@@ -207,6 +252,22 @@ export class AuthService {
 
   normalizeEmail(value: string): string {
     return (value || '').trim().toLowerCase();
+  }
+
+  normalizeUsername(value: string): string {
+    const normalized = (value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^[._-]+|[._-]+$/g, '')
+      .replace(/[-._]{2,}/g, '-');
+
+    return normalized;
+  }
+
+  buildUsernameFromFullName(fullName: string): string {
+    const base = this.normalizeUsername(fullName);
+    return base || 'user';
   }
 
   isValidEmail(value: string): boolean {
@@ -267,6 +328,193 @@ export class AuthService {
     }
 
     return `${this.sanitizeEmailLocalPart(normalized)}@shakhis.com`;
+  }
+
+  private normalizeShopSlug(value: string): string {
+    const slug = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-{2,}/g, '-');
+
+    return slug || 'shop';
+  }
+
+  updateActiveShopProfile(shopName: string, shopSlug?: string): Observable<ShopProfileUpdateResult> {
+    return from(this.doUpdateActiveShopProfile(shopName, shopSlug));
+  }
+
+  private async doUpdateActiveShopProfile(shopName: string, shopSlug?: string): Promise<ShopProfileUpdateResult> {
+    const shopId = this.requireActiveShopId();
+    const trimmedName = String(shopName || '').trim();
+
+    if (!trimmedName) {
+      throw new Error('Business name is required.');
+    }
+
+    const normalizedSlug = this.normalizeShopSlug(
+      shopSlug || this.shopConfig.config?.shopSlug || trimmedName
+    );
+
+    if (this.usesManagedPhoneIdentity) {
+      const adminApiUrl = this.getNormalizedAdminApiUrl();
+      if (!adminApiUrl) {
+        throw new Error('Admin API is not configured.');
+      }
+
+      let authHeader = await this.getAdminApiAuthorizationHeader(true);
+      let response = await fetch(`${adminApiUrl}/admin/update-shop-profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authHeader
+        },
+        body: JSON.stringify({
+          shopId,
+          name: trimmedName,
+          slug: normalizedSlug
+        })
+      });
+
+      if (response.status === 401 && this.adminApiSecret) {
+        sessionStorage.removeItem('shakhis_admin_api_secret');
+        authHeader = await this.getAdminApiAuthorizationHeader(false);
+        response = await fetch(`${adminApiUrl}/admin/update-shop-profile`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: authHeader
+          },
+          body: JSON.stringify({
+            shopId,
+            name: trimmedName,
+            slug: normalizedSlug
+          })
+        });
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || payload?.error || 'Failed to update shop profile.');
+      }
+
+      const finalName = String(payload?.shopName || trimmedName).trim();
+      const finalSlug = this.normalizeShopSlug(payload?.shopSlug || normalizedSlug);
+
+      this.shopConfig.saveConfig({
+        shopId,
+        shopName: finalName,
+        shopSlug: finalSlug
+      });
+
+      return {
+        success: true,
+        message: 'Shop profile updated successfully.',
+        shopName: finalName,
+        shopSlug: finalSlug
+      };
+    }
+
+    const { error } = await this.sb.from('shops').update({
+      name: trimmedName,
+      slug: normalizedSlug
+    }).eq('id', shopId);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to update shop profile.');
+    }
+
+    this.shopConfig.saveConfig({
+      shopId,
+      shopName: trimmedName,
+      shopSlug: normalizedSlug
+    });
+
+    return {
+      success: true,
+      message: 'Shop profile updated successfully.',
+      shopName: trimmedName,
+      shopSlug: normalizedSlug
+    };
+  }
+
+  checkUserIdentityAvailability(username: string, email = '', excludeUserId?: number): Observable<UserIdentityAvailabilityResult> {
+    return from(this.doCheckUserIdentityAvailability(username, email, excludeUserId));
+  }
+
+  private async doCheckUserIdentityAvailability(username: string, email = '', excludeUserId?: number): Promise<UserIdentityAvailabilityResult> {
+    const normalizedUsername = this.normalizeUsername(username);
+    const normalizedEmail = this.normalizeEmail(email);
+
+    if (this.usesManagedPhoneIdentity) {
+      return this.checkUserIdentityAvailabilityViaAdminApi(normalizedUsername, normalizedEmail, excludeUserId);
+    }
+
+    const [usernameResult, emailResult] = await Promise.all([
+      normalizedUsername
+        ? this.sb.from('app_users').select('id, username').eq('username', normalizedUsername).limit(1).maybeSingle()
+        : Promise.resolve({ data: null, error: null } as any),
+      normalizedEmail
+        ? this.sb.from('app_users').select('id, email').eq('email', normalizedEmail).limit(1).maybeSingle()
+        : Promise.resolve({ data: null, error: null } as any)
+    ]);
+
+    const usernameTaken = !!usernameResult.data && usernameResult.data.id !== excludeUserId;
+    const emailTaken = !!emailResult.data && emailResult.data.id !== excludeUserId;
+
+    return {
+      username: normalizedUsername,
+      email: normalizedEmail,
+      usernameAvailable: !usernameTaken,
+      emailAvailable: !emailTaken,
+      suggestedUsername: usernameTaken ? `${normalizedUsername}-1` : normalizedUsername || null
+    };
+  }
+
+  private async checkUserIdentityAvailabilityViaAdminApi(username: string, email: string, excludeUserId?: number): Promise<UserIdentityAvailabilityResult> {
+    const adminApiUrl = this.getNormalizedAdminApiUrl();
+    const shopId = this.requireActiveShopId();
+
+    if (!adminApiUrl) {
+      throw new Error('Admin API is not configured.');
+    }
+
+    let authHeader = await this.getAdminApiAuthorizationHeader(true);
+    let response = await fetch(`${adminApiUrl}/admin/user-availability`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader
+      },
+      body: JSON.stringify({ username, email, shopId, excludeUserId })
+    });
+
+    if (response.status === 401 && this.adminApiSecret) {
+      sessionStorage.removeItem('shakhis_admin_api_secret');
+      authHeader = await this.getAdminApiAuthorizationHeader(false);
+      response = await fetch(`${adminApiUrl}/admin/user-availability`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authHeader
+        },
+        body: JSON.stringify({ username, email, shopId, excludeUserId })
+      });
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.detail || payload?.error || 'Could not validate username and email availability.');
+    }
+
+    return {
+      username: this.normalizeUsername(payload?.username || username),
+      email: this.normalizeEmail(payload?.email || email),
+      usernameAvailable: !!payload?.usernameAvailable,
+      emailAvailable: email ? !!payload?.emailAvailable : true,
+      suggestedUsername: payload?.suggestedUsername || null
+    };
   }
 
   private async trySignInWithCandidates(identifier: string, password: string) {
@@ -581,7 +829,7 @@ export class AuthService {
   }
 
   get usesManagedPhoneIdentity(): boolean {
-    return !!this.adminApiSecret && !!environment.adminApiUrl;
+    return !!environment.adminApiUrl;
   }
 
   private get activeShopId(): string | null {
@@ -643,7 +891,8 @@ export class AuthService {
         await this.activatePendingMembershipsForAuthUser(authUser.id);
       }
 
-      const membership = await this.resolveMembershipForAuthUser(authUser.id);
+      const shopIdHint = String(authUser.user_metadata?.['shop_id'] || authUser.app_metadata?.['shop_id'] || '').trim() || null;
+      const membership = await this.resolveMembershipForAuthUser(authUser.id, shopIdHint);
       if (!membership) {
         if (await this.hasPendingMembershipForAuthUser(authUser.id)) {
           await this.sb.auth.signOut();
@@ -965,7 +1214,6 @@ export class AuthService {
 
   logout() {
     this.sb.auth.signOut();
-    this.shopConfig.clearConfig();
     this.clearSession();
   }
 
@@ -1139,17 +1387,41 @@ export class AuthService {
       || (!!target.authId && currentUser.authId === target.authId);
   }
 
+  private async fetchUsersForShop(shopId: string): Promise<any[]> {
+    const fullSelect = 'id, shop_id, auth_user_id, app_user_id, role_id, is_active, membership_status, created_at, updated_at, app_users!shop_memberships_app_user_id_fkey(id, auth_id, username, full_name, email, phone, is_active, created_at, updated_at), roles(name)';
+    const fallbackSelect = 'id, shop_id, auth_user_id, app_user_id, role_id, is_active, created_at, updated_at, app_users!shop_memberships_app_user_id_fkey(id, auth_id, username, full_name, email, phone, is_active, created_at, updated_at), roles(name)';
+
+    const runQuery = async (useFallbackSelect = false): Promise<any[]> => {
+      const { data, error } = await this.sb.from('shop_memberships')
+        .select(useFallbackSelect ? fallbackSelect : fullSelect)
+        .eq('shop_id', shopId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        const code = String(error.code || '').toUpperCase();
+        const msg = String(error.message || '').toLowerCase();
+        const missingColumns = (code === '42703' || code === 'PGRST204')
+          && (msg.includes('membership_status') || msg.includes('column'));
+
+        if (!useFallbackSelect && missingColumns) {
+          return runQuery(true);
+        }
+
+        throw new Error(error.message || 'Failed to load users for this shop');
+      }
+
+      return data || [];
+    };
+
+    return runQuery(false);
+  }
+
   // ─── User CRUD ─────────────────────────────────────
   getUsers(): Observable<User[]> {
     const shopId = this.activeShopId;
     if (!shopId) return of([]);
 
-    return from(
-      this.sb.from('shop_memberships')
-        .select('id, shop_id, auth_user_id, app_user_id, role_id, is_active, membership_status, created_at, updated_at, app_users(id, auth_id, username, full_name, email, phone, phone_verified_at, is_active, created_at, updated_at), roles(name)')
-        .eq('shop_id', shopId)
-        .order('created_at', { ascending: true })
-    ).pipe(map(({ data }) => {
+    return from(this.fetchUsersForShop(shopId)).pipe(map((data) => {
       return (data || [])
         .map((row: any) => this.mapUserFromMembership(row))
         .sort((left, right) => left.fullName.localeCompare(right.fullName));
@@ -1181,18 +1453,20 @@ export class AuthService {
   }
 
   private async createUserViaAdminApi(user: User, normalizedEmail: string, normalizedPhone: string): Promise<UserCreationResult> {
-    const adminApiSecret = this.adminApiSecret;
     const adminApiUrl = this.getNormalizedAdminApiUrl();
+    const shopId = this.requireActiveShopId();
 
-    if (!adminApiSecret || !adminApiUrl) {
+    if (!adminApiUrl) {
       throw new Error('Admin API is not configured.');
     }
 
-    const response = await fetch(`${adminApiUrl}/admin/create-user`, {
+    let authHeader = await this.getAdminApiAuthorizationHeader(true);
+
+    let response = await fetch(`${adminApiUrl}/admin/create-user`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${adminApiSecret}`
+        Authorization: authHeader
       },
       body: JSON.stringify({
         email: normalizedEmail,
@@ -1200,10 +1474,34 @@ export class AuthService {
         full_name: user.fullName,
         phone: normalizedPhone,
         roleId: user.roleId,
-        autoConfirm: false,
+        shopId,
+        autoConfirm: true,
         username: user.username
       })
     });
+
+    // If an old/bad session secret is present, retry once with the active user JWT.
+    if (response.status === 401 && this.adminApiSecret) {
+      sessionStorage.removeItem('shakhis_admin_api_secret');
+      authHeader = await this.getAdminApiAuthorizationHeader(false);
+      response = await fetch(`${adminApiUrl}/admin/create-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authHeader
+        },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password: user.password || 'password123',
+          full_name: user.fullName,
+          phone: normalizedPhone,
+          roleId: user.roleId,
+          shopId,
+          autoConfirm: true,
+          username: user.username
+        })
+      });
+    }
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -1216,29 +1514,31 @@ export class AuthService {
       throw new Error('Admin API did not return a valid user payload.');
     }
 
-    const membershipStatus: MembershipStatus = payload?.membershipStatus === 'active' ? 'active' : 'pending_verification';
-    await this.addUserToActiveShop(authUserId, appUserId, user.roleId, user.isActive, membershipStatus);
+    const membershipStatus = (payload?.membershipStatus || 'active') as MembershipStatus;
 
     return {
       id: appUserId,
       membershipStatus,
-      verificationSent: payload?.verificationSent !== false,
-      verificationMessage: payload?.verificationMessage || (membershipStatus === 'pending_verification'
-        ? `Verification email sent to ${normalizedEmail}.`
-        : undefined)
+      verificationSent: false,
+      verificationMessage: undefined
     };
   }
 
   formatUserCreationError(error: any): string {
-    const msg = (error?.message || error?.toString() || '').toLowerCase();
-    const detail = error?.detail?.toLowerCase() || '';
+    const msg = String(error?.message || error?.error_description || error?.toString() || '').toLowerCase();
+    const detail = String(error?.detail || '').toLowerCase();
+    const code = String(error?.code || error?.error || error?.original?.code || '').toLowerCase();
 
-    if (msg.includes('phone_exists') || detail.includes('phone_exists')) {
+    if (code.includes('phone_exists') || msg.includes('phone_exists') || detail.includes('phone_exists')) {
       return 'This phone number is already registered in the system. Please use a different phone number or update the existing user instead.';
     }
 
-    if (msg.includes('email_exists') || detail.includes('email_exists')) {
+    if (code.includes('email_exists') || msg.includes('email_exists') || detail.includes('email_exists')) {
       return 'This email is already registered in the system. Please use a different email or check if the user already exists.';
+    }
+
+    if (code.includes('user_exists') || msg.includes('user_exists') || detail.includes('already registered')) {
+      return 'This account already exists. Please sign in instead.';
     }
 
     if (msg.includes('already registered')) {
@@ -1253,6 +1553,10 @@ export class AuthService {
       return 'A user with this username or email already exists. Please try a different username.';
     }
 
+    if (msg.includes('unauthorized') || msg.includes('forbidden')) {
+      return 'You are not authorized to create users for this shop. Sign in again with an admin account and retry.';
+    }
+
     if (msg.includes('rate limit') || msg.includes('too many requests')) {
       return 'Too many requests. Please wait a moment and try again.';
     }
@@ -1265,6 +1569,22 @@ export class AuthService {
     }
 
     return error?.message || 'Failed to create user account. Please try again.';
+  }
+
+  private async getAdminApiAuthorizationHeader(preferSessionSecret = true): Promise<string> {
+    const adminApiSecret = this.adminApiSecret;
+    if (preferSessionSecret && adminApiSecret) {
+      return `Bearer ${adminApiSecret}`;
+    }
+
+    const { data, error } = await this.sb.auth.getSession();
+    const accessToken = data?.session?.access_token;
+
+    if (error || !accessToken) {
+      throw new Error('Could not authenticate with the admin API. Please sign in again.');
+    }
+
+    return `Bearer ${accessToken}`;
   }
 
   private async doCreateUser(user: User, retryCount = 0): Promise<UserCreationResult> {
@@ -1316,7 +1636,10 @@ export class AuthService {
         );
       }
 
-      throw new Error(`Failed to create account: ${authError.message}`);
+      const formattedError: any = new Error(this.formatUserCreationError(authError));
+      formattedError.original = authError;
+      formattedError.code = authError.code;
+      throw formattedError;
     }
 
     if (!authData.user) {
@@ -1421,33 +1744,36 @@ export class AuthService {
     if (!shopId) return [];
 
     const { data: roles } = await this.sb.from('roles').select('*').eq('shop_id', shopId).order('id');
-    if (!roles) return [];
+    const { data: permissions } = await this.sb.from('role_permissions').select('*').eq('shop_id', shopId);
 
-    for (const role of roles) {
-      const { data: perms } = await this.sb.from('role_permissions')
-        .select('*').eq('shop_id', shopId).eq('role_id', role.id);
-      (role as any).permissions = (perms || []).map((p: any) => ({
-        ...toCamel(p),
-        dashboardConfig: p.resource === 'dashboard' ? (p.dashboard_config || null) : undefined,
-        productConfig: p.resource === 'products' ? (p.product_config || null) : undefined,
-        ordersConfig: p.resource === 'orders' ? (p.orders_config || null) : undefined,
-        buyingListConfig: p.resource === 'buying_list' ? (p.buying_list_config || null) : undefined,
-        arrivalsConfig: p.resource === 'arrivals' ? (p.arrivals_config || null) : undefined,
-        shippingConfig: p.resource === 'shipping' ? (p.shipping_config || null) : undefined,
-        shippingLedgerConfig: p.resource === 'shipping' ? (p.shipping_ledger_config || null) : undefined,
-        stockSalesConfig: p.resource === 'stock_sales' ? (p.stock_sales_config || null) : undefined,
-        manageBatchesConfig: p.resource === 'batches' ? (p.manage_batches_config || null) : undefined,
-        rolesConfig: p.resource === 'roles' ? (p.roles_config || null) : undefined,
-        usersConfig: p.resource === 'users' ? (p.users_config || null) : undefined
-      }));
-    }
+    const permissionsByRoleId = new Map<number, Permission[]>();
+    (permissions || []).forEach((row: any) => {
+      const mapped = {
+        ...toCamel(row),
+        dashboardConfig: row.resource === 'dashboard' ? (row.dashboard_config || null) : undefined,
+        productConfig: row.resource === 'products' ? (row.product_config || null) : undefined,
+        ordersConfig: row.resource === 'orders' ? (row.orders_config || null) : undefined,
+        buyingListConfig: row.resource === 'buying_list' ? (row.buying_list_config || null) : undefined,
+        arrivalsConfig: row.resource === 'arrivals' ? (row.arrivals_config || null) : undefined,
+        shippingConfig: row.resource === 'shipping' ? (row.shipping_config || null) : undefined,
+        shippingLedgerConfig: row.resource === 'shipping' ? (row.shipping_ledger_config || null) : undefined,
+        stockSalesConfig: row.resource === 'stock_sales' ? (row.stock_sales_config || null) : undefined,
+        manageBatchesConfig: row.resource === 'batches' ? (row.manage_batches_config || null) : undefined,
+        rolesConfig: row.resource === 'roles' ? (row.roles_config || null) : undefined,
+        usersConfig: row.resource === 'users' ? (row.users_config || null) : undefined
+      } as Permission;
 
-    return roles.map((r: any) => ({
+      const rolePermissions = permissionsByRoleId.get(row.role_id) || [];
+      rolePermissions.push(mapped);
+      permissionsByRoleId.set(row.role_id, rolePermissions);
+    });
+
+    return (roles || []).map((r: any) => ({
       id: r.id,
       name: r.name,
       description: r.description,
       isSystem: r.is_system,
-      permissions: r.permissions,
+      permissions: permissionsByRoleId.get(r.id) || [],
       createdAt: r.created_at
     } as Role));
   }

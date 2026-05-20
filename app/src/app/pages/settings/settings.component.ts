@@ -6,6 +6,7 @@ import { DatabaseService } from '../../services/database.service';
 import { ShopConfigService } from '../../services/shop-config.service';
 import { AuthService } from '../../services/auth.service';
 import { ThemeService } from '../../services/theme.service';
+import { ExcelService } from '../../services/excel.service';
 import { firstValueFrom } from 'rxjs';
 
 @Component({
@@ -17,6 +18,15 @@ import { firstValueFrom } from 'rxjs';
       <div class="page-header">
         <h1>Settings</h1>
         <p class="subtitle">Manage application settings and preferences</p>
+      </div>
+
+      <div class="set-status" *ngIf="statusMessage"
+           [class.set-status-success]="statusTone === 'success'"
+           [class.set-status-info]="statusTone === 'info'"
+           [class.set-status-error]="statusTone === 'error'">
+        <span class="material-icons">{{ statusTone === 'error' ? 'error_outline' : statusTone === 'info' ? 'info' : 'check_circle' }}</span>
+        <span>{{ statusMessage }}</span>
+        <button class="set-status-close" (click)="clearStatus()"><span class="material-icons">close</span></button>
       </div>
 
       <div class="settings-container">
@@ -44,11 +54,7 @@ import { firstValueFrom } from 'rxjs';
 
         <div class="card">
           <div class="card-header">
-            <h2>Default Settings</h2>
-          </div>
-          <div class="form-group">
-            <label>Default Delivery Fee (GHS)</label>
-            <input type="number" [(ngModel)]="settings.defaultDeliveryFee" placeholder="0.00" />
+            <h2>Preferences</h2>
           </div>
           <div class="form-group">
             <label>Currency Symbol</label>
@@ -58,6 +64,18 @@ import { firstValueFrom } from 'rxjs';
               <option value="EUR">EUR (Euro)</option>
               <option value="GBP">GBP (British Pound)</option>
             </select>
+          </div>
+          <div class="form-group">
+            <label class="toggle-row">
+              <input type="checkbox" [(ngModel)]="settings.enableOrderAlerts" />
+              <span>Enable order notifications</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="toggle-row">
+              <input type="checkbox" [(ngModel)]="settings.compactTables" />
+              <span>Use compact tables</span>
+            </label>
           </div>
         </div>
 
@@ -115,9 +133,10 @@ import { firstValueFrom } from 'rxjs';
                 <strong>Export All Data</strong>
                 <p>Download all your data as an Excel file</p>
               </div>
-              <button class="btn btn-secondary" (click)="exportData()">
+              <button class="btn btn-secondary" (click)="exportData()" [disabled]="exporting">
+                <span *ngIf="exporting" class="spinner"></span>
                 <span class="material-icons">download</span>
-                Export
+                {{ exporting ? 'Exporting...' : 'Export' }}
               </button>
             </div>
             <div class="action-item danger">
@@ -135,89 +154,27 @@ import { firstValueFrom } from 'rxjs';
 
         <div class="card">
           <div class="card-header">
-            <h2>Worker Account Creation</h2>
-          </div>
-          <div class="status-message" style="margin-bottom:16px;padding:12px;background:#d1fae5;border-radius:8px;color:#065f46;font-size:13px">
-            <span class="material-icons" style="vertical-align:middle;margin-right:6px">check_circle</span>
-            ✓ Admin API can be enabled manually for privileged user management.
-          </div>
-          <div class="info-box">
-            <span class="material-icons">info</span>
-            <div>
-              <strong>Optional Admin API Secret</strong>
-              <p>Leave this blank unless you have a secure backend endpoint that expects the secret. It is stored only in session storage.</p>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Admin API Secret (Optional)</label>
-            <input type="password" [(ngModel)]="adminApiSecret" placeholder="Enter only if you use the admin API"
-                   class="input-lg mono" />
-            <small class="form-hint">Override is stored in session storage and cleared when you close your browser.</small>
-          </div>
-          <div class="form-actions" style="margin-top:16px">
-            <button class="btn btn-primary" (click)="saveAdminApiSecret()" [disabled]="saving">
-              {{ saving ? 'Saving...' : 'Save Secret' }}
-            </button>
-            <button class="btn btn-secondary" (click)="clearAdminApiSecret()" *ngIf="adminApiSecret">
-              <span class="material-icons">close</span>
-              Clear Secret
-            </button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <h2>Shop Configuration</h2>
+            <h2>Account</h2>
           </div>
           <div class="about-info">
             <div class="info-row">
-              <span>Shop Name</span>
+              <span>Signed in as</span>
+              <span>{{ currentUserDisplayName }}</span>
+            </div>
+            <div class="info-row">
+              <span>Role</span>
+              <span>{{ currentUserRole }}</span>
+            </div>
+            <div class="info-row">
+              <span>Current Shop</span>
               <span>{{ shopConfig.shopName }}</span>
             </div>
-            <div class="info-row">
-              <span>Supabase URL</span>
-              <span class="mono">{{ shopConfig.supabaseUrl }}</span>
-            </div>
-            <div class="info-row">
-              <span>Configured</span>
-              <span>{{ shopConfig.config?.configuredAt | date:'medium' }}</span>
-            </div>
           </div>
-          <div class="data-actions" style="margin-top:16px">
-            <div class="action-item danger">
-              <div class="action-info">
-                <strong>Reset Shop Configuration</strong>
-                <p>Clear all connection settings and return to the setup screen</p>
-              </div>
-              <button class="btn btn-danger" (click)="resetShopConfig()">
-                <span class="material-icons">restart_alt</span>
-                Reset
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <h2>About</h2>
-          </div>
-          <div class="about-info">
-            <div class="info-row">
-              <span>Application</span>
-              <span>{{ shopConfig.shopName }} Commerce</span>
-            </div>
-            <div class="info-row">
-              <span>Version</span>
-              <span>1.0.0</span>
-            </div>
-            <div class="info-row">
-              <span>Database</span>
-              <span>Supabase (PostgreSQL)</span>
-            </div>
-            <div class="info-row">
-              <span>Framework</span>
-              <span>Angular</span>
-            </div>
+          <div class="form-actions" style="margin-top:16px">
+            <button class="btn btn-secondary" (click)="logoutAndGoLogin()">
+              <span class="material-icons">logout</span>
+              Sign Out
+            </button>
           </div>
         </div>
 
@@ -245,9 +202,10 @@ import { firstValueFrom } from 'rxjs';
           </div>
         </div>
 
-        <button class="btn btn-primary btn-lg save-btn" (click)="saveSettings()">
-          <span class="material-icons">save</span>
-          Save Settings
+        <button class="btn btn-primary btn-lg save-btn" (click)="saveSettings()" [disabled]="savingSettings">
+          <span *ngIf="savingSettings" class="spinner"></span>
+          <span *ngIf="!savingSettings" class="material-icons">save</span>
+          {{ savingSettings ? 'Saving...' : 'Save Settings' }}
         </button>
       </div>
 
@@ -302,6 +260,37 @@ import { firstValueFrom } from 'rxjs';
       margin-top: 4px;
     }
 
+    .set-status {
+      margin: 12px 0 18px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid transparent;
+    }
+    .set-status .material-icons { font-size: 18px; }
+    .set-status-success { background:#ecfdf5; color:#166534; border-color:#bbf7d0; }
+    .set-status-info { background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; }
+    .set-status-error { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+    .set-status-close {
+      margin-left: auto;
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: inherit;
+      background: transparent;
+      padding: 0;
+    }
+    .set-status-close .material-icons { font-size: 16px; }
+
     .settings-container {
       display: flex;
       flex-direction: column;
@@ -325,6 +314,20 @@ import { firstValueFrom } from 'rxjs';
       &.danger {
         background: #fef2f2;
       }
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #334155;
+    }
+    .toggle-row input[type='checkbox'] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary-color, #6366f1);
     }
 
     .action-info {
@@ -502,19 +505,23 @@ export class SettingsComponent {
     phone: '',
     whatsapp: '',
     address: '',
-    defaultDeliveryFee: 0,
-    currency: 'GHS'
+    currency: 'GHS',
+    enableOrderAlerts: true,
+    compactTables: false
   };
 
   showClearModal = false;
   confirmPhrase = '';
   clearing = false;
-  
-  // Admin API
-  adminApiSecret = '';
-  saving = false;
-  get isAdminApiConfigured(): boolean {
-    return !!sessionStorage.getItem('shakhis_admin_api_secret');
+  exporting = false;
+  savingSettings = false;
+  statusMessage = '';
+  statusTone: 'success' | 'info' | 'error' = 'success';
+  get currentUserDisplayName(): string {
+    return this.authService.currentUser?.fullName || this.authService.currentUser?.username || 'Unknown User';
+  }
+  get currentUserRole(): string {
+    return this.authService.currentUser?.roleName || 'Member';
   }
 
   // Change password state
@@ -547,10 +554,31 @@ export class SettingsComponent {
     public shopConfig: ShopConfigService,
     private router: Router,
     private authService: AuthService,
-    private themeService: ThemeService
+    private themeService: ThemeService,
+    private excelService: ExcelService
   ) {
     this.loadSettings();
     this.primaryColor = this.themeService.primaryColor;
+  }
+
+  private setStatus(message: string, tone: 'success' | 'info' | 'error' = 'success') {
+    this.statusMessage = message;
+    this.statusTone = tone;
+  }
+
+  clearStatus() {
+    this.statusMessage = '';
+  }
+
+  private normalizeShopSlug(value: string): string {
+    const slug = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-{2,}/g, '-');
+
+    return slug || 'shop';
   }
 
   applyColor(hex: string) {
@@ -559,54 +587,103 @@ export class SettingsComponent {
   }
 
   loadSettings() {
+    this.settings.businessName = this.shopConfig.shopName || this.settings.businessName;
     const saved = localStorage.getItem('shakhis_settings');
     if (saved) {
       this.settings = { ...this.settings, ...JSON.parse(saved) };
     }
-    // Load admin API secret from sessionStorage
-    const secret = sessionStorage.getItem('shakhis_admin_api_secret');
-    if (secret) {
-      this.adminApiSecret = secret;
-    }
+    this.settings.businessName = (this.settings.businessName || this.shopConfig.shopName || '').trim() || this.shopConfig.shopName;
   }
 
-  saveSettings() {
-    localStorage.setItem('shakhis_settings', JSON.stringify(this.settings));
-    alert('Settings saved successfully!');
-  }
-
-  saveAdminApiSecret() {
-    if (!this.adminApiSecret.trim()) {
-      alert('Please enter an admin API secret');
+  async saveSettings() {
+    const businessName = String(this.settings.businessName || '').trim();
+    if (!businessName) {
+      this.setStatus('Business name is required.', 'error');
       return;
     }
 
-    this.saving = true;
-    setTimeout(() => {
-      // Store in sessionStorage - persists during session but clears on browser close
-      sessionStorage.setItem('shakhis_admin_api_secret', this.adminApiSecret.trim());
-      this.saving = false;
-      alert('Admin API Secret saved! Worker accounts can now be created instantly.\n\n(Note: This will clear when you close your browser for security.)');
-    }, 500);
-  }
+    const sanitizedSettings = {
+      ...this.settings,
+      businessName,
+      phone: String(this.settings.phone || '').trim(),
+      whatsapp: String(this.settings.whatsapp || '').trim(),
+      address: String(this.settings.address || '').trim(),
+      currency: String(this.settings.currency || 'GHS').trim() || 'GHS'
+    };
 
-  clearAdminApiSecret() {
-    if (confirm('Remove the saved Admin API Secret? You\'ll need to re-enter it next time.')) {
-      sessionStorage.removeItem('shakhis_admin_api_secret');
-      this.adminApiSecret = '';
-      alert('Admin API Secret cleared.');
+    this.savingSettings = true;
+    this.clearStatus();
+
+    try {
+      localStorage.setItem('shakhis_settings', JSON.stringify(sanitizedSettings));
+      this.settings = { ...sanitizedSettings };
+
+      const existing = this.shopConfig.config;
+      const desiredSlug = this.normalizeShopSlug(existing?.shopSlug || businessName);
+
+      const result = await firstValueFrom(this.authService.updateActiveShopProfile(businessName, desiredSlug));
+      this.settings.businessName = result.shopName;
+
+      this.setStatus('Settings saved and synced successfully.', 'success');
+    } catch (err: any) {
+      const existing = this.shopConfig.config;
+      const desiredSlug = this.normalizeShopSlug(existing?.shopSlug || businessName);
+
+      this.shopConfig.saveConfig({
+        shopId: existing?.shopId,
+        shopName: businessName,
+        shopSlug: desiredSlug
+      });
+
+      this.setStatus(
+        `Settings saved locally, but shop sync failed: ${err?.message || 'unknown error'}`,
+        'info'
+      );
+    } finally {
+      this.savingSettings = false;
     }
   }
 
-  resetShopConfig() {
-    if (confirm('This will disconnect the app from the current shop database and return to the setup screen.\n\nAre you sure?')) {
-      this.shopConfig.clearConfig();
-      this.router.navigate(['/setup']);
+  async exportData() {
+    if (this.exporting) return;
+
+    this.exporting = true;
+    this.clearStatus();
+    try {
+      const [products, clients, batches, orders, deliveries, buyingList, expenses] = await Promise.all([
+        firstValueFrom(this.dbService.getProducts()),
+        firstValueFrom(this.dbService.getClients()),
+        firstValueFrom(this.dbService.getOrderBatches()),
+        firstValueFrom(this.dbService.getOrders()),
+        firstValueFrom(this.dbService.getDeliveries()),
+        firstValueFrom(this.dbService.getBuyingList()),
+        firstValueFrom(this.dbService.getExpenses())
+      ]);
+
+      const filenameDate = new Date().toISOString().slice(0, 10);
+      const filename = `${this.normalizeShopSlug(this.shopConfig.shopName || 'shop')}-export-${filenameDate}.xlsx`;
+
+      await this.excelService.exportWorkbook([
+        { name: 'Products', data: products || [] },
+        { name: 'Clients', data: clients || [] },
+        { name: 'Batches', data: batches || [] },
+        { name: 'Orders', data: orders || [] },
+        { name: 'Deliveries', data: deliveries || [] },
+        { name: 'Buying List', data: buyingList || [] },
+        { name: 'Expenses', data: expenses || [] }
+      ], filename);
+
+      this.setStatus('Export completed successfully.', 'success');
+    } catch (err: any) {
+      this.setStatus(`Export failed: ${err?.message || 'unknown error'}`, 'error');
+    } finally {
+      this.exporting = false;
     }
   }
 
-  exportData() {
-    alert('Export functionality will be implemented with the database service.');
+  logoutAndGoLogin() {
+    this.authService.logout();
+    this.router.navigate(['/login']);
   }
 
   clearData() {

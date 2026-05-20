@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, AfterViewInit, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -11,436 +11,712 @@ import { firstValueFrom } from 'rxjs';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="login-page">
-      <div class="login-card">
-        <div class="login-header">
-          <span class="logo-icon">🛒</span>
-          <h1>{{ shopTitle }}</h1>
-          <p>{{ shopConfig.isConfigured ? 'Sign in to continue' : 'Sign in or create a new shop' }}</p>
-        </div>
+    <!-- Remix Icons CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" />
 
-        <form (ngSubmit)="onLogin()" class="login-form">
-          <div class="oauth-section">
-            <button type="button" class="oauth-btn google-btn" (click)="signInWithOAuth('google')" [disabled]="loading">
-              <svg width="18" height="18" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              Continue with Google
-            </button>
-            <button type="button" class="oauth-btn github-btn" (click)="signInWithOAuth('github')" [disabled]="loading">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-              </svg>
-              Continue with GitHub
-            </button>
+    <div class="login-root">
+
+      <!-- ── Left panel: branding ───────────────────── -->
+      <div class="brand-panel">
+        <div class="brand-bg-grid"></div>
+        <div class="brand-glow brand-glow-1"></div>
+        <div class="brand-glow brand-glow-2"></div>
+
+        <div class="brand-content">
+          <div class="brand-logo">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <rect width="48" height="48" rx="14" fill="url(#lg1)"/>
+              <path d="M10 16h4l3 14h14l3-10H17" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="20" cy="34" r="2" fill="#fff"/>
+              <circle cx="32" cy="34" r="2" fill="#fff"/>
+              <defs>
+                <linearGradient id="lg1" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#6366f1"/>
+                  <stop offset="1" stop-color="#4f46e5"/>
+                </linearGradient>
+              </defs>
+            </svg>
+            <span class="brand-name">BatchCommerce</span>
           </div>
 
-          <div class="divider">
-            <span>or</span>
+          <div class="brand-headline">
+            <h2>Commerce, simplified.</h2>
+            <p>Manage batches, orders, deliveries and your whole team from a single powerful dashboard.</p>
           </div>
 
-          <div class="form-group">
-            <label>Email or Username</label>
-            <div class="input-icon">
-              <span class="material-icons">alternate_email</span>
-              <input
-                type="text"
-                [(ngModel)]="email"
-                name="email"
-                placeholder="Enter your email or username"
-                autocomplete="username"
-                (keydown)="errorMessage = ''"
-              />
+          <div class="brand-features">
+            <div class="feature-item">
+              <div class="feature-icon"><i class="ri-store-2-line"></i></div>
+              <span>Multi-shop workspace</span>
             </div>
-            <small class="login-hint" *ngIf="shopConfig.isConfigured">
-              Use the verified email address on the account invite. Existing usernames are still matched to {{ shopConfig.shopName }} automatically.
-            </small>
-          </div>
-
-          <div class="form-group">
-            <label>Password</label>
-            <div class="input-icon">
-              <span class="material-icons">lock</span>
-              <input
-                [type]="showPassword ? 'text' : 'password'"
-                [(ngModel)]="password"
-                name="password"
-                placeholder="Enter your password"
-                autocomplete="current-password"
-                (keydown)="errorMessage = ''"
-              />
-              <button
-                type="button"
-                class="toggle-password"
-                (click)="showPassword = !showPassword">
-                <span class="material-icons">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
-              </button>
+            <div class="feature-item">
+              <div class="feature-icon"><i class="ri-bar-chart-2-line"></i></div>
+              <span>Real-time analytics</span>
+            </div>
+            <div class="feature-item">
+              <div class="feature-icon"><i class="ri-team-line"></i></div>
+              <span>Role-based access control</span>
+            </div>
+            <div class="feature-item">
+              <div class="feature-icon"><i class="ri-shield-check-line"></i></div>
+              <span>Secure &amp; encrypted data</span>
             </div>
           </div>
-
-          <div class="forgot-link">
-            <button type="button" class="link-btn" (click)="showForgotPassword = true" *ngIf="!showForgotPassword">
-              Forgot password?
-            </button>
-          </div>
-
-          <div *ngIf="showForgotPassword" class="forgot-section">
-            <p class="forgot-desc">Enter your email and we'll send you a reset link.</p>
-            <div class="form-group">
-              <label>Email</label>
-              <div class="input-icon">
-                <span class="material-icons">email</span>
-                <input type="email" [(ngModel)]="resetEmail" name="resetEmail" placeholder="your@email.com" />
-              </div>
-            </div>
-            <div class="success-message" *ngIf="successMessage">
-              <span class="material-icons">check_circle</span>
-              {{ successMessage }}
-            </div>
-            <div class="error-message" *ngIf="resetError">
-              <span class="material-icons">error</span>
-              {{ resetError }}
-            </div>
-            <div class="forgot-actions">
-              <button type="button" class="btn btn-primary login-btn" (click)="sendReset()" [disabled]="loading">
-                <span class="material-icons spin" *ngIf="loading">sync</span>
-                <span *ngIf="!loading">Send Reset Link</span>
-                <span *ngIf="loading">Sending...</span>
-              </button>
-              <button type="button" class="link-btn" (click)="showForgotPassword = false; successMessage = ''; resetError = ''">
-                Back to sign in
-              </button>
-            </div>
-          </div>
-
-          <div class="error-message" *ngIf="errorMessage && !showForgotPassword">
-            <span class="material-icons">error</span>
-            {{ errorMessage }}
-          </div>
-
-          <ng-container *ngIf="!showForgotPassword">
-            <button type="submit" class="btn btn-primary login-btn" [disabled]="loading">
-              <span class="material-icons spin" *ngIf="loading">sync</span>
-              <span *ngIf="!loading">Continue</span>
-              <span *ngIf="loading">Signing in...</span>
-            </button>
-
-            <button type="button" class="btn btn-secondary register-btn" (click)="goToRegister()" [disabled]="loading">
-              Create a new shop
-            </button>
-          </ng-container>
-        </form>
-
-        <div class="login-footer">
-          <small>{{ shopConfig.shopName }} &copy; {{ year }}</small>
         </div>
       </div>
+
+      <!-- ── Right panel: form ───────────────────────── -->
+      <div class="form-panel">
+        <div class="form-container">
+
+          <!-- Sign-in form -->
+          <div class="form-card" *ngIf="!showForgotPassword">
+            <div class="form-header">
+              <p class="form-eyebrow">Welcome back</p>
+              <h1 class="form-title">{{ shopTitle }}</h1>
+              <p class="form-sub">Sign in to continue to your workspace</p>
+            </div>
+
+            <form (ngSubmit)="onLogin()" autocomplete="on" novalidate>
+
+              <!-- Email field -->
+              <div class="field" [class.field-focused]="emailFocused" [class.field-filled]="email">
+                <label class="field-label">Email or Username</label>
+                <div class="field-body">
+                  <i class="ri-mail-line field-icon"></i>
+                  <input
+                    id="login-email"
+                    type="text"
+                    [(ngModel)]="email"
+                    name="email"
+                    autocomplete="username"
+                    placeholder="you@example.com"
+                    (focus)="emailFocused=true; errorMessage=''"
+                    (blur)="emailFocused=false"
+                    (keydown)="errorMessage=''"
+                  />
+                </div>
+              </div>
+
+              <!-- Password field -->
+              <div class="field" [class.field-focused]="passwordFocused" [class.field-filled]="password">
+                <label class="field-label">Password</label>
+                <div class="field-body">
+                  <i class="ri-lock-line field-icon"></i>
+                  <input
+                    id="login-password"
+                    [type]="showPassword ? 'text' : 'password'"
+                    [(ngModel)]="password"
+                    name="password"
+                    autocomplete="current-password"
+                    placeholder="Enter your password"
+                    (focus)="passwordFocused=true; errorMessage=''"
+                    (blur)="passwordFocused=false"
+                    (keydown)="errorMessage=''"
+                  />
+                  <button type="button" class="eye-btn" (click)="showPassword=!showPassword" tabindex="-1">
+                    <i [class]="showPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Forgot link -->
+              <div class="row-between">
+                <span></span>
+                <button type="button" class="text-link" (click)="showForgotPassword=true">
+                  Forgot password?
+                </button>
+              </div>
+
+              <!-- Error -->
+              <div class="alert alert-error" *ngIf="errorMessage">
+                <i class="ri-error-warning-line"></i>
+                <span>{{ errorMessage }}</span>
+              </div>
+
+              <!-- Submit -->
+              <button
+                type="submit"
+                class="btn-primary-full"
+                id="login-submit"
+                [disabled]="loading">
+                <span class="btn-spinner" *ngIf="loading">
+                  <i class="ri-loader-4-line spinning"></i>
+                </span>
+                <span>{{ loading ? 'Signing in...' : 'Sign in' }}</span>
+                <i class="ri-arrow-right-line btn-arrow" *ngIf="!loading"></i>
+              </button>
+
+            </form>
+
+            <div class="form-footer">
+              <span>Don't have an account?</span>
+              <button type="button" class="text-link-bold" (click)="goToRegister()">
+                Create a shop
+                <i class="ri-external-link-line"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Forgot password card -->
+          <div class="form-card" *ngIf="showForgotPassword">
+            <button type="button" class="back-btn" (click)="showForgotPassword=false; successMessage=''; resetError=''">
+              <i class="ri-arrow-left-line"></i> Back to sign in
+            </button>
+
+            <div class="form-header">
+              <div class="reset-icon-wrap">
+                <i class="ri-mail-send-line"></i>
+              </div>
+              <h1 class="form-title">Reset password</h1>
+              <p class="form-sub">We'll send a secure reset link to your email address.</p>
+            </div>
+
+            <div class="field" [class.field-focused]="resetFocused" [class.field-filled]="resetEmail">
+              <label class="field-label">Email address</label>
+              <div class="field-body">
+                <i class="ri-mail-line field-icon"></i>
+                <input
+                  id="reset-email"
+                  type="email"
+                  [(ngModel)]="resetEmail"
+                  name="resetEmail"
+                  placeholder="you@example.com"
+                  (focus)="resetFocused=true"
+                  (blur)="resetFocused=false"
+                />
+              </div>
+            </div>
+
+            <div class="alert alert-success" *ngIf="successMessage">
+              <i class="ri-checkbox-circle-line"></i>
+              <span>{{ successMessage }}</span>
+            </div>
+
+            <div class="alert alert-error" *ngIf="resetError">
+              <i class="ri-error-warning-line"></i>
+              <span>{{ resetError }}</span>
+            </div>
+
+            <button
+              type="button"
+              class="btn-primary-full"
+              id="reset-submit"
+              (click)="sendReset()"
+              [disabled]="loading">
+              <span class="btn-spinner" *ngIf="loading">
+                <i class="ri-loader-4-line spinning"></i>
+              </span>
+              <span>{{ loading ? 'Sending...' : 'Send reset link' }}</span>
+              <i class="ri-send-plane-line btn-arrow" *ngIf="!loading"></i>
+            </button>
+          </div>
+
+          <p class="copyright">BatchCommerce &copy; {{ year }}</p>
+        </div>
+      </div>
+
     </div>
   `,
   styles: [`
-    .login-page {
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    :host {
+      display: block;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    /* ── Root layout ──────────────────────────────────── */
+    .login-root {
       min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+
+      @media (max-width: 900px) {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ── Brand panel ──────────────────────────────────── */
+    .brand-panel {
+      position: relative;
+      background: #0a0f1e;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-      padding: 20px;
-    }
-
-    .login-card {
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      width: 100%;
-      max-width: 420px;
+      padding: 60px 48px;
       overflow: hidden;
+
+      @media (max-width: 900px) {
+        display: none;
+      }
     }
 
-    .login-header {
-      text-align: center;
-      padding: 40px 32px 24px;
+    .brand-bg-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(99,102,241,0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99,102,241,0.07) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
 
-      .logo-icon {
-        font-size: 48px;
-        display: block;
-        margin-bottom: 16px;
-      }
+    .brand-glow {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+    }
 
-      h1 {
-        font-size: 24px;
+    .brand-glow-1 {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%);
+      top: -100px;
+      left: -100px;
+      animation: glowFloat 8s ease-in-out infinite;
+    }
+
+    .brand-glow-2 {
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(79,70,229,0.2) 0%, transparent 70%);
+      bottom: -80px;
+      right: -80px;
+      animation: glowFloat 10s ease-in-out infinite reverse;
+    }
+
+    @keyframes glowFloat {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(20px, -30px); }
+    }
+
+    .brand-content {
+      position: relative;
+      z-index: 1;
+      max-width: 420px;
+      width: 100%;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 56px;
+
+      svg { flex-shrink: 0; }
+    }
+
+    .brand-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+
+    .brand-headline {
+      margin-bottom: 48px;
+
+      h2 {
+        font-size: 36px;
         font-weight: 700;
-        color: #1e293b;
-        margin-bottom: 4px;
+        color: #f8fafc;
+        line-height: 1.2;
+        letter-spacing: -0.5px;
+        margin: 0 0 14px;
       }
 
       p {
-        color: #64748b;
-        font-size: 14px;
+        font-size: 15px;
+        color: #94a3b8;
+        line-height: 1.7;
+        margin: 0;
       }
-
     }
 
-    .login-form {
-      padding: 8px 32px 32px;
-    }
-
-    .oauth-section {
+    .brand-features {
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      margin-bottom: 24px;
+      gap: 18px;
     }
 
-    .oauth-btn {
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      animation: slideIn 0.5s ease both;
+
+      &:nth-child(1) { animation-delay: 0.1s; }
+      &:nth-child(2) { animation-delay: 0.2s; }
+      &:nth-child(3) { animation-delay: 0.3s; }
+      &:nth-child(4) { animation-delay: 0.4s; }
+
+      span {
+        font-size: 14px;
+        font-weight: 500;
+        color: #cbd5e1;
+      }
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-16px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .feature-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(99,102,241,0.15);
+      border: 1px solid rgba(99,102,241,0.25);
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 12px;
-      padding: 12px 16px;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      background: white;
-      color: #334155;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      text-decoration: none;
+      flex-shrink: 0;
+      transition: background 0.2s;
 
-      &:hover:not(:disabled) {
-        border-color: #cbd5e1;
-        background: #f8fafc;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      }
-
-      &:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-
-      svg {
-        flex-shrink: 0;
+      i {
+        font-size: 17px;
+        color: #a5b4fc;
       }
     }
 
-    .google-btn {
-      border-color: #dadce0;
-      color: #3c4043;
-
-      &:hover:not(:disabled) {
-        border-color: #c4c7c5;
-        background: #f8f9fa;
-      }
-    }
-
-    .github-btn {
-      border-color: #d1d5db;
-      color: #374151;
-
-      &:hover:not(:disabled) {
-        border-color: #9ca3af;
-        background: #f9fafb;
-      }
-    }
-
-    .divider {
+    /* ── Form panel ───────────────────────────────────── */
+    .form-panel {
+      background: #f8fafc;
       display: flex;
       align-items: center;
-      margin: 20px 0;
-      text-align: center;
+      justify-content: center;
+      padding: 48px 32px;
+    }
 
-      &::before,
-      &::after {
-        content: '';
-        flex: 1;
-        height: 1px;
-        background: #e2e8f0;
-      }
+    .form-container {
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      animation: fadeUp 0.45s ease both;
+    }
 
-      span {
-        padding: 0 16px;
-        color: #94a3b8;
-        font-size: 12px;
-        font-weight: 500;
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Form card ────────────────────────────────────── */
+    .form-card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 40px 36px;
+      box-shadow:
+        0 1px 3px rgba(0,0,0,0.06),
+        0 8px 32px rgba(0,0,0,0.08);
+      border: 1px solid #e2e8f0;
+
+      @media (max-width: 480px) {
+        padding: 28px 22px;
       }
     }
 
-    .form-group {
-      margin-bottom: 20px;
-
-      label {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 14px;
-        font-weight: 500;
-        color: #334155;
-      }
+    .form-header {
+      margin-bottom: 30px;
     }
 
-    .login-hint {
-      display: block;
-      margin-top: 8px;
-      color: #64748b;
+    .form-eyebrow {
       font-size: 12px;
-      line-height: 1.4;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6366f1;
+      margin: 0 0 8px;
     }
 
-    .input-icon {
+    .form-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: -0.4px;
+      margin: 0 0 6px;
+    }
+
+    .form-sub {
+      font-size: 14px;
+      color: #64748b;
+      margin: 0;
+    }
+
+    /* ── Fields ───────────────────────────────────────── */
+    .field {
+      margin-bottom: 20px;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+      transition: color 0.2s;
+    }
+
+    .field-focused .field-label {
+      color: #6366f1;
+    }
+
+    .field-body {
       position: relative;
       display: flex;
       align-items: center;
+    }
 
-      .material-icons {
-        position: absolute;
-        left: 14px;
-        color: #94a3b8;
-        font-size: 20px;
-        pointer-events: none;
-      }
+    .field-icon {
+      position: absolute;
+      left: 14px;
+      font-size: 18px;
+      color: #94a3b8;
+      pointer-events: none;
+      transition: color 0.2s;
+    }
 
-      input {
-        width: 100%;
-        padding: 12px 14px 12px 44px;
-        border: 1.5px solid #e2e8f0;
-        border-radius: 10px;
-        font-size: 14px;
-        transition: all 0.2s ease;
-        background: #f8fafc;
+    .field-focused .field-icon {
+      color: #6366f1;
+    }
 
-        &:focus {
-          outline: none;
-          border-color: #2563eb;
-          background: white;
-          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-        }
-      }
+    .field-body input {
+      width: 100%;
+      padding: 12px 14px 12px 42px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 12px;
+      font-size: 14px;
+      font-family: inherit;
+      color: #0f172a;
+      background: #f8fafc;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+      outline: none;
+      box-sizing: border-box;
 
-      .toggle-password {
-        position: absolute;
-        right: 10px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 4px;
+      &::placeholder { color: #cbd5e1; }
 
-        .material-icons {
-          position: static;
-          color: #94a3b8;
-          pointer-events: auto;
-        }
-
-        &:hover .material-icons {
-          color: #475569;
-        }
+      &:focus {
+        border-color: #6366f1;
+        background: #fff;
+        box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
       }
     }
 
-    .error-message {
+    .eye-btn {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 12px 14px;
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      border-radius: 10px;
-      color: #dc2626;
-      font-size: 13px;
-      margin-bottom: 20px;
+      color: #94a3b8;
+      transition: color 0.2s;
 
-      .material-icons {
-        font-size: 18px;
-      }
+      i { font-size: 18px; }
+
+      &:hover { color: #475569; }
     }
 
-    .login-btn {
+    /* ── Row ──────────────────────────────────────────── */
+    .row-between {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: -8px 0 20px;
+    }
+
+    /* ── Alerts ───────────────────────────────────────── */
+    .alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 18px;
+
+      i { font-size: 17px; flex-shrink: 0; margin-top: 1px; }
+    }
+
+    .alert-error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+    }
+
+    .alert-success {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #16a34a;
+    }
+
+    /* ── Primary button ───────────────────────────────── */
+    .btn-primary-full {
       width: 100%;
-      padding: 14px;
+      padding: 14px 20px;
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
       font-size: 15px;
       font-weight: 600;
-      border-radius: 10px;
+      font-family: inherit;
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-    }
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+      box-shadow: 0 4px 14px rgba(99,102,241,0.35);
+      position: relative;
+      overflow: hidden;
 
-    .register-btn {
-      width: 100%;
-      margin-top: 12px;
-      padding: 13px;
-      font-size: 14px;
-      font-weight: 600;
-      border-radius: 10px;
-      border: 1px solid #cbd5e1;
-      background: white;
-      color: #334155;
-    }
+      &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
 
-    .forgot-link {
-      text-align: right;
-      margin-top: -12px;
-      margin-bottom: 16px;
-    }
+      &:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(99,102,241,0.45);
+        &::after { opacity: 1; }
+      }
 
-    .link-btn {
-      background: none;
-      border: none;
-      color: #2563eb;
-      font-size: 13px;
-      cursor: pointer;
-      padding: 0;
-      text-decoration: underline;
-      &:hover { color: #1d4ed8; }
-    }
+      &:active:not(:disabled) {
+        transform: translateY(0);
+        box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+      }
 
-    .forgot-section {
-      margin-bottom: 16px;
-      .forgot-desc { font-size: 13px; color: #64748b; margin-bottom: 12px; }
-      .forgot-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        align-items: center;
-        margin-top: 12px;
+      &:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+        transform: none;
       }
     }
 
-    .success-message {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 14px;
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
-      border-radius: 10px;
-      color: #16a34a;
-      font-size: 13px;
-      margin-bottom: 12px;
-      .material-icons { font-size: 18px; }
+    .btn-arrow {
+      font-size: 18px;
+      transition: transform 0.2s;
     }
 
-    .spin {
-      animation: spin 1s linear infinite;
+    .btn-primary-full:hover .btn-arrow {
+      transform: translateX(3px);
+    }
+
+    .btn-spinner i {
+      font-size: 18px;
+    }
+
+    /* ── Spinning animation ───────────────────────────── */
+    .spinning {
+      animation: spin 0.7s linear infinite;
     }
 
     @keyframes spin {
       from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
+      to   { transform: rotate(360deg); }
     }
 
-    .login-footer {
-      text-align: center;
-      padding: 16px;
-      border-top: 1px solid #f1f5f9;
+    /* ── Text links ───────────────────────────────────── */
+    .text-link {
+      background: none;
+      border: none;
+      color: #6366f1;
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.15s;
+      text-decoration: none;
 
-      small {
-        color: #94a3b8;
-        font-size: 12px;
+      &:hover { color: #4f46e5; text-decoration: underline; }
+    }
+
+    .text-link-bold {
+      background: none;
+      border: none;
+      color: #6366f1;
+      font-size: 14px;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.15s;
+
+      i { font-size: 14px; }
+
+      &:hover { color: #4f46e5; }
+    }
+
+    /* ── Form footer ──────────────────────────────────── */
+    .form-footer {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #64748b;
+    }
+
+    /* ── Forgot password card extras ─────────────────── */
+    .back-btn {
+      background: none;
+      border: none;
+      color: #6366f1;
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 28px;
+      transition: color 0.15s;
+
+      i { font-size: 16px; }
+      &:hover { color: #4f46e5; }
+    }
+
+    .reset-icon-wrap {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+
+      i {
+        font-size: 24px;
+        color: #6366f1;
       }
+    }
+
+    /* ── Copyright ────────────────────────────────────── */
+    .copyright {
+      text-align: center;
+      font-size: 12px;
+      color: #94a3b8;
+      margin: 0;
     }
   `]
 })
@@ -456,12 +732,19 @@ export class LoginComponent {
   successMessage = '';
   resetError = '';
 
+  emailFocused = false;
+  passwordFocused = false;
+  resetFocused = false;
+
   get shopTitle(): string {
-    return this.shopConfig.isConfigured ? this.shopConfig.shopName : 'Welcome back';
+    return this.shopConfig.isConfigured ? this.shopConfig.shopName : 'Sign in';
   }
 
-  constructor(private authService: AuthService, public shopConfig: ShopConfigService, private router: Router) {
-    // If already logged in, redirect
+  constructor(
+    private authService: AuthService,
+    public shopConfig: ShopConfigService,
+    private router: Router
+  ) {
     if (this.authService.isLoggedIn) {
       this.router.navigate(['/dashboard']);
     }
@@ -474,19 +757,6 @@ export class LoginComponent {
   goToPhoneVerification(phone = this.email.trim()) {
     this.router.navigate(['/verify-phone'], {
       queryParams: phone ? { phone } : undefined
-    });
-  }
-
-  signInWithOAuth(provider: 'google' | 'github' | 'facebook') {
-    this.loading = true;
-    this.errorMessage = '';
-    
-    this.authService.signInWithOAuth(provider).subscribe(result => {
-      this.loading = false;
-      if (!result.success) {
-        this.errorMessage = result.message;
-      }
-      // OAuth will redirect, so no further action needed on success
     });
   }
 
@@ -523,7 +793,7 @@ export class LoginComponent {
     this.authService.login(this.email, this.password).subscribe(result => {
       this.loading = false;
       if (result.success) {
-        if (result.requiresSetup || !this.shopConfig.isConfigured) {
+        if (result.requiresSetup) {
           this.router.navigate(['/setup']);
         } else {
           this.router.navigate(['/dashboard']);

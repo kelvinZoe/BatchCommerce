@@ -71,7 +71,8 @@ export class DatabaseService {
 
   private isMissingColumnOrTableError(error: any): boolean {
     const code = error?.code;
-    return code === '42703' || code === '42P01' || code === 'PGRST205';
+    // 42703 = unknown column, 42P01 = unknown table, PGRST204/205 = schema cache miss
+    return code === '42703' || code === '42P01' || code === 'PGRST204' || code === 'PGRST205';
   }
   
   // Notification subject for when batches are deleted
@@ -155,17 +156,41 @@ export class DatabaseService {
   }
 
   createProductCatalog(product: ProductCatalog): Observable<number> {
-    const row = {
+    return from(this.doCreateProductCatalog(product));
+  }
+
+  private async doCreateProductCatalog(product: ProductCatalog): Promise<number> {
+    const baseRow = {
       shop_id: this.activeShopId,
       name: product.name,
       description: product.description || '',
       image_url: product.imageUrl || '',
       is_active: product.isActive ?? true,
       stock: product.stock || 0
+    } as Record<string, any>;
+
+    const pricingRow = {
+      ...baseRow,
+      stock_price: product.stockPrice || 0,
+      stock_discount_min_qty: product.stockDiscountMinQty || 0,
+      stock_discount_price: product.stockDiscountPrice || 0
     };
-    return from(
-      this.sb.from('products').insert(row).select('id').single()
-    ).pipe(map(({ data }) => data?.id ?? 0));
+
+    const withPricing = await this.sb.from('products').insert(pricingRow).select('id').single();
+    if (!withPricing.error) {
+      return withPricing.data?.id ?? 0;
+    }
+
+    if (!this.isMissingColumnOrTableError(withPricing.error)) {
+      throw withPricing.error;
+    }
+
+    const fallback = await this.sb.from('products').insert(baseRow).select('id').single();
+    if (fallback.error) {
+      throw fallback.error;
+    }
+
+    return fallback.data?.id ?? 0;
   }
 
   getProductCatalogPage(
@@ -199,17 +224,37 @@ export class DatabaseService {
   }
 
   updateProductCatalog(productId: number, product: ProductCatalog): Observable<boolean> {
-    const row = {
+    return from(this.doUpdateProductCatalog(productId, product));
+  }
+
+  private async doUpdateProductCatalog(productId: number, product: ProductCatalog): Promise<boolean> {
+    const baseRow = {
       name: product.name,
       description: product.description || '',
       image_url: product.imageUrl || '',
       is_active: product.isActive ?? true,
       stock: product.stock || 0,
       updated_at: new Date().toISOString()
+    } as Record<string, any>;
+
+    const pricingRow = {
+      ...baseRow,
+      stock_price: product.stockPrice || 0,
+      stock_discount_min_qty: product.stockDiscountMinQty || 0,
+      stock_discount_price: product.stockDiscountPrice || 0
     };
-    return from(
-      this.scopeShopQuery(this.sb.from('products').update(row)).eq('id', productId)
-    ).pipe(map(({ error }) => !error));
+
+    const withPricing = await this.scopeShopQuery(this.sb.from('products').update(pricingRow)).eq('id', productId);
+    if (!withPricing.error) {
+      return true;
+    }
+
+    if (!this.isMissingColumnOrTableError(withPricing.error)) {
+      return false;
+    }
+
+    const fallback = await this.scopeShopQuery(this.sb.from('products').update(baseRow)).eq('id', productId);
+    return !fallback.error;
   }
 
   deleteProductCatalog(productId: number): Observable<boolean> {
@@ -1549,11 +1594,37 @@ export class DatabaseService {
     const { error: itemsErr } = await this.sb.from('stock_sale_items').insert(itemRows);
     if (itemsErr) throw itemsErr;
 
-    // Decrement stock for each product
+    // Decrement stock once per product to avoid duplicate updates in the same sale.
+    const quantityByProduct = new Map<number, number>();
     for (const item of items) {
-      const { data: prod } = await this.sb.from('products').select('stock').eq('id', item.productId).single();
-      const newStock = Math.max(0, ((prod as any)?.stock || 0) - item.quantity);
-      await this.sb.from('products').update({ stock: newStock }).eq('id', item.productId);
+      const productId = Number(item.productId);
+      if (!productId) continue;
+      quantityByProduct.set(productId, (quantityByProduct.get(productId) || 0) + Number(item.quantity || 0));
+    }
+
+    for (const [productId, soldQty] of quantityByProduct.entries()) {
+      const { data: prod, error: prodErr } = await this.scopeShopQuery(
+        this.sb.from('products').select('id, stock')
+      ).eq('id', productId).maybeSingle();
+
+      if (prodErr) {
+        throw new Error(prodErr.message || `Failed to read stock for product ${productId}`);
+      }
+
+      if (!prod) {
+        throw new Error(`Product ${productId} not found for the active shop`);
+      }
+
+      const currentStock = Number((prod as any)?.stock || 0);
+      const newStock = Math.max(0, currentStock - soldQty);
+
+      const { error: stockErr } = await this.scopeShopQuery(
+        this.sb.from('products').update({ stock: newStock })
+      ).eq('id', productId);
+
+      if (stockErr) {
+        throw new Error(stockErr.message || `Failed to update stock for product ${productId}`);
+      }
     }
 
     return { id: (sale as any).id, saleUuid: (sale as any).sale_uuid };

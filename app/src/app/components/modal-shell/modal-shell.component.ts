@@ -69,7 +69,7 @@ export interface ModalButtonConfig {
           </ng-container>
           <ng-template #generatedFooter>
             <button
-              *ngFor="let button of buttons"
+              *ngFor="let button of buttons; trackBy: trackButton"
               type="button"
               class="pp-shell-btn"
               [class.pp-shell-btn-secondary]="resolveButtonColor(button) === 'secondary'"
@@ -375,6 +375,10 @@ export class ModalShellComponent {
     if (this.closeOnBackdrop) {
       this.closeRequested.emit();
     }
+  }
+
+  trackButton(index: number, button: ModalButtonConfig): string {
+    return button.action || String(index);
   }
 
   get resolvedSubtitle(): string {

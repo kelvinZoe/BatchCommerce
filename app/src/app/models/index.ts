@@ -18,6 +18,9 @@ export interface ProductCatalog {
   imageUrl?: string;
   isActive?: boolean;
   stock?: number;
+  stockPrice?: number;
+  stockDiscountMinQty?: number;
+  stockDiscountPrice?: number;
   createdAt?: string;
   updatedAt?: string;
 }

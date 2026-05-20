@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DateFilterComponent } from '../../components/date-filter/date-filter.component';
-import { AuthService } from '../../services/auth.service';
+import { AuthService, UserIdentityAvailabilityResult } from '../../services/auth.service';
 import { ShopConfigService } from '../../services/shop-config.service';
 import { User, Role } from '../../models';
 
@@ -246,7 +246,7 @@ import { User, Role } from '../../models';
             </div>
             <div>
               <div class="u-modal-title">{{ editingUser ? 'Edit User' : 'Add User' }}</div>
-                <div class="u-modal-sub">{{ editingUser ? 'Update this member\'s profile and shop access' : 'Create a new team member account for this shop' }}</div>
+              <div class="u-modal-sub">{{ modalSubtitle }}</div>
             </div>
             <button class="u-modal-close" (click)="closeModal()"><span class="material-icons">close</span></button>
           </div>
@@ -274,20 +274,46 @@ import { User, Role } from '../../models';
 
             <div class="u-form-group">
               <label class="u-label">Full Name <span class="u-req">*</span></label>
-              <input class="u-input" type="text" [(ngModel)]="formData.fullName" placeholder="e.g., Kwame Asante" />
+              <input class="u-input" type="text" [(ngModel)]="formData.fullName" (ngModelChange)="onFullNameChange($event)" placeholder="e.g., Kwame Asante" />
             </div>
             <div class="u-form-row">
               <div class="u-form-group">
                 <label class="u-label">Email <span class="u-req">*</span></label>
                 <input class="u-input" type="email" [(ngModel)]="formData.email" placeholder="e.g., kwame@example.com"
-                       [disabled]="!!editingUser" />
+                    [disabled]="!!editingUser" (ngModelChange)="onEmailChange($event)" />
                 <span class="u-field-hint" *ngIf="!editingUser">This is the user's sign-in address and verification target.</span>
                 <span class="u-field-hint" *ngIf="editingUser">Email changes are locked here so auth and verification stay in sync.</span>
+                <span class="u-field-status u-field-status-checking" *ngIf="!editingUser && emailAvailabilityState === 'checking'">
+                  <span class="u-field-spinner"></span>
+                  Checking email availability...
+                </span>
+                <span class="u-field-status u-field-status-success" *ngIf="!editingUser && emailAvailabilityState === 'available'">
+                  <span class="material-icons">check_circle</span>
+                  Email is available.
+                </span>
+                <span class="u-field-status u-field-status-error" *ngIf="!editingUser && emailAvailabilityState === 'taken'">
+                  <span class="material-icons">error_outline</span>
+                  {{ emailAvailabilityMessage }}
+                </span>
               </div>
               <div class="u-form-group">
                 <label class="u-label">Username <span class="u-req">*</span></label>
                 <input class="u-input" type="text" [(ngModel)]="formData.username" placeholder="e.g., kwame"
-                       [disabled]="editingUser?.username === 'admin'" />
+                    [disabled]="editingUser?.username === 'admin'" (ngModelChange)="onUsernameChange($event)" />
+                <span class="u-field-hint" *ngIf="!editingUser">Generated from the full name, but you can edit it before saving.</span>
+                <span class="u-field-status u-field-status-checking" *ngIf="usernameAvailabilityState === 'checking'">
+                  <span class="u-field-spinner"></span>
+                  Checking username availability...
+                </span>
+                <span class="u-field-status u-field-status-success" *ngIf="usernameAvailabilityState === 'available'">
+                  <span class="material-icons">check_circle</span>
+                  Username is available.
+                </span>
+                <span class="u-field-status u-field-status-error" *ngIf="usernameAvailabilityState === 'taken'">
+                  <span class="material-icons">error_outline</span>
+                  {{ usernameAvailabilityMessage }}
+                  <button class="u-inline-link" type="button" *ngIf="suggestedUsername" (click)="useSuggestedUsername()">Use {{ suggestedUsername }}</button>
+                </span>
               </div>
             </div>
             <div class="u-form-row">
@@ -313,7 +339,7 @@ import { User, Role } from '../../models';
               </div>
               <div class="u-form-group">
                 <label class="u-label">Invite flow</label>
-                <div class="u-input u-static-field">The user will verify this email before the shop access becomes active.</div>
+                <div class="u-input u-static-field">Admin-created users are activated immediately and can sign in right away.</div>
               </div>
             </div>
             <div class="u-form-group u-checkbox-group">
@@ -330,6 +356,42 @@ import { User, Role } from '../../models';
             <button class="u-btn u-btn-primary" (click)="saveUser()" [disabled]="saving">
               <span *ngIf="saving" class="u-spinner"></span>
               {{ saving ? 'Saving…' : (editingUser ? 'Update User' : 'Add User') }}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- SINGLE DELETE MODAL -->
+      <div class="u-modal-overlay" *ngIf="showDeleteModal" (click)="closeDeleteModal()">
+        <div class="u-modal" (click)="$event.stopPropagation()">
+
+          <div class="u-modal-header">
+            <div class="u-modal-header-icon u-modal-header-danger">
+              <span class="material-icons">person_remove</span>
+            </div>
+            <div>
+              <div class="u-modal-title">Remove {{ pendingDeleteUser?.fullName || 'User' }}?</div>
+              <div class="u-modal-sub">This removes their access to {{ activeShopName }}</div>
+            </div>
+            <button class="u-modal-close" (click)="closeDeleteModal()"><span class="material-icons">close</span></button>
+          </div>
+
+          <div class="u-modal-body">
+            <p class="u-bulk-delete-warning">
+              {{ pendingDeleteUser?.fullName || 'This user' }} will lose access to the active shop immediately.
+            </p>
+            <p class="u-bulk-delete-info">
+              Their account will remain in the system and can be added back to this shop later.
+            </p>
+          </div>
+
+          <div class="u-modal-footer">
+            <button class="u-btn u-btn-ghost" (click)="closeDeleteModal()" [disabled]="deletingUserId === pendingDeleteUser?.id">Cancel</button>
+            <button class="u-btn u-btn-danger" (click)="confirmDelete()" [disabled]="deletingUserId === pendingDeleteUser?.id || !pendingDeleteUser">
+              <span *ngIf="deletingUserId === pendingDeleteUser?.id" class="u-spinner"></span>
+              <span *ngIf="deletingUserId !== pendingDeleteUser?.id" class="material-icons">delete</span>
+              {{ deletingUserId === pendingDeleteUser?.id ? 'Removing…' : 'Remove From Shop' }}
             </button>
           </div>
 
@@ -622,6 +684,42 @@ import { User, Role } from '../../models';
     .u-input:focus  { border-color:var(--primary-color,#6366f1); background:#fff; }
     .u-static-field { display:flex; align-items:center; min-height:39px; color:#475569; }
     .u-field-hint   { font-size:11px; color:#64748b; line-height:1.4; }
+    .u-field-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      line-height: 1.4;
+      margin-top: 2px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      width: fit-content;
+    }
+    .u-field-status .material-icons { font-size: 14px; }
+    .u-field-status-checking { color: #334155; background: #f1f5f9; border-color: #e2e8f0; }
+    .u-field-status-success { color:#166534; background:#ecfdf5; border-color:#bbf7d0; }
+    .u-field-status-error { color:#b91c1c; background:#fef2f2; border-color:#fecaca; }
+    .u-field-spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(100, 116, 139, 0.3);
+      border-top-color: #475569;
+      border-radius: 50%;
+      animation: u-spin .7s linear infinite;
+      display: inline-block;
+    }
+    .u-inline-link {
+      margin-left: 6px;
+      border: none;
+      background: transparent;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0;
+    }
+    .u-inline-link:hover { text-decoration: underline; }
     .u-checkbox-group { padding:6px 0; }
     .u-checkbox-label { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:#334155; font-weight:500; }
     .u-checkbox-label input[type="checkbox"] { width:18px; height:18px; cursor:pointer; accent-color:var(--primary-color,#6366f1); }
@@ -683,6 +781,8 @@ export class UsersComponent implements OnInit {
   dateTo = '';
 
   deletingUserId: number | null = null;
+  pendingDeleteUser: User | null = null;
+  showDeleteModal = false;
 
   // Bulk delete properties
   selectedUserIds = new Set<number>();
@@ -708,6 +808,14 @@ export class UsersComponent implements OnInit {
   statusTone: 'success' | 'error' | 'info' = 'success';
   private statusTimer: any = null;
   resendingUserId: number | null = null;
+  usernameAvailabilityState: 'idle' | 'checking' | 'available' | 'taken' = 'idle';
+  emailAvailabilityState: 'idle' | 'checking' | 'available' | 'taken' = 'idle';
+  usernameAvailabilityMessage = '';
+  emailAvailabilityMessage = '';
+  suggestedUsername = '';
+  private usernameEditedManually = false;
+  private availabilityTimer: any = null;
+  private availabilityRequestId = 0;
 
   formData: User = {
     username: '',
@@ -737,22 +845,36 @@ export class UsersComponent implements OnInit {
     return this.isSelf(this.editingUser);
   }
 
+  get modalSubtitle(): string {
+    return this.editingUser
+      ? "Update this member's profile and shop access"
+      : 'Create a new team member account for this shop';
+  }
+
   ngOnInit() {
     this.loadUsers();
     this.loadRoles();
   }
 
   loadUsers() {
-    this.authService.getUsers().subscribe(users => {
-      this.users = users;
-      const validIds = new Set(users.map(user => user.id).filter((id): id is number => typeof id === 'number'));
-      Array.from(this.selectedUserIds).forEach(id => {
-        if (!validIds.has(id)) {
-          this.selectedUserIds.delete(id);
-        }
-      });
-      this.filterUsers();
-      this.loading = false;
+    this.authService.getUsers().subscribe({
+      next: (users) => {
+        this.users = users;
+        const validIds = new Set(users.map(user => user.id).filter((id): id is number => typeof id === 'number'));
+        Array.from(this.selectedUserIds).forEach(id => {
+          if (!validIds.has(id)) {
+            this.selectedUserIds.delete(id);
+          }
+        });
+        this.filterUsers();
+        this.loading = false;
+      },
+      error: (err) => {
+        this.users = [];
+        this.filteredUsers = [];
+        this.loading = false;
+        this.setStatusMessage(err?.message || 'Failed to load users for the active shop.', 'error');
+      }
     });
   }
 
@@ -793,14 +915,17 @@ export class UsersComponent implements OnInit {
   openModal(user?: User) {
     this.clearStatusMessage();
     this.errorMessage = '';
+    this.resetAvailabilityState();
     this.editingUser = user || null;
     if (user) {
       this.formData = { ...user, password: '' };
+      this.usernameEditedManually = true;
     } else {
       this.formData = {
         username: '', password: '', fullName: '',
         email: '', phone: '', roleId: 0, isActive: true
       };
+      this.usernameEditedManually = false;
     }
 
     if (this.isEditingSelf && this.authService.currentUser) {
@@ -816,6 +941,167 @@ export class UsersComponent implements OnInit {
     this.showModal = false;
     this.editingUser = null;
     this.errorMessage = ''; // Clear error when closing
+    this.resetAvailabilityState();
+  }
+
+  private resetAvailabilityState() {
+    if (this.availabilityTimer) {
+      clearTimeout(this.availabilityTimer);
+      this.availabilityTimer = null;
+    }
+    this.usernameAvailabilityState = 'idle';
+    this.emailAvailabilityState = 'idle';
+    this.usernameAvailabilityMessage = '';
+    this.emailAvailabilityMessage = '';
+    this.suggestedUsername = '';
+    this.availabilityRequestId += 1;
+  }
+
+  onFullNameChange(value: string) {
+    this.formData.fullName = value;
+    if (this.editingUser) return;
+
+    if (!this.usernameEditedManually || !this.formData.username.trim()) {
+      this.formData.username = this.authService.buildUsernameFromFullName(value);
+      this.usernameEditedManually = false;
+      this.queueAvailabilityCheck();
+    }
+  }
+
+  onUsernameChange(value: string) {
+    this.formData.username = this.authService.normalizeUsername(value);
+    this.usernameEditedManually = true;
+    this.queueAvailabilityCheck();
+  }
+
+  onEmailChange(value: string) {
+    this.formData.email = this.authService.normalizeEmail(value || '');
+    this.queueAvailabilityCheck();
+  }
+
+  useSuggestedUsername() {
+    if (!this.suggestedUsername) return;
+    this.formData.username = this.suggestedUsername;
+    this.usernameEditedManually = true;
+    this.queueAvailabilityCheck();
+  }
+
+  private queueAvailabilityCheck() {
+    if (this.availabilityTimer) {
+      clearTimeout(this.availabilityTimer);
+    }
+
+    const username = this.authService.normalizeUsername(this.formData.username || '');
+    const email = this.authService.normalizeEmail(this.formData.email || '');
+
+    this.formData.username = username;
+    this.formData.email = email;
+
+    if (!username && !email) {
+      this.resetAvailabilityState();
+      return;
+    }
+
+    if (username) {
+      this.usernameAvailabilityState = 'checking';
+      this.usernameAvailabilityMessage = '';
+    }
+    if (email && !this.editingUser) {
+      this.emailAvailabilityState = 'checking';
+      this.emailAvailabilityMessage = '';
+    }
+
+    const requestId = ++this.availabilityRequestId;
+    this.availabilityTimer = setTimeout(() => {
+      this.authService.checkUserIdentityAvailability(username, this.editingUser ? '' : email, this.editingUser?.id).subscribe({
+        next: (result) => this.applyAvailabilityResult(result, requestId),
+        error: () => {
+          if (requestId !== this.availabilityRequestId) return;
+          this.usernameAvailabilityState = username ? 'idle' : this.usernameAvailabilityState;
+          this.emailAvailabilityState = email && !this.editingUser ? 'idle' : this.emailAvailabilityState;
+        }
+      });
+    }, 300);
+  }
+
+  private applyAvailabilityResult(result: UserIdentityAvailabilityResult, requestId: number) {
+    if (requestId !== this.availabilityRequestId) return;
+
+    this.suggestedUsername = result.suggestedUsername || '';
+
+    if (result.username) {
+      if (!this.usernameEditedManually && result.suggestedUsername && !result.usernameAvailable) {
+        this.formData.username = result.suggestedUsername;
+        this.usernameAvailabilityState = 'available';
+        this.usernameAvailabilityMessage = '';
+        this.suggestedUsername = '';
+        this.queueAvailabilityCheck();
+        return;
+      }
+
+      this.usernameAvailabilityState = result.usernameAvailable ? 'available' : 'taken';
+      this.usernameAvailabilityMessage = result.usernameAvailable
+        ? ''
+        : (result.suggestedUsername
+            ? `Username is already in use.`
+            : 'Username is already in use.');
+    }
+
+    if (!this.editingUser && result.email) {
+      this.emailAvailabilityState = result.emailAvailable ? 'available' : 'taken';
+      this.emailAvailabilityMessage = result.emailAvailable ? '' : 'Email is already registered.';
+    }
+  }
+
+  private submitUserForm() {
+    this.saving = true;
+    if (this.editingUser) {
+      this.formData.id = this.editingUser.id;
+      if (this.isEditingSelf && this.authService.currentUser) {
+        this.formData.roleId = this.authService.currentUser.roleId;
+        this.formData.isActive = true;
+      }
+      if (!this.formData.password?.trim()) {
+        delete this.formData.password;
+      }
+      this.authService.updateUser(this.formData).subscribe({
+        next: () => {
+          this.saving = false;
+          this.loadUsers();
+          this.setStatusMessage(`Updated ${this.formData.fullName} for ${this.activeShopName}.`);
+          this.closeModal();
+        },
+        error: (err) => {
+          this.saving = false;
+          this.errorMessage = err?.message || err?.detail || err?.error || 'Unknown error occurred while updating user';
+        }
+      });
+    } else {
+      this.authService.createUser(this.formData).subscribe({
+        next: (result) => {
+          this.saving = false;
+          this.loadUsers();
+          this.setStatusMessage(`Added ${this.formData.fullName} to ${this.activeShopName}.`);
+          this.closeModal();
+        },
+        error: (err) => {
+          this.saving = false;
+          let msg = '';
+          if (err?.message && typeof err.message === 'string' && err.message !== '[object Object]') {
+            msg = err.message;
+          } else if (err?.error && typeof err.error === 'string') {
+            msg = err.error;
+          } else if (err?.detail && typeof err.detail === 'string') {
+            msg = err.detail;
+          } else if (typeof err === 'string') {
+            msg = err;
+          } else if (err && typeof err === 'object') {
+            msg = err.message || err.error || err.detail || '';
+          }
+          this.errorMessage = msg || 'Unknown error occurred while creating user';
+        }
+      });
+    }
   }
 
   onOverlayClick(e: MouseEvent) {
@@ -867,49 +1153,40 @@ export class UsersComponent implements OnInit {
     this.formData.email = normalizedEmail;
     this.formData.phone = normalizedPhone;
 
-    this.saving = true;
-    if (this.editingUser) {
-      this.formData.id = this.editingUser.id;
-      if (this.isEditingSelf && this.authService.currentUser) {
-        this.formData.roleId = this.authService.currentUser.roleId;
-        this.formData.isActive = true;
-      }
-      if (!this.formData.password?.trim()) {
-        delete this.formData.password;
-      }
-      this.authService.updateUser(this.formData).subscribe({
-        next: () => {
-          this.saving = false;
-          this.loadUsers();
-          this.setStatusMessage(`Updated ${this.formData.fullName} for ${this.activeShopName}.`);
-          this.closeModal();
-        },
-        error: (err) => {
-          this.saving = false;
-          this.errorMessage = err.message || 'Unknown error occurred while updating user';
-        }
-      });
-    } else {
-      this.authService.createUser(this.formData).subscribe({
-        next: (result) => {
-          this.saving = false;
-          this.loadUsers();
-          if (result.membershipStatus === 'pending_verification') {
-            const message = result.verificationSent === false
-              ? `Added ${this.formData.fullName} to ${this.activeShopName}, but the verification email could not be sent yet.`
-              : `Added ${this.formData.fullName} to ${this.activeShopName}. A verification email was sent to ${this.formData.email}.`;
-            this.setStatusMessage(message, result.verificationSent === false ? 'info' : 'success');
-          } else {
-            this.setStatusMessage(`Added ${this.formData.fullName} to ${this.activeShopName}.`);
-          }
-          this.closeModal();
-        },
-        error: (err) => {
-          this.saving = false;
-          this.errorMessage = err.message || 'Unknown error occurred while creating user';
-        }
-      });
+    if (this.usernameAvailabilityState === 'checking' || (!this.editingUser && this.emailAvailabilityState === 'checking')) {
+      this.errorMessage = 'Wait for the username and email checks to finish.';
+      return;
     }
+
+    this.saving = true;
+    this.authService.checkUserIdentityAvailability(this.formData.username, this.editingUser ? '' : normalizedEmail, this.editingUser?.id).subscribe({
+      next: (result) => {
+        this.applyAvailabilityResult(result, ++this.availabilityRequestId);
+        if (!result.usernameAvailable) {
+          this.saving = false;
+          this.errorMessage = result.suggestedUsername
+            ? `Username is already in use. Try ${result.suggestedUsername} instead.`
+            : 'Username is already in use.';
+          return;
+        }
+
+        if (!this.editingUser && !result.emailAvailable) {
+          this.saving = false;
+          this.errorMessage = 'This email is already registered.';
+          return;
+        }
+
+        if (result.suggestedUsername && !this.usernameEditedManually) {
+          this.formData.username = result.suggestedUsername;
+        }
+
+        this.submitUserForm();
+      },
+      error: (err) => {
+        this.saving = false;
+        this.errorMessage = err?.message || 'Could not validate username and email availability.';
+      }
+    });
   }
 
   deleteUser(user: User) {
@@ -921,20 +1198,34 @@ export class UsersComponent implements OnInit {
       this.setStatusMessage('You cannot remove your own access from the active shop.', 'error');
       return;
     }
-    if (confirm(`Remove "${user.fullName}" from this shop? They will lose access to the active shop.`)) {
-      this.deletingUserId = user.id!;
-      this.authService.deleteUser(user.id!, user.authId).subscribe({
-        next: () => {
-          this.deletingUserId = null;
-          this.setStatusMessage(`Removed ${user.fullName} from ${this.activeShopName}.`);
-          this.loadUsers();
-        },
-        error: (err) => {
-          this.deletingUserId = null;
-          this.setStatusMessage(err?.message || 'Failed to remove this user from the active shop.', 'error');
-        }
-      });
-    }
+    this.pendingDeleteUser = user;
+    this.showDeleteModal = true;
+  }
+
+  closeDeleteModal() {
+    if (this.pendingDeleteUser && this.deletingUserId === this.pendingDeleteUser.id) return;
+    this.showDeleteModal = false;
+    this.pendingDeleteUser = null;
+  }
+
+  confirmDelete() {
+    const user = this.pendingDeleteUser;
+    if (!user?.id) return;
+
+    this.deletingUserId = user.id;
+    this.authService.deleteUser(user.id, user.authId).subscribe({
+      next: () => {
+        this.deletingUserId = null;
+        this.showDeleteModal = false;
+        this.pendingDeleteUser = null;
+        this.setStatusMessage(`Removed ${user.fullName} from ${this.activeShopName}.`, 'success');
+        this.loadUsers();
+      },
+      error: (err) => {
+        this.deletingUserId = null;
+        this.setStatusMessage(err?.message || 'Failed to remove this user from the active shop.', 'error');
+      }
+    });
   }
 
   // Bulk delete operations

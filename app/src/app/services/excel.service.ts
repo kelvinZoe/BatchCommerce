@@ -411,6 +411,26 @@ export class ExcelService {
     XLSX.writeFile(wb, filename);
   }
 
+  async exportWorkbook(
+    sheets: Array<{ name: string; data: any[] }>,
+    filename: string
+  ): Promise<void> {
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.utils.book_new();
+
+    for (const sheet of sheets) {
+      const safeName = String(sheet.name || 'Sheet')
+        .replace(/[\\\/?*\[\]:]/g, ' ')
+        .trim()
+        .slice(0, 31) || 'Sheet';
+      const rows = Array.isArray(sheet.data) && sheet.data.length ? sheet.data : [{ message: 'No data' }];
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, worksheet, safeName);
+    }
+
+    XLSX.writeFile(workbook, filename);
+  }
+
   async downloadSampleTemplate(): Promise<void> {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();

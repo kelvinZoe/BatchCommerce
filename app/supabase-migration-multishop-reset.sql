@@ -330,6 +330,10 @@ CREATE TABLE shop_memberships (
   role_id BIGINT REFERENCES roles(id) ON DELETE SET NULL,
   is_owner BOOLEAN NOT NULL DEFAULT FALSE,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  membership_status TEXT NOT NULL DEFAULT 'active',
+  accepted_at TIMESTAMPTZ,
+  invited_at TIMESTAMPTZ,
+  invited_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   last_selected_at TIMESTAMPTZ,
   created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
@@ -1076,6 +1080,32 @@ AS $$
   );
 $$;
 
+CREATE OR REPLACE FUNCTION can_access_app_user(p_app_user_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+  SELECT (
+    EXISTS (
+      SELECT 1
+      FROM public.shop_memberships current_membership
+      JOIN public.shop_memberships target_membership
+        ON target_membership.shop_id = current_membership.shop_id
+      WHERE current_membership.auth_user_id = auth.uid()
+        AND current_membership.is_active = TRUE
+        AND target_membership.app_user_id = p_app_user_id
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM public.app_users au
+      WHERE au.id = p_app_user_id
+        AND au.auth_id = auth.uid()
+    )
+  );
+$$;
+
 -- ============================================================
 -- RLS
 -- ============================================================
@@ -1129,13 +1159,7 @@ CREATE POLICY "Authenticated can read own app user"
   FOR SELECT TO authenticated
   USING (
     auth_id = auth.uid()
-    OR EXISTS (
-      SELECT 1
-      FROM shop_memberships sm
-      WHERE sm.app_user_id = app_users.id
-        AND sm.auth_user_id = auth.uid()
-        AND sm.is_active = TRUE
-    )
+    OR can_access_app_user(id)
   );
 
 CREATE POLICY "Authenticated can insert app users"
@@ -1146,8 +1170,8 @@ CREATE POLICY "Authenticated can insert app users"
 CREATE POLICY "Authenticated can update own app user"
   ON app_users
   FOR UPDATE TO authenticated
-  USING (auth_id = auth.uid())
-  WITH CHECK (auth_id = auth.uid());
+  USING (auth_id = auth.uid() OR can_access_app_user(id))
+  WITH CHECK (auth_id = auth.uid() OR can_access_app_user(id));
 
 CREATE POLICY "Authenticated can read roles"
   ON roles
@@ -1179,18 +1203,23 @@ CREATE POLICY "Authenticated can write role_permissions"
 CREATE POLICY "Authenticated can read memberships"
   ON shop_memberships
   FOR SELECT TO authenticated
-  USING (auth_user_id = auth.uid());
+  USING (has_shop_membership(shop_id));
 
 CREATE POLICY "Authenticated can insert memberships"
   ON shop_memberships
   FOR INSERT TO authenticated
-  WITH CHECK (auth_user_id = auth.uid());
+  WITH CHECK (has_shop_membership(shop_id));
 
 CREATE POLICY "Authenticated can update memberships"
   ON shop_memberships
   FOR UPDATE TO authenticated
-  USING (auth_user_id = auth.uid())
-  WITH CHECK (auth_user_id = auth.uid());
+  USING (has_shop_membership(shop_id))
+  WITH CHECK (has_shop_membership(shop_id));
+
+CREATE POLICY "Authenticated can delete memberships"
+  ON shop_memberships
+  FOR DELETE TO authenticated
+  USING (has_shop_membership(shop_id));
 
 CREATE POLICY "Authenticated can read batches"
   ON batches

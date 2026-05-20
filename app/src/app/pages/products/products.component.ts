@@ -181,6 +181,7 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
 
           <!-- Products table -->
           <app-table
+            *ngIf="loadingCatalog || filteredCatalog.length > 0"
             [columns]="catalogColumns"
             [data]="catalogTableRows"
             [metadata]="catalogMetadata"
@@ -396,7 +397,24 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
           <div class="pp-form-group">
             <label class="pp-label">Current Stock</label>
             <input class="pp-input" type="number" [(ngModel)]="productFormData.stock"
-                   min="0" placeholder="0" />
+                   min="0" placeholder="0" (focus)="clearProductFieldIfZero('stock', $event)" />
+          </div>
+          <div class="pp-section-divider">
+            <span class="pp-section-label">Available Stock Pricing</span>
+          </div>
+          <div class="pp-form-row">
+            <div class="pp-form-group">
+              <label class="pp-label">Stock Price (GHS)</label>
+              <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="productFormData.stockPrice" min="0" (focus)="clearProductFieldIfZero('stockPrice', $event)" /></div>
+            </div>
+            <div class="pp-form-group">
+              <label class="pp-label">Discount from qty</label>
+              <input class="pp-input" type="number" [(ngModel)]="productFormData.stockDiscountMinQty" min="0" placeholder="0 = no discount" (focus)="clearProductFieldIfZero('stockDiscountMinQty', $event)" />
+            </div>
+            <div class="pp-form-group">
+              <label class="pp-label">Discount Price (GHS)</label>
+              <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="productFormData.stockDiscountPrice" min="0" (focus)="clearProductFieldIfZero('stockDiscountPrice', $event)" /></div>
+            </div>
           </div>
         </div>
       </app-modal-shell>
@@ -985,7 +1003,10 @@ export class ProductsComponent implements OnInit {
   productFormData = {
     name: '',
     description: '',
-    stock: 0
+    stock: 0,
+    stockPrice: 0,
+    stockDiscountMinQty: 0,
+    stockDiscountPrice: 0
   };
 
   productForm = {
@@ -1727,13 +1748,19 @@ export class ProductsComponent implements OnInit {
       this.productFormData = {
         name: product.name,
         description: product.description || '',
-        stock: product.stock || 0
+        stock: product.stock || 0,
+        stockPrice: product.stockPrice || 0,
+        stockDiscountMinQty: product.stockDiscountMinQty || 0,
+        stockDiscountPrice: product.stockDiscountPrice || 0
       };
     } else {
       this.productFormData = {
         name: '',
         description: '',
-        stock: 0
+        stock: 0,
+        stockPrice: 0,
+        stockDiscountMinQty: 0,
+        stockDiscountPrice: 0
       };
     }
     this.showProductModal = true;
@@ -1742,7 +1769,14 @@ export class ProductsComponent implements OnInit {
   closeProductModal() {
     this.showProductModal = false;
     this.editingProduct = null;
-    this.productFormData = { name: '', description: '', stock: 0 };
+    this.productFormData = {
+      name: '',
+      description: '',
+      stock: 0,
+      stockPrice: 0,
+      stockDiscountMinQty: 0,
+      stockDiscountPrice: 0
+    };
     this.savingProduct = false;
   }
 
@@ -1756,6 +1790,14 @@ export class ProductsComponent implements OnInit {
     }
   }
 
+  clearProductFieldIfZero(field: keyof typeof this.productFormData, event: FocusEvent) {
+    if (Number((this.productFormData as any)[field]) === 0) {
+      (this.productFormData as any)[field] = null;
+      const input = event.target as HTMLInputElement;
+      input.value = '';
+    }
+  }
+
   saveProduct() {
     if (!this.productFormData.name.trim()) return;
     this.savingProduct = true;
@@ -1763,7 +1805,10 @@ export class ProductsComponent implements OnInit {
     const payload: ProductCatalog = {
       name: this.productFormData.name.trim(),
       description: this.productFormData.description || '',
-      stock: this.productFormData.stock || 0
+      stock: this.productFormData.stock || 0,
+      stockPrice: Number(this.productFormData.stockPrice || 0),
+      stockDiscountMinQty: Number(this.productFormData.stockDiscountMinQty || 0),
+      stockDiscountPrice: Number(this.productFormData.stockDiscountPrice || 0)
     };
 
     if (this.editingProduct?.id) {

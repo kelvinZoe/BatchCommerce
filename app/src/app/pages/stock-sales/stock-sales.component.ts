@@ -817,7 +817,11 @@ export class StockSalesComponent implements OnInit {
           this.loadSales();
           this.loadAvailableProducts(); // refresh stock counts
         },
-        error: () => { this.saving = false; }
+        error: (err) => {
+          this.saving = false;
+          const message = err?.message || 'Failed to record sale and update stock. Please try again.';
+          alert(message);
+        }
       });
   }
 
