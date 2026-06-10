@@ -1574,7 +1574,7 @@ export class DatabaseService extends SupabaseDataAccessService {
     const fromIdx = (page - 1) * pageSize;
     const toIdx   = fromIdx + pageSize - 1;
     let q = this.scopeTable('stock_sales')
-      .select('id, sale_uuid, customer_name, customer_id, sale_channel, total_amount, created_at, stock_sale_items(id)', { count: 'exact' })
+      .select('id, sale_uuid, customer_name, customer_id, sale_channel, total_amount, created_at, status, stock_sale_items(id)', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(fromIdx, toIdx);
     if (search)   q = (q as any).ilike('customer_name', `%${search}%`);
@@ -1629,7 +1629,8 @@ export class DatabaseService extends SupabaseDataAccessService {
       customer_id:   customerId || null,
       customer_name: customerName,
       sale_channel:  saleChannel,
-      total_amount:  totalAmount
+      total_amount:  totalAmount,
+      status:        'open'
     }).select('id, sale_uuid').single();
     if (saleErr || !sale) throw saleErr;
 
@@ -1747,6 +1748,11 @@ export class DatabaseService extends SupabaseDataAccessService {
   private async doDeleteStockSale(saleId: number): Promise<boolean> {
     if (!this.activeShopId || !saleId) return false;
 
+    const { data: sale, error: saleErr } = await this.scopeShopQuery(
+      this.sb.from('stock_sales').select('status')
+    ).eq('id', saleId).maybeSingle();
+    if (saleErr || !sale) return false;
+
     const { data: existingItems, error: existingErr } = await this.scopeShopQuery(
       this.sb.from('stock_sale_items').select('product_id, quantity')
     ).eq('stock_sale_id', saleId);
@@ -1755,6 +1761,50 @@ export class DatabaseService extends SupabaseDataAccessService {
     const { error: deleteErr } = await this.scopeShopQuery(this.sb.from('stock_sales').delete()).eq('id', saleId);
     if (deleteErr) return false;
 
+    if ((sale as any).status !== 'cancelled') {
+      await this.adjustProductStock(existingItems || [], 1);
+    }
+    return true;
+  }
+
+  closeStockSale(saleId: number, closedByUserId: number): Observable<boolean> {
+    return from(this.doCloseStockSale(saleId, closedByUserId));
+  }
+
+  private async doCloseStockSale(saleId: number, closedByUserId: number): Promise<boolean> {
+    if (!this.activeShopId || !saleId) return false;
+    const { error } = await this.scopeShopQuery(
+      this.sb.from('stock_sales').update({
+        status: 'closed',
+        closed_at: new Date().toISOString(),
+        closed_by: closedByUserId
+      })
+    ).eq('id', saleId);
+    return !error;
+  }
+
+  cancelStockSale(saleId: number): Observable<boolean> {
+    return from(this.doCancelStockSale(saleId));
+  }
+
+  private async doCancelStockSale(saleId: number): Promise<boolean> {
+    if (!this.activeShopId || !saleId) return false;
+
+    // Fetch stock_sale_items linked to the sale
+    const { data: existingItems, error: existingErr } = await this.scopeShopQuery(
+      this.sb.from('stock_sale_items').select('product_id, quantity')
+    ).eq('stock_sale_id', saleId);
+    if (existingErr) return false;
+
+    // Update status to 'cancelled'
+    const { error: saleErr } = await this.scopeShopQuery(
+      this.sb.from('stock_sales').update({
+        status: 'cancelled'
+      })
+    ).eq('id', saleId);
+    if (saleErr) return false;
+
+    // Return product quantities to stock
     await this.adjustProductStock(existingItems || [], 1);
     return true;
   }

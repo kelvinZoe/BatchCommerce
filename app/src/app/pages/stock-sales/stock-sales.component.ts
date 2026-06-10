@@ -54,11 +54,11 @@ interface CartItem {
         <div class="ss-table-wrap" *ngIf="loading">
           <table class="ss-table">
             <thead><tr>
-              <th *ngFor="let h of ['Reference','Customer','Channel','Items','Total','Date','']">{{h}}</th>
+              <th *ngFor="let h of ['Reference','Customer','Channel','Items','Total','Status','Date','']">{{h}}</th>
             </tr></thead>
             <tbody>
               <tr *ngFor="let i of [1,2,3,4,5]">
-                <td *ngFor="let c of [1,2,3,4,5,6,7]"><div class="ss-sk ss-sk-cell"></div></td>
+                <td *ngFor="let c of [1,2,3,4,5,6,7,8]"><div class="ss-sk ss-sk-cell"></div></td>
               </tr>
             </tbody>
           </table>
@@ -73,6 +73,7 @@ interface CartItem {
               <th>Channel</th>
               <th>Items</th>
               <th>Total</th>
+              <th>Status</th>
               <th>Date</th>
               <th></th>
             </tr></thead>
@@ -92,25 +93,40 @@ interface CartItem {
                 </td>
                 <td><span class="ss-items-chip">{{ s.itemCount }} item{{ s.itemCount !== 1 ? 's' : '' }}</span></td>
                 <td><strong class="ss-total-val">GHS {{ (s.totalAmount || 0) | number:'1.2-2' }}</strong></td>
+                <td>
+                  <span class="ss-status-pill ss-status-{{ s.status || 'open' }}">
+                    {{ s.status || 'open' }}
+                  </span>
+                </td>
                 <td class="ss-date-cell">{{ s.createdAt | date:'mediumDate' }}</td>
                 <td>
                   <button class="ss-icon-btn" title="View receipt" (click)="viewReceipt(s)">
                     <span class="material-icons">receipt_long</span>
                   </button>
                   <button class="ss-icon-btn" title="Edit sale"
-                          *ngIf="authService.canPerformStockSalesOperation('canEditSale')"
+                          *ngIf="s.status === 'open' && authService.canPerformStockSalesOperation('canEditSale')"
                           (click)="openEditSale(s)">
                     <span class="material-icons">edit</span>
                   </button>
+                  <button class="ss-icon-btn ss-icon-btn-success" title="Close/Finalize sale"
+                          *ngIf="s.status === 'open' && authService.canPerformStockSalesOperation('canCloseSale')"
+                          (click)="closeSale(s)">
+                    <span class="material-icons">task_alt</span>
+                  </button>
+                  <button class="ss-icon-btn ss-icon-btn-danger" title="Cancel sale"
+                          *ngIf="s.status === 'open' && authService.canPerformStockSalesOperation('canDeleteSale')"
+                          (click)="cancelSale(s)">
+                    <span class="material-icons">block</span>
+                  </button>
                   <button class="ss-icon-btn ss-icon-btn-danger" title="Delete sale"
-                          *ngIf="authService.canPerformStockSalesOperation('canDeleteSale')"
+                          *ngIf="s.status !== 'open' && authService.canPerformStockSalesOperation('canDeleteSale')"
                           (click)="deleteSale(s)">
                     <span class="material-icons">delete</span>
                   </button>
                 </td>
               </tr>
               <tr *ngIf="sales.length === 0">
-                <td colspan="7" class="ss-empty-row">
+                <td colspan="8" class="ss-empty-row">
                   <span class="material-icons">storefront</span>
                   No sales yet. Click <strong>New Sale</strong> to record one.
                 </td>
@@ -446,12 +462,17 @@ interface CartItem {
     .ss-channel-pill { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:20px; font-size:11px; font-weight:700; background:#f1f5f9; color:#475569; }
     .ss-channel-pill .material-icons { font-size:13px; }
     .ss-ch-online   { background:#eff6ff; color:#1d4ed8; }
+    .ss-status-pill { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:20px; font-size:11px; font-weight:700; text-transform:capitalize; }
+    .ss-status-open { background:#fef3c7; color:#b45309; }
+    .ss-status-closed { background:#dcfce7; color:#15803d; }
+    .ss-status-cancelled { background:#fee2e2; color:#b91c1c; }
     .ss-items-chip  { background:#f1f5f9; color:#475569; border-radius:20px; padding:2px 8px; font-size:11px; font-weight:600; }
     .ss-total-val   { color:#0f172a; }
     .ss-date-cell   { color:#64748b; white-space:nowrap; }
     .ss-icon-btn    { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:7px; border:1px solid #e2e8f0; background:#f8fafc; cursor:pointer; color:#64748b; transition:all 0.13s; }
     .ss-icon-btn:hover { background:#e0e7ff; border-color:#a5b4fc; color:var(--primary-color,#6366f1); }
     .ss-icon-btn-danger:hover { background:#fee2e2; border-color:#fecaca; color:#dc2626; }
+    .ss-icon-btn-success:hover { background:#dcfce7; border-color:#bbf7d0; color:#16a34a; }
 
     .ss-empty-row   { text-align:center; padding:40px 16px !important; color:#94a3b8; }
     .ss-empty-row .material-icons { display:block; font-size:40px; margin-bottom:8px; }
@@ -895,6 +916,34 @@ export class StockSalesComponent implements OnInit {
           alert(message);
         }
       });
+  }
+
+  closeSale(sale: StockSale) {
+    if (!sale.id || !this.authService.canPerformStockSalesOperation('canCloseSale')) return;
+    if (!confirm(`Are you sure you want to close and finalize stock sale #SS-${sale.id}? This will lock the sale from future modifications.`)) return;
+    
+    const closedByUserId = this.authService.currentUser?.id || 0;
+    this.db.closeStockSale(sale.id, closedByUserId).subscribe(ok => {
+      if (!ok) {
+        alert('Failed to close stock sale.');
+        return;
+      }
+      this.loadSales();
+    });
+  }
+
+  cancelSale(sale: StockSale) {
+    if (!sale.id || !this.authService.canPerformStockSalesOperation('canDeleteSale')) return;
+    if (!confirm(`Are you sure you want to cancel stock sale #SS-${sale.id}? This will mark it as cancelled and return all sold items back to stock.`)) return;
+    
+    this.db.cancelStockSale(sale.id).subscribe(ok => {
+      if (!ok) {
+        alert('Failed to cancel stock sale.');
+        return;
+      }
+      this.loadSales();
+      this.loadAvailableProducts();
+    });
   }
 
   deleteSale(sale: StockSale) {

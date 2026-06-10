@@ -47,7 +47,7 @@ Here’s the TODO list I’d use, in the order we should tackle it:
 - [done] Expand the Roles workbench beyond Clients, Products, and Orders to include the remaining listed operational pages.
 - [done] Wire newly-added RBAC switches into page-level action checks where matching workflows exist.
 - [done] Add schema support migration for `canCloseSale` on Stock Sales.
-- [pending] Wire the Stock Sales close/finalize UI and service methods after the stock sale status migration is applied.
+- [done] Wire the Stock Sales close/finalize UI and service methods after the stock sale status migration is applied.
 - Suggested split: session/auth, workspace/shop context, permissions, users, roles, verification/admin API.
 - Make shop context explicit instead of depending on local storage plus session state in multiple places.
 - [done for roles-list pages] Standardize permission checks across Products, Orders, Buying List, Arrivals, Shipping, Shipping Ledger, Stock Sales, Manage Batches, and Roles.
