@@ -12,7 +12,7 @@ import { ShopConfigService } from '../../services/shop-config.service';
     <div class="auth-callback-page">
       <div class="callback-card">
         <div class="callback-header">
-          <span class="logo-icon">🛒</span>
+          <img src="assets/batchcommerce_icon.png" alt="Logo" class="logo-icon" />
           <h1>{{ statusTitle }}</h1>
           <p *ngIf="statusSubtitle">{{ statusSubtitle }}</p>
         </div>
@@ -66,9 +66,12 @@ import { ShopConfigService } from '../../services/shop-config.service';
       margin-bottom: 28px;
 
       .logo-icon {
-        font-size: 48px;
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
         display: block;
-        margin-bottom: 16px;
+        margin: 0 auto 16px;
+        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25);
       }
 
       h1 {

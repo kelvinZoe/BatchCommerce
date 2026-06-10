@@ -15,7 +15,7 @@ import { AuthService } from '../../services/auth.service';
     <div class="setup-page">
       <div class="setup-card">
         <div class="setup-header">
-          <span class="logo-icon">🛒</span>
+          <img src="assets/batchcommerce_icon.png" alt="Logo" class="logo-icon" />
           <h1>Get Started</h1>
           <p>Welcome aboard. Let’s create your account and set up your shop in a few quick steps.</p>
         </div>
@@ -192,7 +192,7 @@ import { AuthService } from '../../services/auth.service';
       text-align: center;
       padding: 40px 32px 16px;
 
-      .logo-icon { font-size: 48px; display: block; margin-bottom: 12px; }
+      .logo-icon { width: 56px; height: 56px; border-radius: 12px; display: block; margin: 0 auto 12px; box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25); }
       h1 { font-size: 24px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
       p { color: #64748b; font-size: 14px; line-height: 1.5; max-width: 400px; margin: 0 auto; }
     }

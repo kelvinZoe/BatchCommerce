@@ -1,0 +1,77 @@
+Here’s the TODO list I’d use, in the order we should tackle it:
+
+**Phase 1: Safety And Repo Hygiene**
+- Remove the hardcoded Supabase service-role key from `app/scripts/fix_order_items_updated_at.js`.
+- Rotate that exposed service-role key in Supabase.
+- Add `.angular/cache/` to `.gitignore`.
+- Stop tracking generated Angular cache files.
+- Review tracked build/release artifacts and decide whether they should stay in git.
+- Remove or quarantine broken helper scripts like `app/fix.js`.
+- Make sure all secrets only live in env files or deployment dashboards.
+
+**Phase 2: Canonical Architecture Cleanup**
+- [done] Update docs so they describe the current Supabase multi-shop app, not the old SQLite/Electron-first version.
+- [done] Decide canonical naming: keep “Clients” in UI, but use `customers` consistently in DB/service code.
+- [done] Remove remaining legacy `order_batches` references and standardize on `batches`.
+- [deferred to Phase 3] Replace fragile `batch_name` relationships with `batch_id` wherever practical.
+- [done] Document the real workflow from batch creation to delivery as the canonical business flow.
+
+**Phase 3: Database And Tenancy Hardening**
+- [done] Review the multi-shop schema and document the split between incremental migrations and reset/reference SQL.
+- [done] Add an idempotent hardening migration for damage allocation, stock-pricing columns, tenant indexes, RLS, and status constraints.
+- [done] Add a follow-up migration for tables that had `updated_at` triggers but missing `updated_at` columns.
+- [done] Update the reset/reference schema with product stock pricing and `damage_order_allocations`.
+- [done] Prefer `batch_id` cleanup in batch cascade deletion while retaining legacy `batch_name` cleanup fallbacks.
+- [done] Apply and verify the Phase 3 migration against the real Supabase project.
+- [deferred] Finish service-level conversion of shipping batch totals from `batch_name` uniqueness to `batch_id`.
+
+**Phase 4: Service Layer Refactor**
+- [backlog] Continue splitting `DatabaseService` into smaller domain services.
+- [done] Extract shared Supabase data-access helpers into `SupabaseDataAccessService`.
+- [done] Move snake_case/camelCase mapping into shared data-access utilities.
+- [done] Extract client/customer CRUD into `ClientDataService` behind the existing `DatabaseService` facade.
+- [done] Scope client update/delete operations through the shared shop-scoping helper.
+- Suggested split: `ProductService`, `BatchService`, `OrderService`, `BuyingListService`, `ArrivalService`, `ShippingService`, `DeliveryService`, `StockService`, `DamageService`, `DashboardDataService`.
+- [done for extracted/shared helpers] Centralize shop-scoped Supabase querying through `SupabaseDataAccessService`.
+- [backlog] Continue moving remaining direct `sb.from(...)` calls behind domain services.
+- Move destructive cascade delete logic into one explicit domain service.
+- Move price recalculation and stock adjustment logic into dedicated services.
+
+**Phase 5: Auth/RBAC Refactor**
+- [backlog] Split `AuthService` into smaller responsibilities.
+- [done] Centralize RBAC resource metadata and sidebar navigation metadata in the canonical model catalog.
+- [done] Add a shared `PermissionAction` type for CRUD checks.
+- [done] Add generic `canPerformPageOperation(resource, operation)` support behind the existing page-specific permission helpers.
+- [done] Reuse config-aware permission mapping for role-permission reads.
+- [done] Add missing action flags from `roles-list.txt` for products, buying list, arrivals, stock sales, and batch management.
+- [done] Expand the Roles workbench beyond Clients, Products, and Orders to include the remaining listed operational pages.
+- [done] Wire newly-added RBAC switches into page-level action checks where matching workflows exist.
+- [done] Add schema support migration for `canCloseSale` on Stock Sales.
+- [pending] Wire the Stock Sales close/finalize UI and service methods after the stock sale status migration is applied.
+- Suggested split: session/auth, workspace/shop context, permissions, users, roles, verification/admin API.
+- Make shop context explicit instead of depending on local storage plus session state in multiple places.
+- [done for roles-list pages] Standardize permission checks across Products, Orders, Buying List, Arrivals, Shipping, Shipping Ledger, Stock Sales, Manage Batches, and Roles.
+- [done] Add method-level guards for Phase 5 destructive/state-changing actions in Products, Orders, Buying List, Arrivals, Shipping, Shipping Ledger, Stock Sales, and Manage Batches.
+- [done for routed pages] Route-level view permissions are enforced through the route guards.
+- [backlog] Continue replacing any future admin-only or hardcoded action gates with explicit RBAC operation checks.
+
+**Phase 6: Workflow State Cleanup**
+- Define the batch lifecycle as a state machine.
+- Prevent invalid states like arrivals sent before buying list exists.
+- Replace scattered flags with clearer transitions where possible.
+- Normalize movement between stages: orders to buying list, buying list to arrivals, arrivals to shipping, shipping ledger to deliveries.
+- Make stock changes idempotent so double-clicks or retries don’t double-adjust inventory.
+
+**Phase 7: UI Structure Cleanup**
+- Continue moving pages to shared `app-table`, `app-modal-shell`, `app-batch-list-section`, and `app-stat-cards`.
+- Remove legacy modal/table patterns after migration.
+- Standardize loading, empty states, status pills, filters, pagination, and action buttons.
+- Improve mobile responsiveness for the main shell/sidebar and table-heavy pages.
+
+**Phase 8: Verification**
+- Run `npm run build` in `app`.
+- Smoke test: register, bootstrap shop, create batch, add product, create client, create order, close batch.
+- Smoke test: buying list to arrivals to tracking to shipping to ledger to delivery.
+- Smoke test: stock sale reduces stock correctly.
+- Test two shops to confirm data isolation.
+- Test non-admin roles to confirm permissions block actions correctly.

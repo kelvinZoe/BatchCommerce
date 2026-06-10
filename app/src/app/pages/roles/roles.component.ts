@@ -6,7 +6,9 @@ import {
   ALL_RESOURCES,
   AppResource,
   ArrivalsPermissionConfig,
+  ARRIVALS_OPERATIONS,
   BuyingListPermissionConfig,
+  BUYING_LIST_OPERATIONS,
   DashboardComponentConfig,
   DEFAULT_ARRIVALS_CONFIG,
   DEFAULT_BUYING_LIST_CONFIG,
@@ -20,17 +22,35 @@ import {
   DEFAULT_STOCK_SALES_CONFIG,
   DEFAULT_USERS_CONFIG,
   ManageBatchesPermissionConfig,
+  MANAGE_BATCHES_OPERATIONS,
   OrdersPermissionConfig,
+  ORDERS_OPERATIONS,
+  PermissionAction,
   ProductPermissionConfig,
+  PRODUCT_OPERATIONS,
   Role,
   RolesPermissionConfig,
+  ROLES_OPERATIONS,
+  SHIPPING_LEDGER_OPERATIONS,
+  SHIPPING_OPERATIONS,
   ShippingLedgerPermissionConfig,
   ShippingPermissionConfig,
   StockSalesPermissionConfig,
+  STOCK_SALES_OPERATIONS,
   UsersPermissionConfig
 } from '../../models';
 
-type CrudAction = 'create' | 'edit' | 'delete';
+type CrudAction = Exclude<PermissionAction, 'view'>;
+type ConfigKey =
+  | 'productConfig'
+  | 'ordersConfig'
+  | 'buyingListConfig'
+  | 'arrivalsConfig'
+  | 'shippingConfig'
+  | 'shippingLedgerConfig'
+  | 'stockSalesConfig'
+  | 'manageBatchesConfig'
+  | 'rolesConfig';
 
 interface CrudActionCard {
   key: CrudAction;
@@ -53,10 +73,36 @@ interface OrdersActionCard {
   icon: string;
 }
 
-type ManagedPermissionPage = 'clients' | 'products' | 'orders';
+interface ConfigActionCard {
+  key: string;
+  label: string;
+  description: string;
+  icon: string;
+}
+
+interface PermissionActionGroup {
+  label: string;
+  type: 'crud' | 'config';
+  resource: AppResource;
+  actions: Array<CrudActionCard | ConfigActionCard>;
+  configKey?: ConfigKey;
+}
+
+type ManagedPermissionPage =
+  | 'clients'
+  | 'products'
+  | 'orders'
+  | 'buying_list'
+  | 'arrivals'
+  | 'shipping'
+  | 'shipping_ledger'
+  | 'stock_sales'
+  | 'batches'
+  | 'roles';
 
 interface ManagedPageTab {
   key: ManagedPermissionPage;
+  resource: AppResource;
   label: string;
   description: string;
   icon: string;
@@ -246,17 +292,14 @@ interface ManagedPageTab {
             </div>
 
             <ng-container *ngIf="selectedRole.name !== 'Admin'">
-              <div class="scope-notice">
-                <span class="material-icons">info</span>
-                <span>This setup currently covers the <strong>Clients</strong>, <strong>Products</strong>, and <strong>Orders</strong> pages. Permissions for other pages stay untouched when you save.</span>
-              </div>
-
               <div class="builder-grid">
-                <section class="card builder-panel">
-                  <div class="panel-heading">
+                <section class="card builder-panel page-picker-panel">
+                  <div class="panel-heading compact-heading">
                     <span class="step-badge">Step 2</span>
-                    <h3>Choose a page</h3>
-                    <p>Pick the page you want this role to work with.</p>
+                    <div>
+                      <h3>Choose a page</h3>
+                      <p>Jump between page-level access groups.</p>
+                    </div>
                   </div>
 
                   <div class="page-choice-list">
@@ -265,36 +308,45 @@ interface ManagedPageTab {
                       *ngFor="let page of managedPages"
                       class="page-choice"
                       [class.active]="focusedPage === page.key"
-                      [class.clients]="page.accentClass === 'clients'"
-                      [class.products]="page.accentClass === 'products'"
-                      [class.orders]="page.accentClass === 'orders'"
+                      [ngClass]="page.accentClass"
                       (click)="setFocusedPage(page.key)">
                       <div class="page-choice-top">
                         <span class="material-icons">{{ page.icon }}</span>
-                        <span class="page-choice-state" [class.off]="!hasPermission(page.key, 'view')">
-                          {{ hasPermission(page.key, 'view') ? 'Page open' : 'Page blocked' }}
+                        <span class="page-choice-state" [class.off]="!hasPermission(page.resource, 'view')">
+                          {{ hasPermission(page.resource, 'view') ? 'Open' : 'Blocked' }}
                         </span>
                       </div>
-                      <strong>{{ page.label }}</strong>
-                      <small>{{ page.description }}</small>
+                      <div class="page-choice-copy">
+                        <strong>{{ page.label }}</strong>
+                        <small>{{ page.description }}</small>
+                      </div>
                       <div class="page-choice-meta">
-                        <span>{{ getEnabledActionCount(page.key) }}/{{ getTotalActionCount(page.key) }} actions allowed</span>
+                        <span>{{ getEnabledActionCount(page.key) }}/{{ getTotalActionCount(page.key) }}</span>
                       </div>
                     </button>
                   </div>
                 </section>
 
                 <section class="card builder-panel action-builder">
-                  <div class="panel-heading">
-                    <span class="step-badge">Step 3</span>
-                    <h3>{{ getManagedPageMeta(focusedPage).label }} actions</h3>
-                    <p>Turn on only the tasks this role should be allowed to do.</p>
+                  <div class="action-builder-head">
+                    <div class="panel-heading compact-heading">
+                      <span class="step-badge">Step 3</span>
+                      <div>
+                        <h3>{{ getManagedPageMeta(focusedPage).label }} actions</h3>
+                        <p>Turn on only the tasks this role should be allowed to do.</p>
+                      </div>
+                    </div>
+
+                    <div class="action-count-pill">
+                      <strong>{{ getEnabledActionCount(focusedPage) }}</strong>
+                      <span>/ {{ getTotalActionCount(focusedPage) }} allowed</span>
+                    </div>
                   </div>
 
                   <div class="page-access-card">
                     <div class="page-access-copy">
                       <div class="page-card-title">
-                        <div class="page-card-icon" [class.clients]="focusedPage === 'clients'" [class.products]="focusedPage === 'products'" [class.orders]="focusedPage === 'orders'">
+                        <div class="page-card-icon" [ngClass]="getManagedPageMeta(focusedPage).accentClass">
                           <span class="material-icons">{{ getManagedPageMeta(focusedPage).icon }}</span>
                         </div>
                         <div>
@@ -305,37 +357,38 @@ interface ManagedPageTab {
                     </div>
 
                     <div class="page-access-toggle">
-                      <span>{{ hasPermission(focusedPage, 'view') ? 'Can open this page' : 'Cannot open this page' }}</span>
+                      <span>{{ hasPermission(getFocusedResource(), 'view') ? 'Can open this page' : 'Cannot open this page' }}</span>
                       <label class="toggle">
                         <input
                           type="checkbox"
-                          [checked]="hasPermission(focusedPage, 'view')"
-                          (change)="togglePageAccess(focusedPage)" />
+                          [checked]="hasPermission(getFocusedResource(), 'view')"
+                          (change)="togglePageAccess(getFocusedResource())" />
                         <span class="toggle-slider"></span>
                       </label>
                     </div>
                   </div>
 
                   <div class="page-toolbar">
-                    <button class="btn btn-sm btn-secondary" *ngIf="focusedPage === 'clients'" (click)="enableAllClientActions()">Allow Everything On This Page</button>
-                    <button class="btn btn-sm btn-secondary" *ngIf="focusedPage === 'products'" (click)="enableAllProductActions()">Allow Everything On This Page</button>
-                    <button class="btn btn-sm btn-secondary" *ngIf="focusedPage === 'orders'" (click)="enableAllOrderActions()">Allow Everything On This Page</button>
-
-                    <button class="btn btn-sm btn-secondary" *ngIf="focusedPage === 'clients'" (click)="clearClientActions()">Clear Page Actions</button>
-                    <button class="btn btn-sm btn-secondary" *ngIf="focusedPage === 'products'" (click)="clearProductActions()">Clear Page Actions</button>
-                    <button class="btn btn-sm btn-secondary" *ngIf="focusedPage === 'orders'" (click)="clearOrderActions()">Clear Page Actions</button>
+                    <button class="btn btn-sm btn-secondary" (click)="enableAllPageActions(focusedPage)">
+                      <span class="material-icons">done_all</span>
+                      Allow all
+                    </button>
+                    <button class="btn btn-sm btn-secondary" (click)="clearPageActions(focusedPage)">
+                      <span class="material-icons">block</span>
+                      Clear
+                    </button>
                   </div>
 
-                  <div class="action-group" *ngIf="focusedPage === 'clients'">
-                    <div class="action-group-label">Client management</div>
-                    <div class="action-list" [class.muted]="!hasPermission('clients', 'view')">
+                  <div class="action-group" *ngFor="let group of getActionGroups(focusedPage)">
+                    <div class="action-group-label">{{ group.label }}</div>
+                    <div class="action-list" [class.muted]="!hasPermission(group.resource, 'view')">
                       <button
                         type="button"
                         class="action-row"
-                        *ngFor="let action of clientActions"
-                        [class.active]="hasPermission('clients', action.key)"
-                        [disabled]="!hasPermission('clients', 'view')"
-                        (click)="toggleCrudPermission('clients', action.key)">
+                        *ngFor="let action of group.actions"
+                        [class.active]="isActionEnabled(group, action.key)"
+                        [disabled]="!hasPermission(group.resource, 'view')"
+                        (click)="toggleAction(group, action.key)">
                         <div class="action-row-main">
                           <span class="action-row-icon material-icons">{{ action.icon }}</span>
                           <span class="action-row-copy">
@@ -343,80 +396,8 @@ interface ManagedPageTab {
                             <small>{{ action.description }}</small>
                           </span>
                         </div>
-                        <span class="action-row-state" [class.allowed]="hasPermission('clients', action.key)">
-                          {{ hasPermission('clients', action.key) ? 'Allowed' : 'Blocked' }}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="action-group" *ngIf="focusedPage === 'products'">
-                    <div class="action-group-label">Product catalog</div>
-                    <div class="action-list" [class.muted]="!hasPermission('products', 'view')">
-                      <button
-                        type="button"
-                        class="action-row"
-                        *ngFor="let action of productCatalogActions"
-                        [class.active]="hasPermission('products', action.key)"
-                        [disabled]="!hasPermission('products', 'view')"
-                        (click)="toggleCrudPermission('products', action.key)">
-                        <div class="action-row-main">
-                          <span class="action-row-icon material-icons">{{ action.icon }}</span>
-                          <span class="action-row-copy">
-                            <strong>{{ action.label }}</strong>
-                            <small>{{ action.description }}</small>
-                          </span>
-                        </div>
-                        <span class="action-row-state" [class.allowed]="hasPermission('products', action.key)">
-                          {{ hasPermission('products', action.key) ? 'Allowed' : 'Blocked' }}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="action-group" *ngIf="focusedPage === 'products'">
-                    <div class="action-group-label">Batch work inside products</div>
-                    <div class="action-list" [class.muted]="!hasPermission('products', 'view')">
-                      <button
-                        type="button"
-                        class="action-row"
-                        *ngFor="let action of productBatchActions"
-                        [class.active]="productConfig[action.key]"
-                        [disabled]="!hasPermission('products', 'view')"
-                        (click)="toggleProductOperation(action.key)">
-                        <div class="action-row-main">
-                          <span class="action-row-icon material-icons">{{ action.icon }}</span>
-                          <span class="action-row-copy">
-                            <strong>{{ action.label }}</strong>
-                            <small>{{ action.description }}</small>
-                          </span>
-                        </div>
-                        <span class="action-row-state" [class.allowed]="productConfig[action.key]">
-                          {{ productConfig[action.key] ? 'Allowed' : 'Blocked' }}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="action-group" *ngIf="focusedPage === 'orders'">
-                    <div class="action-group-label">Order handling</div>
-                    <div class="action-list" [class.muted]="!hasPermission('orders', 'view')">
-                      <button
-                        type="button"
-                        class="action-row"
-                        *ngFor="let action of ordersActions"
-                        [class.active]="ordersConfig[action.key]"
-                        [disabled]="!hasPermission('orders', 'view')"
-                        (click)="toggleOrdersOperation(action.key)">
-                        <div class="action-row-main">
-                          <span class="action-row-icon material-icons">{{ action.icon }}</span>
-                          <span class="action-row-copy">
-                            <strong>{{ action.label }}</strong>
-                            <small>{{ action.description }}</small>
-                          </span>
-                        </div>
-                        <span class="action-row-state" [class.allowed]="ordersConfig[action.key]">
-                          {{ ordersConfig[action.key] ? 'Allowed' : 'Blocked' }}
+                        <span class="action-row-state" [class.allowed]="isActionEnabled(group, action.key)">
+                          {{ isActionEnabled(group, action.key) ? 'Allowed' : 'Blocked' }}
                         </span>
                       </button>
                     </div>
@@ -514,6 +495,13 @@ interface ManagedPageTab {
   `,
   styles: [`
     .roles-page {
+      --rbac-ink: #10201b;
+      --rbac-muted: #66756f;
+      --rbac-line: #dce6df;
+      --rbac-panel: rgba(255, 255, 250, 0.94);
+      --rbac-green: #19624a;
+      --rbac-gold: #d89124;
+      --rbac-red: #b9472e;
       max-width: 1440px;
       display: grid;
       gap: 20px;
@@ -1567,6 +1555,442 @@ interface ManagedPageTab {
       animation: spin 1s linear infinite;
     }
 
+    /* Compact RBAC workbench refresh */
+    .roles-page {
+      gap: 16px;
+      color: var(--rbac-ink);
+    }
+
+    .roles-hero {
+      padding: 20px 22px;
+      border-radius: 24px;
+      border-color: rgba(102, 117, 111, 0.2);
+      background:
+        radial-gradient(circle at 10% 0%, rgba(216, 145, 36, 0.18), transparent 28%),
+        radial-gradient(circle at 88% 18%, rgba(25, 98, 74, 0.14), transparent 30%),
+        linear-gradient(135deg, #fffefa 0%, #f4efe4 100%);
+      box-shadow: 0 18px 40px rgba(35, 45, 39, 0.08);
+    }
+
+    .roles-hero-copy h1,
+    .panel-heading h2,
+    .panel-heading h3,
+    .matrix-title h2,
+    .page-card-title h3,
+    .action-row-copy strong,
+    .page-summary-head strong {
+      color: var(--rbac-ink);
+    }
+
+    .hero-kicker,
+    .step-badge {
+      background: rgba(25, 98, 74, 0.1);
+      color: var(--rbac-green);
+    }
+
+    .page-subtitle,
+    .panel-heading p,
+    .matrix-title small,
+    .overview-kicker,
+    .page-choice small,
+    .page-choice-meta,
+    .action-row-copy small,
+    .page-summary-head span,
+    .page-summary-empty {
+      color: var(--rbac-muted);
+    }
+
+    .hero-hint,
+    .status-pill,
+    .page-access-toggle {
+      border-color: rgba(102, 117, 111, 0.22);
+      color: #38534a;
+      background: rgba(255, 255, 250, 0.88);
+    }
+
+    .hero-hint .material-icons {
+      color: var(--rbac-green);
+    }
+
+    .roles-shell {
+      grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .roles-sidebar,
+    .builder-panel,
+    .setup-overview,
+    .skeleton-panel-card {
+      border-color: var(--rbac-line);
+      background: var(--rbac-panel);
+      box-shadow: 0 12px 32px rgba(35, 45, 39, 0.06);
+    }
+
+    .roles-sidebar {
+      padding: 14px;
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      scrollbar-width: thin;
+    }
+
+    .role-list {
+      gap: 8px;
+    }
+
+    .role-card {
+      padding: 12px;
+      border-radius: 16px;
+      border-color: var(--rbac-line);
+      gap: 9px;
+      background: linear-gradient(180deg, rgba(255, 255, 250, 0.98), rgba(247, 244, 235, 0.96));
+    }
+
+    .role-card.active {
+      border-color: var(--rbac-green);
+      background:
+        radial-gradient(circle at top right, rgba(25, 98, 74, 0.16), transparent 36%),
+        linear-gradient(180deg, #f8fff9, #edf6ef);
+      box-shadow: 0 18px 30px rgba(25, 98, 74, 0.12);
+    }
+
+    .role-card:hover {
+      border-color: rgba(25, 98, 74, 0.4);
+      box-shadow: 0 14px 24px rgba(35, 45, 39, 0.08);
+    }
+
+    .role-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+    }
+
+    .role-title h3 {
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .role-desc {
+      margin: 6px 0 8px;
+      font-size: 12px;
+    }
+
+    .role-footer {
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .setup-overview {
+      padding: 15px 16px;
+      border-radius: 20px;
+    }
+
+    .matrix-title h2 {
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .builder-grid {
+      grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+      align-items: start;
+      gap: 12px;
+    }
+
+    .builder-panel {
+      padding: 14px;
+      border-radius: 20px;
+    }
+
+    .page-picker-panel {
+      align-self: start;
+      position: sticky;
+      top: 16px;
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      scrollbar-width: thin;
+    }
+
+    .action-builder {
+      align-self: start;
+      gap: 12px;
+    }
+
+    .compact-heading {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .compact-heading .step-badge {
+      margin: 0;
+      flex-shrink: 0;
+    }
+
+    .panel-heading h3 {
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .panel-heading p {
+      margin-top: 3px;
+      font-size: 11px;
+    }
+
+    .page-choice-list {
+      gap: 7px;
+    }
+
+    .page-choice {
+      min-height: 0;
+      padding: 10px;
+      border-radius: 14px;
+      gap: 7px;
+      border-color: var(--rbac-line);
+      background: #fffefa;
+      box-shadow: none;
+    }
+
+    .page-choice:hover {
+      border-color: rgba(25, 98, 74, 0.35);
+      box-shadow: 0 10px 18px rgba(35, 45, 39, 0.06);
+    }
+
+    .page-choice.active {
+      background: #f1f8ef;
+      border-color: var(--rbac-green);
+      box-shadow: inset 0 0 0 1px rgba(25, 98, 74, 0.08), 0 12px 22px rgba(25, 98, 74, 0.11);
+    }
+
+    .page-choice .material-icons {
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      font-size: 16px;
+      background: linear-gradient(135deg, #53665d, #263a32);
+    }
+
+    .page-choice.clients .material-icons,
+    .page-card-icon.clients { background: linear-gradient(135deg, #2362a8, #153d68); }
+    .page-choice.products .material-icons,
+    .page-card-icon.products { background: linear-gradient(135deg, #8a5a1f, #d89124); }
+    .page-choice.orders .material-icons,
+    .page-card-icon.orders { background: linear-gradient(135deg, #b9472e, #81301f); }
+    .page-choice.buying-list .material-icons,
+    .page-card-icon.buying-list { background: linear-gradient(135deg, #74512b, #a97439); }
+    .page-choice.arrivals .material-icons,
+    .page-card-icon.arrivals { background: linear-gradient(135deg, #19624a, #0d3e30); }
+    .page-choice.shipping .material-icons,
+    .page-card-icon.shipping { background: linear-gradient(135deg, #255f6f, #123842); }
+    .page-choice.shipping-ledger .material-icons,
+    .page-card-icon.shipping-ledger { background: linear-gradient(135deg, #374151, #111827); }
+    .page-choice.stock-sales .material-icons,
+    .page-card-icon.stock-sales { background: linear-gradient(135deg, #a0441d, #6f2e13); }
+    .page-choice.batches .material-icons,
+    .page-card-icon.batches { background: linear-gradient(135deg, #55523b, #2f2c1e); }
+    .page-choice.roles .material-icons,
+    .page-card-icon.roles { background: linear-gradient(135deg, #4b5d75, #263447); }
+
+    .page-choice-copy {
+      min-width: 0;
+    }
+
+    .page-choice strong {
+      font-size: 13px;
+      line-height: 1.15;
+    }
+
+    .page-choice small {
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      font-size: 10.5px;
+      line-height: 1.35;
+    }
+
+    .page-choice-state {
+      padding: 4px 7px;
+      border-radius: 999px;
+      background: #edf6ef;
+      color: var(--rbac-green);
+      font-size: 9px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .page-choice-state.off {
+      background: #fff1e8;
+      color: var(--rbac-red);
+    }
+
+    .page-choice-meta {
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .action-builder-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .action-count-pill {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      background: #10201b;
+      color: #fffefa;
+      flex-shrink: 0;
+      box-shadow: 0 10px 20px rgba(16, 32, 27, 0.16);
+    }
+
+    .action-count-pill strong {
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .action-count-pill span {
+      font-size: 11px;
+      opacity: 0.76;
+    }
+
+    .page-access-card {
+      padding: 12px;
+      border-radius: 16px;
+      align-items: center;
+      border-color: var(--rbac-line);
+      background:
+        linear-gradient(135deg, rgba(255, 254, 250, 0.98), rgba(243, 240, 231, 0.95));
+    }
+
+    .page-card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+    }
+
+    .page-card-title h3 {
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .page-card-title p {
+      max-width: 520px;
+      font-size: 11px;
+    }
+
+    .page-toolbar {
+      margin: -2px 0 0;
+      gap: 6px;
+    }
+
+    .page-toolbar .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 11px;
+    }
+
+    .page-toolbar .material-icons {
+      font-size: 14px;
+    }
+
+    .action-group {
+      gap: 7px;
+    }
+
+    .action-group-label {
+      font-size: 9.5px;
+      color: #7a8078;
+    }
+
+    .action-list {
+      gap: 7px;
+    }
+
+    .action-row {
+      padding: 10px 12px;
+      border-radius: 14px;
+      border-color: var(--rbac-line);
+      background: #fffefa;
+    }
+
+    .action-row:hover:not(:disabled) {
+      border-color: rgba(25, 98, 74, 0.35);
+      background: #f8fbf4;
+    }
+
+    .action-row.active {
+      border-color: var(--rbac-green);
+      background: #edf6ef;
+      box-shadow: inset 0 0 0 1px rgba(25, 98, 74, 0.08);
+    }
+
+    .action-row-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      font-size: 16px;
+      background: #f0eee5;
+      color: #6a7168;
+    }
+
+    .action-row.active .action-row-icon {
+      background: rgba(25, 98, 74, 0.12);
+      color: var(--rbac-green);
+    }
+
+    .action-row-copy strong {
+      font-size: 12.5px;
+      line-height: 1.2;
+    }
+
+    .action-row-copy small {
+      margin-top: 2px;
+      font-size: 10.5px;
+    }
+
+    .action-row-state {
+      padding: 5px 8px;
+      font-size: 9px;
+      background: #f3f0e7;
+      border-color: #e2d9c8;
+    }
+
+    .action-row-state.allowed {
+      background: #dff2e5;
+      border-color: #9bd7b0;
+      color: var(--rbac-green);
+    }
+
+    .page-summary {
+      padding: 12px;
+      border-radius: 14px;
+      background: #fffefa;
+      border-color: #d9d2c3;
+    }
+
+    .page-summary-head {
+      margin-bottom: 8px;
+    }
+
+    .summary-chip {
+      padding: 6px 8px;
+      background: #edf6ef;
+      color: var(--rbac-green);
+      font-size: 11px;
+    }
+
+    .page-note {
+      margin-top: 0;
+      border-radius: 12px;
+    }
+
     @media (max-width: 900px) {
       .roles-hero,
       .setup-overview,
@@ -1639,25 +2063,27 @@ export class RolesComponent implements OnInit {
     { key: 'delete', label: 'Delete Product', description: 'Delete catalog products.', icon: 'delete_forever' }
   ];
 
-  readonly productBatchActions: ProductActionCard[] = [
-    { key: 'canAddBatch', label: 'Add New Batch', description: 'Create new batches from the Products page.', icon: 'create_new_folder' },
-    { key: 'canAddProductToBatch', label: 'Add Products to Batch', description: 'Attach products to a selected batch.', icon: 'playlist_add' },
-    { key: 'canEditBatchProduct', label: 'Edit Batch Products', description: 'Edit products already attached to a batch.', icon: 'edit_note' },
-    { key: 'canDeleteProductFromBatch', label: 'Delete Batch Product', description: 'Remove a product from a batch.', icon: 'remove_shopping_cart' }
-  ];
-
-  readonly ordersActions: OrdersActionCard[] = [
-    { key: 'canCreateOrder', label: 'Add New Order', description: 'Create new orders from the Orders page.', icon: 'add_shopping_cart' },
-    { key: 'canAddItemsToOrder', label: 'Edit Order', description: 'Add or change items on an existing order.', icon: 'edit_note' },
-    { key: 'canDeleteOrder', label: 'Delete Order', description: 'Delete orders from an open batch.', icon: 'delete' },
-    { key: 'canCloseBatch', label: 'Close Batch', description: 'Close an order batch when ordering is complete.', icon: 'lock' },
-    { key: 'canReopenBatch', label: 'Reopen Batch', description: 'Reopen a previously closed batch.', icon: 'lock_open' }
-  ];
+  readonly productBatchActions: ProductActionCard[] = [...PRODUCT_OPERATIONS];
+  readonly ordersActions: OrdersActionCard[] = [...ORDERS_OPERATIONS];
+  readonly buyingListActions: ConfigActionCard[] = [...BUYING_LIST_OPERATIONS];
+  readonly arrivalsActions: ConfigActionCard[] = [...ARRIVALS_OPERATIONS];
+  readonly shippingActions: ConfigActionCard[] = [...SHIPPING_OPERATIONS];
+  readonly shippingLedgerActions: ConfigActionCard[] = [...SHIPPING_LEDGER_OPERATIONS];
+  readonly stockSalesActions: ConfigActionCard[] = [...STOCK_SALES_OPERATIONS];
+  readonly manageBatchesActions: ConfigActionCard[] = [...MANAGE_BATCHES_OPERATIONS];
+  readonly rolesActions: ConfigActionCard[] = [...ROLES_OPERATIONS];
 
   readonly managedPages: ManagedPageTab[] = [
-    { key: 'clients', label: 'Clients', description: 'Manage client actions', icon: 'people', accentClass: 'clients' },
-    { key: 'products', label: 'Products', description: 'Manage product and batch actions', icon: 'inventory_2', accentClass: 'products' },
-    { key: 'orders', label: 'Orders', description: 'Manage order and batch controls', icon: 'shopping_cart', accentClass: 'orders' }
+    { key: 'clients', resource: 'clients', label: 'Clients', description: 'Manage client actions', icon: 'people', accentClass: 'clients' },
+    { key: 'products', resource: 'products', label: 'Products', description: 'Manage product and batch actions', icon: 'inventory_2', accentClass: 'products' },
+    { key: 'orders', resource: 'orders', label: 'Orders', description: 'Manage order and batch controls', icon: 'shopping_cart', accentClass: 'orders' },
+    { key: 'buying_list', resource: 'buying_list', label: 'Buying List', description: 'Manage purchasing workflow actions', icon: 'shopping_bag', accentClass: 'buying-list' },
+    { key: 'arrivals', resource: 'arrivals', label: 'Arrivals', description: 'Manage receiving and shipping handoff actions', icon: 'inventory', accentClass: 'arrivals' },
+    { key: 'shipping', resource: 'shipping', label: 'Shipping', description: 'Manage shipping item values', icon: 'paid', accentClass: 'shipping' },
+    { key: 'shipping_ledger', resource: 'shipping', label: 'Shipping Ledger', description: 'Manage shipping payments and delivery handoff', icon: 'local_shipping', accentClass: 'shipping-ledger' },
+    { key: 'stock_sales', resource: 'stock_sales', label: 'Stock Sales', description: 'Manage stock sale actions', icon: 'storefront', accentClass: 'stock-sales' },
+    { key: 'batches', resource: 'batches', label: 'Manage Batches', description: 'Manage destructive batch admin actions', icon: 'inventory_2', accentClass: 'batches' },
+    { key: 'roles', resource: 'roles', label: 'Roles', description: 'Manage role setup actions', icon: 'admin_panel_settings', accentClass: 'roles' }
   ];
 
   constructor(public authService: AuthService) {}
@@ -1704,75 +2130,62 @@ export class RolesComponent implements OnInit {
     return this.managedPages.find(item => item.key === page) || this.managedPages[0];
   }
 
+  getFocusedResource(): AppResource {
+    return this.getManagedPageMeta(this.focusedPage).resource;
+  }
+
   getEnabledActionCount(page: ManagedPermissionPage): number {
-    if (page === 'clients') {
-      let count = 0;
-      if (this.hasPermission('clients', 'create')) count += 1;
-      if (this.hasPermission('clients', 'edit')) count += 1;
-      if (this.hasPermission('clients', 'delete')) count += 1;
-      return count;
-    }
-
-    if (page === 'products') {
-      let count = 0;
-      if (this.hasPermission('products', 'create')) count += 1;
-      if (this.hasPermission('products', 'edit')) count += 1;
-      if (this.hasPermission('products', 'delete')) count += 1;
-      if (this.productConfig.canAddBatch) count += 1;
-      if (this.productConfig.canAddProductToBatch) count += 1;
-      if (this.productConfig.canEditBatchProduct) count += 1;
-      if (this.productConfig.canDeleteProductFromBatch) count += 1;
-      return count;
-    }
-
-    let count = 0;
-    if (this.ordersConfig.canCreateOrder) count += 1;
-    if (this.ordersConfig.canAddItemsToOrder) count += 1;
-    if (this.ordersConfig.canDeleteOrder) count += 1;
-    if (this.ordersConfig.canCloseBatch) count += 1;
-    if (this.ordersConfig.canReopenBatch) count += 1;
-    return count;
+    return this.getActionGroups(page).reduce(
+      (count, group) => count + group.actions.filter(action => this.isActionEnabled(group, action.key)).length,
+      0
+    );
   }
 
   getTotalActionCount(page: ManagedPermissionPage): number {
-    if (page === 'clients') return this.clientActions.length;
-    if (page === 'products') return this.productCatalogActions.length + this.productBatchActions.length;
-    return this.ordersActions.length;
+    return this.getActionGroups(page).reduce((count, group) => count + group.actions.length, 0);
   }
 
   getEnabledActionLabels(page: ManagedPermissionPage): string[] {
-    if (page === 'clients') {
-      return this.clientActions
-        .filter(action => this.hasPermission('clients', action.key))
-        .map(action => action.label);
-    }
-
-    if (page === 'products') {
-      return [
-        ...this.productCatalogActions
-          .filter(action => this.hasPermission('products', action.key))
-          .map(action => action.label),
-        ...this.productBatchActions
-          .filter(action => this.productConfig[action.key])
-          .map(action => action.label)
-      ];
-    }
-
-    return this.ordersActions
-      .filter(action => this.ordersConfig[action.key])
-      .map(action => action.label);
+    return this.getActionGroups(page).flatMap(group =>
+      group.actions
+        .filter(action => this.isActionEnabled(group, action.key))
+        .map(action => action.label)
+    );
   }
 
   getManagedPageDescription(page: ManagedPermissionPage): string {
-    if (page === 'clients') {
-      return 'Control who can add, edit, and delete client records.';
-    }
+    const meta = this.getManagedPageMeta(page);
+    return meta.description;
+  }
 
-    if (page === 'products') {
-      return 'Manage product catalog work and batch product actions separately.';
+  getActionGroups(page: ManagedPermissionPage): PermissionActionGroup[] {
+    switch (page) {
+      case 'clients':
+        return [{ label: 'Client management', type: 'crud', resource: 'clients', actions: this.clientActions }];
+      case 'products':
+        return [
+          { label: 'Product catalog', type: 'crud', resource: 'products', actions: this.productCatalogActions },
+          { label: 'Batch work inside products', type: 'config', resource: 'products', configKey: 'productConfig', actions: this.productBatchActions }
+        ];
+      case 'orders':
+        return [{ label: 'Order handling', type: 'config', resource: 'orders', configKey: 'ordersConfig', actions: this.ordersActions }];
+      case 'buying_list':
+        return [{ label: 'Buying list workflow', type: 'config', resource: 'buying_list', configKey: 'buyingListConfig', actions: this.buyingListActions }];
+      case 'arrivals':
+        return [{ label: 'Arrivals workflow', type: 'config', resource: 'arrivals', configKey: 'arrivalsConfig', actions: this.arrivalsActions }];
+      case 'shipping':
+        return [{ label: 'Shipping setup', type: 'config', resource: 'shipping', configKey: 'shippingConfig', actions: this.shippingActions }];
+      case 'shipping_ledger':
+        return [{ label: 'Shipping ledger workflow', type: 'config', resource: 'shipping', configKey: 'shippingLedgerConfig', actions: this.shippingLedgerActions }];
+      case 'stock_sales':
+        return [{ label: 'Stock sales workflow', type: 'config', resource: 'stock_sales', configKey: 'stockSalesConfig', actions: this.stockSalesActions }];
+      case 'batches':
+        return [{ label: 'Batch management', type: 'config', resource: 'batches', configKey: 'manageBatchesConfig', actions: this.manageBatchesActions }];
+      case 'roles':
+        return [{ label: 'Role management', type: 'config', resource: 'roles', configKey: 'rolesConfig', actions: this.rolesActions }];
+      default:
+        return [];
     }
-
-    return 'Control order creation, edits, deletion, and batch closing actions.';
   }
 
   buildMatrix(role: Role) {
@@ -1853,6 +2266,49 @@ export class RolesComponent implements OnInit {
     return this.permissionMatrix[resource]?.[action] ?? false;
   }
 
+  isActionEnabled(group: PermissionActionGroup, actionKey: string): boolean {
+    if (group.type === 'crud') {
+      return this.hasPermission(group.resource, actionKey as CrudAction);
+    }
+
+    const config = group.configKey ? this.getConfig(group.configKey) : null;
+    return !!config?.[actionKey];
+  }
+
+  toggleAction(group: PermissionActionGroup, actionKey: string) {
+    if (group.type === 'crud') {
+      this.toggleCrudPermission(group.resource, actionKey as CrudAction);
+      return;
+    }
+
+    this.toggleConfigPermission(group.resource, group.configKey!, actionKey);
+  }
+
+  enableAllPageActions(page: ManagedPermissionPage) {
+    for (const group of this.getActionGroups(page)) {
+      this.ensureMatrixRow(group.resource);
+      this.permissionMatrix[group.resource]['view'] = true;
+
+      for (const action of group.actions) {
+        if (group.type === 'crud') {
+          this.permissionMatrix[group.resource][action.key] = true;
+        } else if (group.configKey) {
+          this.getConfig(group.configKey)[action.key] = true;
+        }
+      }
+    }
+
+    this.matrixDirty = true;
+  }
+
+  clearPageActions(page: ManagedPermissionPage) {
+    for (const group of this.getActionGroups(page)) {
+      this.clearGroupActions(group);
+    }
+
+    this.matrixDirty = true;
+  }
+
   togglePageAccess(resource: AppResource) {
     this.ensureMatrixRow(resource);
     const enabled = !this.permissionMatrix[resource]['view'];
@@ -1862,21 +2318,7 @@ export class RolesComponent implements OnInit {
       this.permissionMatrix[resource]['create'] = false;
       this.permissionMatrix[resource]['edit'] = false;
       this.permissionMatrix[resource]['delete'] = false;
-
-      if (resource === 'products') {
-        this.productConfig.canAddBatch = false;
-        this.productConfig.canAddProductToBatch = false;
-        this.productConfig.canEditBatchProduct = false;
-        this.productConfig.canDeleteProductFromBatch = false;
-      }
-
-      if (resource === 'orders') {
-        this.ordersConfig.canCreateOrder = false;
-        this.ordersConfig.canAddItemsToOrder = false;
-        this.ordersConfig.canDeleteOrder = false;
-        this.ordersConfig.canCloseBatch = false;
-        this.ordersConfig.canReopenBatch = false;
-      }
+      this.clearResourceConfigActions(resource);
     }
 
     this.matrixDirty = true;
@@ -1892,84 +2334,13 @@ export class RolesComponent implements OnInit {
     this.matrixDirty = true;
   }
 
-  enableAllClientActions() {
-    this.ensureMatrixRow('clients');
-    this.permissionMatrix['clients']['view'] = true;
-    this.permissionMatrix['clients']['create'] = true;
-    this.permissionMatrix['clients']['edit'] = true;
-    this.permissionMatrix['clients']['delete'] = true;
-    this.matrixDirty = true;
-  }
-
-  clearClientActions() {
-    this.ensureMatrixRow('clients');
-    this.permissionMatrix['clients']['create'] = false;
-    this.permissionMatrix['clients']['edit'] = false;
-    this.permissionMatrix['clients']['delete'] = false;
-    this.matrixDirty = true;
-  }
-
-  toggleProductOperation(key: keyof ProductPermissionConfig) {
-    this.ensureMatrixRow('products');
-    this.productConfig[key] = !this.productConfig[key];
-    if (this.productConfig[key]) {
-      this.permissionMatrix['products']['view'] = true;
+  toggleConfigPermission(resource: AppResource, configKey: ConfigKey, actionKey: string) {
+    this.ensureMatrixRow(resource);
+    const config = this.getConfig(configKey);
+    config[actionKey] = !config[actionKey];
+    if (config[actionKey]) {
+      this.permissionMatrix[resource]['view'] = true;
     }
-    this.matrixDirty = true;
-  }
-
-  enableAllProductActions() {
-    this.ensureMatrixRow('products');
-    this.permissionMatrix['products']['view'] = true;
-    this.permissionMatrix['products']['create'] = true;
-    this.permissionMatrix['products']['edit'] = true;
-    this.permissionMatrix['products']['delete'] = true;
-    this.productConfig.canAddBatch = true;
-    this.productConfig.canAddProductToBatch = true;
-    this.productConfig.canEditBatchProduct = true;
-    this.productConfig.canDeleteProductFromBatch = true;
-    this.matrixDirty = true;
-  }
-
-  clearProductActions() {
-    this.ensureMatrixRow('products');
-    this.permissionMatrix['products']['create'] = false;
-    this.permissionMatrix['products']['edit'] = false;
-    this.permissionMatrix['products']['delete'] = false;
-    this.productConfig.canAddBatch = false;
-    this.productConfig.canAddProductToBatch = false;
-    this.productConfig.canEditBatchProduct = false;
-    this.productConfig.canDeleteProductFromBatch = false;
-    this.matrixDirty = true;
-  }
-
-  toggleOrdersOperation(key: keyof OrdersPermissionConfig) {
-    this.ensureMatrixRow('orders');
-    this.ordersConfig[key] = !this.ordersConfig[key];
-    if (this.ordersConfig[key]) {
-      this.permissionMatrix['orders']['view'] = true;
-    }
-    this.matrixDirty = true;
-  }
-
-  enableAllOrderActions() {
-    this.ensureMatrixRow('orders');
-    this.permissionMatrix['orders']['view'] = true;
-    this.ordersConfig.canCreateOrder = true;
-    this.ordersConfig.canAddItemsToOrder = true;
-    this.ordersConfig.canDeleteOrder = true;
-    this.ordersConfig.canCloseBatch = true;
-    this.ordersConfig.canReopenBatch = true;
-    this.matrixDirty = true;
-  }
-
-  clearOrderActions() {
-    this.ensureMatrixRow('orders');
-    this.ordersConfig.canCreateOrder = false;
-    this.ordersConfig.canAddItemsToOrder = false;
-    this.ordersConfig.canDeleteOrder = false;
-    this.ordersConfig.canCloseBatch = false;
-    this.ordersConfig.canReopenBatch = false;
     this.matrixDirty = true;
   }
 
@@ -2148,6 +2519,36 @@ export class RolesComponent implements OnInit {
         edit: false,
         delete: false
       };
+    }
+  }
+
+  private getConfig(configKey: ConfigKey): Record<string, boolean> {
+    return this[configKey] as unknown as Record<string, boolean>;
+  }
+
+  private clearGroupActions(group: PermissionActionGroup) {
+    if (group.type === 'crud') {
+      this.ensureMatrixRow(group.resource);
+      for (const action of group.actions) {
+        this.permissionMatrix[group.resource][action.key] = false;
+      }
+      return;
+    }
+
+    if (!group.configKey) return;
+    const config = this.getConfig(group.configKey);
+    for (const action of group.actions) {
+      config[action.key] = false;
+    }
+  }
+
+  private clearResourceConfigActions(resource: AppResource) {
+    const groups = this.managedPages
+      .flatMap(page => this.getActionGroups(page.key))
+      .filter(group => group.resource === resource);
+
+    for (const group of groups) {
+      this.clearGroupActions(group);
     }
   }
 

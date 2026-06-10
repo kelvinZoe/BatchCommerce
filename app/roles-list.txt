@@ -7,11 +7,11 @@ Orders Page : {
 }
 
 Buying List Page : {
-    roles: [edit quantity ordered, change status, allowing to edit quantity ordered after status changed to "arrived", adding new item to buying list, sending items to arrivals]
+    roles: [edit quantity ordered, change status, allowing to edit quantity ordered after status changed to "arrived", adding new item to buying list, sending items to arrivals, editing an item after editing an item after being sent]
 }
 
 Arrivals List Page : {
-    roles: [changing recieved value, confirming recieved items, sending to shipping, ]
+    roles: [changing recieved value, confirming recieved items, sending to shipping, Reversing an item back to arivals ]
 }
 
 Shipping Page : {
@@ -23,17 +23,13 @@ Shipping ledger : {
 }
 
 Stock Sales : {
-    roles: [deleting a sale, editing a sale, adding a new sale]
+    roles: [deleting a sale, editing a sale, adding a new sale, closing a sale]
 }   
 Manage Bacthes page: {
-    roles: [deleting a batch]
+    roles: [deleting a batch, renaming a batch]
 }
 
 Roles page: {
     roles: [editing a role, adding new role, deleting role]
 }
-
-Complete the AuthService method signatures
-Build the Roles component UI with all 9 operation panels
-Add permission checks to specific page components
-Run the database migration
+    

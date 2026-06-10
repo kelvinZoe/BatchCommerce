@@ -1,3 +1,7 @@
+NOTE: This file is historical/source workflow material from early product discovery.
+For the current canonical architecture, naming, and implementation rules, see ARCHITECTURE.md.
+In particular: the UI may say Clients, database/service internals use customers, batches are stored in batches, and new relationships should prefer batch_id over batch_name.
+
 This sysytem is for a shop owners that do preorders buisness. What I mean is they work as a middidle men.
 They have the means of ordering things from china and because of that they posts items online for her buyers
 to order and they will buy all of them and send it back to them when the orders arrive.
@@ -60,4 +64,4 @@ UI GUIDE.
 Generate an entire migration that would suit this table, you can remove all the data added if neccessary. Its a test environment.
 
 
-I decided to test the flow a little bit and I realised something. When adding a new product to a batch, and I create it from existing, the inventory section of that modal should show meif there are some in stock or not. The first time a product is added, the user will fill and type if there are some in stock. After people order it and she buys and confirms that all has been bought, the amount that she bought will be added to the stock for that product. If she makes delivieries, it will be deducted from that stock. 
+I decided to test the flow a little bit and I realised something. When adding a new product to a batch, and I create it from existing, the inventory section of that modal should show meif there are some in stock or not. The first time a product is added, the user will fill and type if there are some in stock. After people order it and she buys and confirms that all has been bought, the amount that she bought will be added to the stock for that product. If she makes delivieries, it will be deducted from that stock.

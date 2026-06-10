@@ -2,6 +2,7 @@ import { Component, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ExcelService, ImportResult } from '../../services/excel.service';
+import * as XLSX from 'xlsx';
 
 type DataType = 'products' | 'clients' | 'buying_list' | 'items_sorting' | 'deliveries' | 'skip';
 
@@ -404,7 +405,7 @@ interface SheetMapping {
 export class ImportComponent {
   isDragOver = false;
   selectedFile: File | null = null;
-  workbook: any = null;
+  workbook: XLSX.WorkBook | null = null;
   sheetMappings: SheetMapping[] = [];
   batchName = '';
   importing = false;
@@ -460,18 +461,18 @@ export class ImportComponent {
     this.selectedFile = file;
 
     const buffer = await file.arrayBuffer();
-    this.workbook = await this.excelService.parseExcelFromBuffer(buffer);
+    const workbook = await this.excelService.parseExcelFromBuffer(buffer);
+    this.workbook = workbook;
 
     // Build sheet mappings with auto-detection
-    const names = this.excelService.getSheetNames(this.workbook);
-    this.sheetMappings = [];
-    for (const name of names) {
-      const rawData = await this.excelService.getSheetRawData(this.workbook, name);
+    this.sheetMappings = workbook.SheetNames.map((name: string) => {
+      const sheet = workbook.Sheets[name];
+      const rawData = XLSX.utils.sheet_to_json<any>(sheet, { header: 1 });
       const headers = (rawData[0] || []).map((h: any) => String(h || '').trim());
       const rowCount = Math.max(0, rawData.length - 1);
       const dataType = this.autoDetectType(name, headers);
-      this.sheetMappings.push({ name, dataType, rowCount, headers });
-    }
+      return { name, dataType, rowCount, headers };
+    });
   }
 
   /** Auto-detect data type from sheet name + headers */

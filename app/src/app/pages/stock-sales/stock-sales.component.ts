@@ -97,6 +97,16 @@ interface CartItem {
                   <button class="ss-icon-btn" title="View receipt" (click)="viewReceipt(s)">
                     <span class="material-icons">receipt_long</span>
                   </button>
+                  <button class="ss-icon-btn" title="Edit sale"
+                          *ngIf="authService.canPerformStockSalesOperation('canEditSale')"
+                          (click)="openEditSale(s)">
+                    <span class="material-icons">edit</span>
+                  </button>
+                  <button class="ss-icon-btn ss-icon-btn-danger" title="Delete sale"
+                          *ngIf="authService.canPerformStockSalesOperation('canDeleteSale')"
+                          (click)="deleteSale(s)">
+                    <span class="material-icons">delete</span>
+                  </button>
                 </td>
               </tr>
               <tr *ngIf="sales.length === 0">
@@ -130,8 +140,8 @@ interface CartItem {
           <div class="ss-modal-header">
             <div class="ss-modal-header-icon"><span class="material-icons">add_shopping_cart</span></div>
             <div class="ss-modal-header-text">
-              <div class="ss-modal-title">New Stock Sale</div>
-              <div class="ss-modal-sub">Select products and record a sale</div>
+              <div class="ss-modal-title">{{ editingSale ? 'Edit Stock Sale' : 'New Stock Sale' }}</div>
+              <div class="ss-modal-sub">{{ editingSale ? 'Update products and customer details' : 'Select products and record a sale' }}</div>
             </div>
             <button class="ss-modal-close" (click)="closeModal()"><span class="material-icons">close</span></button>
           </div>
@@ -330,7 +340,7 @@ interface CartItem {
                     [disabled]="cart.length === 0 || saving"
                     (click)="recordSale()">
               <span *ngIf="saving" class="ss-spinner ss-spinner-sm"></span>
-              {{ saving ? 'Recording…' : 'Record Sale' }}
+              {{ saving ? 'Saving…' : (editingSale ? 'Save Sale' : 'Record Sale') }}
             </button>
           </div>
 
@@ -441,6 +451,7 @@ interface CartItem {
     .ss-date-cell   { color:#64748b; white-space:nowrap; }
     .ss-icon-btn    { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:7px; border:1px solid #e2e8f0; background:#f8fafc; cursor:pointer; color:#64748b; transition:all 0.13s; }
     .ss-icon-btn:hover { background:#e0e7ff; border-color:#a5b4fc; color:var(--primary-color,#6366f1); }
+    .ss-icon-btn-danger:hover { background:#fee2e2; border-color:#fecaca; color:#dc2626; }
 
     .ss-empty-row   { text-align:center; padding:40px 16px !important; color:#94a3b8; }
     .ss-empty-row .material-icons { display:block; font-size:40px; margin-bottom:8px; }
@@ -584,6 +595,7 @@ export class StockSalesComponent implements OnInit {
   receiptCopied = false;
 
   viewingReceiptSale: StockSale | null = null;
+  editingSale: StockSale | null = null;
   detailReceiptCopied = false;
 
   constructor(
@@ -643,14 +655,67 @@ export class StockSalesComponent implements OnInit {
   // ── Modal ────────────────────────────────────────────────
 
   openNewSale() {
+    if (!this.authService.canPerformStockSalesOperation('canAddSale')) return;
     this.resetModal();
     this.showModal = true;
     this.loadAvailableProducts();
     this.loadClients();
   }
 
+  openEditSale(sale: StockSale) {
+    if (!sale.id || !this.authService.canPerformStockSalesOperation('canEditSale')) return;
+    this.resetModal();
+    this.editingSale = sale;
+    this.showModal = true;
+    this.loadClients();
+    this.loadingProducts = true;
+
+    this.db.getStockSaleDetail(sale.id).subscribe(detail => {
+      if (!detail) {
+        this.loadingProducts = false;
+        alert('Unable to load sale details.');
+        return;
+      }
+
+      this.db.getStockAvailableProducts().subscribe(products => {
+        const productsById = new Map<number, StockProduct>();
+        products.forEach(product => productsById.set(product.id, product));
+
+        this.saleChannel = detail.saleChannel || 'walk_in';
+        this.customerMode = detail.customerId ? 'existing' : 'walkin';
+        this.selectedClientId = detail.customerId || null;
+        this.cart = (detail.items || []).map(item => {
+          const currentProduct = productsById.get(item.productId);
+          const product: StockProduct = currentProduct
+            ? { ...currentProduct, stock: Number(currentProduct.stock || 0) + Number(item.quantity || 0) }
+            : {
+                id: item.productId,
+                name: item.productName || 'Product',
+                stock: Number(item.quantity || 0),
+                stockPrice: Number(item.unitPrice || 0),
+                stockDiscountMinQty: 0,
+                stockDiscountPrice: 0,
+                latestBatchProductId: item.batchProductId || null
+              };
+
+          productsById.set(product.id, product);
+          return {
+            product,
+            qty: Number(item.quantity || 0),
+            unitPrice: Number(item.unitPrice || 0),
+            subtotal: Number(item.subtotal || 0)
+          };
+        });
+
+        this.availableProducts = Array.from(productsById.values()).sort((a, b) => a.name.localeCompare(b.name));
+        this.loadingProducts = false;
+      });
+    });
+  }
+
   closeModal() {
     this.showModal = false;
+    this.editingSale = null;
   }
 
   onOverlayClick(e: MouseEvent) {
@@ -673,6 +738,7 @@ export class StockSalesComponent implements OnInit {
     this.cart             = [];
     this.receiptCopied    = false;
     this.saving           = false;
+    this.editingSale      = null;
   }
 
   loadAvailableProducts() {
@@ -783,6 +849,8 @@ export class StockSalesComponent implements OnInit {
 
   recordSale() {
     if (this.cart.length === 0 || this.saving) return;
+    if (this.editingSale && !this.authService.canPerformStockSalesOperation('canEditSale')) return;
+    if (!this.editingSale && !this.authService.canPerformStockSalesOperation('canAddSale')) return;
     this.saving = true;
 
     // Resolve customer
@@ -808,7 +876,11 @@ export class StockSalesComponent implements OnInit {
       subtotal:       i.subtotal
     }));
 
-    this.db.createStockSale(customerId, customerName, this.saleChannel, this.cartTotal, items)
+    const request: any = this.editingSale?.id
+      ? this.db.updateStockSale(this.editingSale.id, customerId, customerName, this.saleChannel, this.cartTotal, items)
+      : this.db.createStockSale(customerId, customerName, this.saleChannel, this.cartTotal, items);
+
+    request
       .subscribe({
         next: () => {
           this.saving = false;
@@ -817,12 +889,25 @@ export class StockSalesComponent implements OnInit {
           this.loadSales();
           this.loadAvailableProducts(); // refresh stock counts
         },
-        error: (err) => {
+        error: (err: any) => {
           this.saving = false;
           const message = err?.message || 'Failed to record sale and update stock. Please try again.';
           alert(message);
         }
       });
+  }
+
+  deleteSale(sale: StockSale) {
+    if (!sale.id || !this.authService.canPerformStockSalesOperation('canDeleteSale')) return;
+    if (!confirm(`Delete stock sale #SS-${sale.id}? Product stock will be restored.`)) return;
+    this.db.deleteStockSale(sale.id).subscribe(ok => {
+      if (!ok) {
+        alert('Failed to delete stock sale.');
+        return;
+      }
+      this.loadSales();
+      this.loadAvailableProducts();
+    });
   }
 
   // ── Receipt ──────────────────────────────────────────────

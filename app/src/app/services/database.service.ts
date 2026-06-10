@@ -1,9 +1,10 @@
 import { Injectable } from '@angular/core';
-import { Observable, of, Subject, from as rxFrom } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { SupabaseService } from './supabase.service';
-import { environment } from '../../environments/environment';
 import { AuthService } from './auth.service';
+import { ClientDataService } from './client-data.service';
+import { from, rowsToCamel, SupabaseDataAccessService, toCamel } from './supabase-data-access.service';
 import {
   Product,
   ProductCatalog,
@@ -31,55 +32,32 @@ import {
   OrderItemAdjustment
 } from '../models';
 
-// ── snake_case ↔ camelCase helpers ─────────────────────
-function toCamel(obj: Record<string, any>): Record<string, any> {
-  const out: Record<string, any> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    const ck = k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-    out[ck] = v;
-  }
-  return out;
-}
-
-function rowsToCamel<T>(rows: any[]): T[] {
-  return rows.map(r => toCamel(r) as T);
-}
-
-const from = <T = any>(input: any): Observable<T> => rxFrom(input as any) as Observable<T>;
-
 @Injectable({
   providedIn: 'root'
 })
-export class DatabaseService {
-  private get sb() { return this.supa.client; }
-  private get activeShopId(): string | null {
-    return this.authService.currentUser?.shopId || null;
-  }
-  private get currentAppUserId(): number | null {
-    return this.authService.currentUser?.id || null;
+export class DatabaseService extends SupabaseDataAccessService {
+  private getPriceForQuantity(basePrice: number, discountMinQty: number, discountPrice: number, quantity: number): number {
+    const normalizedBasePrice = Number(basePrice || 0);
+    const normalizedDiscountMinQty = Number(discountMinQty || 0);
+    const normalizedDiscountPrice = Number(discountPrice || 0);
+    const normalizedQuantity = Number(quantity || 0);
+
+    return normalizedDiscountMinQty > 0 && normalizedDiscountPrice > 0 && normalizedQuantity >= normalizedDiscountMinQty
+      ? normalizedDiscountPrice
+      : normalizedBasePrice;
   }
 
-  private scopeShopQuery(query: any) {
-    const shopId = this.activeShopId;
-    if (!shopId || !query || typeof query.eq !== 'function') return query;
-    return query.eq('shop_id', shopId);
-  }
-
-  private scopeTable(table: string, columns = '*', options?: any) {
-    return this.scopeShopQuery(this.sb.from(table).select(columns, options));
-  }
-
-  private isMissingColumnOrTableError(error: any): boolean {
-    const code = error?.code;
-    // 42703 = unknown column, 42P01 = unknown table, PGRST204/205 = schema cache miss
-    return code === '42703' || code === '42P01' || code === 'PGRST204' || code === 'PGRST205';
-  }
-  
   // Notification subject for when batches are deleted
   private batchDeletedSource = new Subject<string>();
   public batchDeleted$ = this.batchDeletedSource.asObservable();
 
-  constructor(private supa: SupabaseService, private authService: AuthService) {}
+  constructor(
+    supa: SupabaseService,
+    authService: AuthService,
+    private clients: ClientDataService
+  ) {
+    super(supa, authService);
+  }
 
   // =====================
   // Products
@@ -429,77 +407,152 @@ export class DatabaseService {
     ).pipe(map(({ error }) => !error));
   }
 
-  // Preview what orders will be affected by a price change
-  previewPriceChange(batchProductId: number, newPrice: number): Observable<any> {
-    return from(this.doPreviewPriceChange(batchProductId, newPrice));
+  // Preview what orders and stock sales will be affected by a price/discount change
+  previewPriceChange(
+    batchProductId: number,
+    preorderPrice: number,
+    preorderDiscountMinQty: number,
+    preorderDiscountPrice: number,
+    stockPrice: number,
+    stockDiscountMinQty: number,
+    stockDiscountPrice: number
+  ): Observable<any> {
+    return from(this.doPreviewPriceChange(
+      batchProductId,
+      preorderPrice,
+      preorderDiscountMinQty,
+      preorderDiscountPrice,
+      stockPrice,
+      stockDiscountMinQty,
+      stockDiscountPrice
+    ));
   }
 
-  private async doPreviewPriceChange(batchProductId: number, newPrice: number): Promise<any> {
+  private async doPreviewPriceChange(
+    batchProductId: number,
+    newPreorderPrice: number,
+    newPreorderDiscountMinQty: number,
+    newPreorderDiscountPrice: number,
+    newStockPrice: number,
+    newStockDiscountMinQty: number,
+    newStockDiscountPrice: number
+  ): Promise<any> {
     try {
-      // Get batch product details
-      const { data: batchProduct, error: batchError } = await this.scopeShopQuery(this.sb
-        .from('batch_products')
-        .select('id, preorder_price, stock_price, product_id')
-      )
-        .eq('id', batchProductId)
-        .single();
-
-      if (batchError || !batchProduct) throw new Error('Batch product not found');
-
       // Get all order items using this batch product
-      const { data: orderItems, error: itemsError } = await this.sb
+      const { data: orderItems, error: itemsError } = await this.scopeShopQuery(this.sb
         .from('order_items')
-        .select('id, order_id, quantity, unit_price, product_id, order:orders(customer_id)')
+        .select('id, order_id, quantity, unit_price, subtotal')
+      )
         .eq('batch_product_id', batchProductId);
 
       if (itemsError) throw itemsError;
 
-      if (!orderItems || orderItems.length === 0) {
-        return {
-          currentPrice: batchProduct.preorder_price,
-          newPrice,
-          affectedOrderCount: 0,
-          affectedOrders: [],
-          totalCostChange: 0
-        };
+      // Get all stock sale items using this batch product
+      const { data: stockSaleItems, error: stockItemsError } = await this.scopeShopQuery(this.sb
+        .from('stock_sale_items')
+        .select('id, stock_sale_id, quantity, unit_price, subtotal')
+      )
+        .eq('batch_product_id', batchProductId);
+
+      if (stockItemsError) throw stockItemsError;
+
+      const affectedOrders: any[] = [];
+      let totalCostChange = 0;
+
+      // 1. Process preorder order items
+      if (orderItems && orderItems.length > 0) {
+        const scopedOrderItems = orderItems as any[];
+        const orderIds = [...new Set(scopedOrderItems.map((item: any) => item.order_id))];
+        const { data: orders } = await this.scopeShopQuery(this.sb
+          .from('orders')
+          .select('id, customer_id, customers(name)')
+        )
+          .in('id', orderIds);
+
+        const orderMap = new Map(((orders || []) as any[]).map((o: any) => [o.id, o]));
+
+        for (const item of scopedOrderItems) {
+          const order = orderMap.get(item.order_id);
+          const customers = order?.customers as any;
+          const customerName = (Array.isArray(customers) ? customers[0]?.name : customers?.name) || 'Unknown';
+
+          const currentPrice = Number(item.unit_price || 0);
+          const quantity = Number(item.quantity || 0);
+
+          const calculatedNewPrice = this.getPriceForQuantity(
+            newPreorderPrice,
+            newPreorderDiscountMinQty,
+            newPreorderDiscountPrice,
+            quantity
+          );
+
+          const oldTotal = Number(item.subtotal || (quantity * currentPrice));
+          const newTotal = quantity * calculatedNewPrice;
+          totalCostChange += (newTotal - oldTotal);
+
+          affectedOrders.push({
+            id: item.id,
+            orderId: item.order_id,
+            customerName,
+            quantity,
+            currentPrice,
+            newPrice: calculatedNewPrice,
+            oldTotal,
+            newTotal,
+            type: 'Preorder'
+          });
+        }
       }
 
-      // Get customer names for each order
-      const orderIds = [...new Set((orderItems as any[]).map(item => item.order_id))];
-      const { data: orders } = await this.sb
-        .from('orders')
-        .select('id, customer_id, customers(name)')
-        .in('id', orderIds);
+      // 2. Process stock sale items
+      if (stockSaleItems && stockSaleItems.length > 0) {
+        const scopedStockSaleItems = stockSaleItems as any[];
+        const saleIds = [...new Set(scopedStockSaleItems.map((item: any) => item.stock_sale_id))];
+        const { data: sales } = await this.scopeShopQuery(this.sb
+          .from('stock_sales')
+          .select('id, customer_name')
+        )
+          .in('id', saleIds);
 
-      const orderMap = new Map((orders || []).map(o => [o.id, o]));
+        const saleMap = new Map(((sales || []) as any[]).map((s: any) => [s.id, s]));
 
-      // Process affected orders
-      const affectedOrders = (orderItems as any[]).map((item: any) => {
-        const order = orderMap.get(item.order_id) as any;
-        const customers = order?.customers as any;
-        const customerName = (Array.isArray(customers) ? customers[0]?.name : customers?.name) || 'Unknown';
-        const currentPrice = item.unit_price;
-        const quantity = item.quantity;
+        for (const item of scopedStockSaleItems) {
+          const sale = saleMap.get(item.stock_sale_id);
+          const customerName = sale?.customer_name || 'Walk-in Customer';
 
-        return {
-          customerName,
-          quantity,
-          currentPrice,
-          newPrice,
-          oldTotal: quantity * currentPrice,
-          newTotal: quantity * newPrice
-        };
-      });
+          const currentPrice = Number(item.unit_price || 0);
+          const quantity = Number(item.quantity || 0);
 
-      const totalCostChange = affectedOrders.reduce(
-        (sum, order) => sum + (order.newTotal - order.oldTotal),
-        0
-      );
+          const calculatedNewPrice = this.getPriceForQuantity(
+            newStockPrice,
+            newStockDiscountMinQty,
+            newStockDiscountPrice,
+            quantity
+          );
+
+          const oldTotal = Number(item.subtotal || (quantity * currentPrice));
+          const newTotal = quantity * calculatedNewPrice;
+          totalCostChange += (newTotal - oldTotal);
+
+          affectedOrders.push({
+            id: item.id,
+            saleId: item.stock_sale_id,
+            customerName,
+            quantity,
+            currentPrice,
+            newPrice: calculatedNewPrice,
+            oldTotal,
+            newTotal,
+            type: 'Stock Sale'
+          });
+        }
+      }
 
       return {
-        currentPrice: batchProduct.preorder_price || batchProduct.stock_price,
-        newPrice,
+        affectedRecordCount: affectedOrders.length,
         affectedOrderCount: affectedOrders.length,
+        affectedPreorderItemCount: orderItems?.length || 0,
+        affectedStockSaleItemCount: stockSaleItems?.length || 0,
         affectedOrders,
         totalCostChange
       };
@@ -509,72 +562,161 @@ export class DatabaseService {
     }
   }
 
-  // Update batch product price and recalculate affected orders
+  // Update batch product price and recalculate affected orders/sales
   updateBatchProductPriceWithRecalc(
-    batchProductId: number, 
-    preorderPrice?: number, 
-    stockPrice?: number
+    batchProductId: number,
+    preorderPrice: number,
+    preorderDiscountMinQty: number,
+    preorderDiscountPrice: number,
+    stockPrice: number,
+    stockDiscountMinQty: number,
+    stockDiscountPrice: number
   ): Observable<any> {
-    return from(this.doUpdateBatchProductPrice(batchProductId, preorderPrice, stockPrice));
+    return from(this.doUpdateBatchProductPrice(
+      batchProductId,
+      preorderPrice,
+      preorderDiscountMinQty,
+      preorderDiscountPrice,
+      stockPrice,
+      stockDiscountMinQty,
+      stockDiscountPrice
+    ));
   }
 
   private async doUpdateBatchProductPrice(
     batchProductId: number,
-    preorderPrice?: number,
-    stockPrice?: number
+    preorderPrice: number,
+    preorderDiscountMinQty: number,
+    preorderDiscountPrice: number,
+    stockPrice: number,
+    stockDiscountMinQty: number,
+    stockDiscountPrice: number
   ): Promise<any> {
     try {
-      // Update batch product
+      // 1. Update the batch product row itself
       const { error: updateError } = await this.scopeShopQuery(this.sb
         .from('batch_products')
         .update({
           preorder_price: preorderPrice,
-          stock_price: stockPrice
+          preorder_discount_min_qty: preorderDiscountMinQty,
+          preorder_discount_price: preorderDiscountPrice,
+          stock_price: stockPrice,
+          stock_discount_min_qty: stockDiscountMinQty,
+          stock_discount_price: stockDiscountPrice
         })
       )
         .eq('id', batchProductId);
 
       if (updateError) throw updateError;
 
-      // Get all order items to update
-      const { data: orderItems, error: itemsError } = await this.sb
+      // 2. Recalculate order_items (Preorders)
+      const { data: orderItems, error: itemsError } = await this.scopeShopQuery(this.sb
         .from('order_items')
         .select('id, order_id, quantity')
+      )
         .eq('batch_product_id', batchProductId);
 
       if (itemsError) throw itemsError;
 
-      if (!orderItems || orderItems.length === 0) {
-        return { success: true, affectedOrderCount: 0, message: 'No orders affected' };
+      let affectedOrderItemsCount = 0;
+      if (orderItems && orderItems.length > 0) {
+        for (const item of orderItems) {
+          const quantity = Number(item.quantity || 0);
+          const calculatedNewPrice = this.getPriceForQuantity(
+            preorderPrice,
+            preorderDiscountMinQty,
+            preorderDiscountPrice,
+            quantity
+          );
+          const subtotal = quantity * calculatedNewPrice;
+
+          const { error } = await this.scopeShopQuery(this.sb
+            .from('order_items')
+            .update({
+              unit_price: calculatedNewPrice,
+              subtotal: subtotal
+            })
+          )
+            .eq('id', item.id);
+
+          if (error) throw error;
+          affectedOrderItemsCount++;
+        }
       }
 
-      // Update each order item with new prices
-      const priceToUse = preorderPrice || stockPrice || 0;
-      const updates = orderItems.map((item: any) => ({
-        id: item.id,
-        unit_price: priceToUse,
-        subtotal: item.quantity * priceToUse
-      }));
+      // 3. Recalculate stock_sale_items and update parent stock_sales total_amount
+      const { data: stockSaleItems, error: stockItemsError } = await this.scopeShopQuery(this.sb
+        .from('stock_sale_items')
+        .select('id, stock_sale_id, quantity')
+      )
+        .eq('batch_product_id', batchProductId);
 
-      for (const update of updates) {
-        const { error } = await this.sb
-          .from('order_items')
-          .update({
-            unit_price: update.unit_price,
-            subtotal: update.subtotal
-          })
-          .eq('id', update.id);
+      if (stockItemsError) throw stockItemsError;
 
-        if (error) throw error;
+      let affectedStockItemsCount = 0;
+      const affectedSaleIds = new Set<number>();
+
+      if (stockSaleItems && stockSaleItems.length > 0) {
+        for (const item of stockSaleItems) {
+          const quantity = Number(item.quantity || 0);
+          const calculatedNewPrice = this.getPriceForQuantity(
+            stockPrice,
+            stockDiscountMinQty,
+            stockDiscountPrice,
+            quantity
+          );
+          const subtotal = quantity * calculatedNewPrice;
+
+          const { error } = await this.scopeShopQuery(this.sb
+            .from('stock_sale_items')
+            .update({
+              unit_price: calculatedNewPrice,
+              subtotal: subtotal
+            })
+          )
+            .eq('id', item.id);
+
+          if (error) throw error;
+          affectedStockItemsCount++;
+          affectedSaleIds.add(item.stock_sale_id);
+        }
+
+        // Update the total_amount on each affected stock_sales row
+        for (const saleId of affectedSaleIds) {
+          // Select all items for this stock sale to get the sum
+          const { data: allSaleItems, error: sumError } = await this.scopeShopQuery(this.sb
+            .from('stock_sale_items')
+            .select('subtotal')
+          )
+            .eq('stock_sale_id', saleId);
+
+          if (sumError) throw sumError;
+
+          const newTotal = ((allSaleItems || []) as any[]).reduce(
+            (sum: number, item: any) => sum + Number(item.subtotal || 0),
+            0
+          );
+
+          const { error: saleUpdateError } = await this.scopeShopQuery(this.sb
+            .from('stock_sales')
+            .update({ total_amount: newTotal })
+          )
+            .eq('id', saleId);
+
+          if (saleUpdateError) throw saleUpdateError;
+        }
       }
 
       return {
         success: true,
-        affectedOrderCount: orderItems.length,
-        message: `Updated ${orderItems.length} order item(s)`
+        affectedRecordCount: affectedOrderItemsCount + affectedStockItemsCount,
+        affectedOrderItemsCount,
+        affectedStockItemsCount,
+        affectedSalesCount: affectedSaleIds.size,
+        message: `Successfully updated pricing. Recalculated ${affectedOrderItemsCount} preorder items and ${affectedStockItemsCount} stock sale items.`
       };
     } catch (err) {
-      console.error('Error updating batch product price:', err);
+      console.error('Error updating batch product price and recalculating:', err);
       throw err;
     }
   }
@@ -583,9 +725,7 @@ export class DatabaseService {
   // Clients
   // =====================
   getClients(): Observable<Client[]> {
-    return from(
-      this.scopeShopQuery(this.sb.from('customers').select('*')).order('name')
-    ).pipe(map(({ data }) => (data || []).map((r: any) => this.normalizeClient(toCamel(r) as Client))));
+    return this.clients.getClients();
   }
 
   getClientsPage(
@@ -594,127 +734,38 @@ export class DatabaseService {
     nameSearchTerm = '',
     addressSearchTerm = ''
   ): Observable<{ data: Client[]; total: number }> {
-    const fromIndex = (page - 1) * pageSize;
-    const toIndex = fromIndex + pageSize - 1;
-    let query = this.scopeTable('customers')
-      .select('*', { count: 'exact' })
-      .order('name');
-
-    const trimmedName = nameSearchTerm.trim();
-    const trimmedAddress = addressSearchTerm.trim();
-
-    if (trimmedName) {
-      query = query.ilike('name', `%${trimmedName}%`);
-    }
-
-    if (trimmedAddress) {
-      query = query.ilike('address', `%${trimmedAddress}%`);
-    }
-
-    return from(query.range(fromIndex, toIndex)).pipe(
-      map(({ data, count }) => ({
-        data: (data || []).map((r: any) => this.normalizeClient(toCamel(r) as Client)),
-        total: count || 0
-      }))
-    );
+    return this.clients.getClientsPage(page, pageSize, nameSearchTerm, addressSearchTerm);
   }
 
   getClientsSummary(
     nameSearchTerm = '',
     addressSearchTerm = ''
   ): Observable<{ total: number; contactable: number; addressed: number }> {
-    let query = this.scopeTable('customers').select('id, whatsapp_number, address').order('name');
-
-    const trimmedName = nameSearchTerm.trim();
-    const trimmedAddress = addressSearchTerm.trim();
-
-    if (trimmedName) {
-      query = query.ilike('name', `%${trimmedName}%`);
-    }
-
-    if (trimmedAddress) {
-      query = query.ilike('address', `%${trimmedAddress}%`);
-    }
-
-    return from(query).pipe(
-      map(({ data }) => {
-        const rows = data || [];
-        return {
-          total: rows.length,
-          contactable: rows.filter((row: any) => String(row.whatsapp_number || '').trim().length > 0).length,
-          addressed: rows.filter((row: any) => String(row.address || '').trim().length > 0).length,
-        };
-      })
-    );
+    return this.clients.getClientsSummary(nameSearchTerm, addressSearchTerm);
   }
 
   getClient(id: number): Observable<Client | null> {
-    return from(
-      this.scopeShopQuery(this.sb.from('customers').select('*')).eq('id', id).single()
-    ).pipe(map(({ data }) => data ? this.normalizeClient(toCamel(data) as Client) : null));
+    return this.clients.getClient(id);
   }
 
   searchClients(term: string): Observable<Client[]> {
-    return from(
-      this.scopeShopQuery(this.sb.from('customers').select('*'))
-        .or(`name.ilike.%${term}%,whatsapp_number.ilike.%${term}%`)
-        .order('name')
-    ).pipe(map(({ data }) => (data || []).map((r: any) => this.normalizeClient(toCamel(r) as Client))));
+    return this.clients.searchClients(term);
   }
 
   createClient(client: Client): Observable<number> {
-    const row = {
-      shop_id: this.activeShopId,
-      name: client.name,
-      whatsapp_number: client.phone || client.whatsappNumber || '',
-      address: client.address || ''
-    };
-    return from(
-      this.sb.from('customers').insert(row).select('id').single()
-    ).pipe(map(({ data }) => data?.id ?? 0));
+    return this.clients.createClient(client);
   }
 
   updateClient(client: Client): Observable<boolean> {
-    const row = {
-      name: client.name,
-      whatsapp_number: client.phone || client.whatsappNumber || '',
-      address: client.address || ''
-    };
-    return from(
-      this.sb.from('customers').update(row).eq('id', client.id)
-    ).pipe(map(({ error }) => !error));
-  }
-
-  private normalizeClient(client: Client): Client {
-    const phone = client.phone || client.whatsappNumber || '';
-    return {
-      ...client,
-      phone,
-      whatsappNumber: phone
-    };
+    return this.clients.updateClient(client);
   }
 
   deleteClient(id: number): Observable<boolean> {
-    return from(
-      this.sb.from('customers').delete().eq('id', id).select('id')
-    ).pipe(
-      map(({ data, error, status }) => {
-        if (error) {
-          console.error('[deleteClient] error:', error.message, 'status:', status);
-          return false;
-        }
-        // Check if any rows were actually deleted
-        const success = (data?.length ?? 0) > 0;
-        if (!success) {
-          console.warn('[deleteClient] No rows deleted for id', id, '— possible RLS block or row does not exist');
-        }
-        return success;
-      })
-    );
+    return this.clients.deleteClient(id);
   }
 
   // =====================
-  // Order Batches
+  // Batches
   // =====================
   getOrderBatches(): Observable<OrderBatch[]> {
     return from(
@@ -1630,6 +1681,106 @@ export class DatabaseService {
     return { id: (sale as any).id, saleUuid: (sale as any).sale_uuid };
   }
 
+  updateStockSale(
+    saleId: number,
+    customerId: number | null,
+    customerName: string,
+    saleChannel: string,
+    totalAmount: number,
+    items: StockSaleItem[]
+  ): Observable<boolean> {
+    return from(this.doUpdateStockSale(saleId, customerId, customerName, saleChannel, totalAmount, items));
+  }
+
+  private async doUpdateStockSale(
+    saleId: number,
+    customerId: number | null,
+    customerName: string,
+    saleChannel: string,
+    totalAmount: number,
+    items: StockSaleItem[]
+  ): Promise<boolean> {
+    if (!this.activeShopId || !saleId) return false;
+
+    const { data: existingItems, error: existingErr } = await this.scopeShopQuery(
+      this.sb.from('stock_sale_items').select('product_id, quantity')
+    ).eq('stock_sale_id', saleId);
+    if (existingErr) return false;
+
+    await this.adjustProductStock(existingItems || [], 1);
+
+    const { error: saleErr } = await this.scopeShopQuery(this.sb.from('stock_sales').update({
+      customer_id: customerId || null,
+      customer_name: customerName,
+      sale_channel: saleChannel,
+      total_amount: totalAmount
+    })).eq('id', saleId);
+    if (saleErr) return false;
+
+    const { error: deleteItemsErr } = await this.scopeShopQuery(this.sb.from('stock_sale_items').delete())
+      .eq('stock_sale_id', saleId);
+    if (deleteItemsErr) return false;
+
+    const itemRows = items.map(i => ({
+      shop_id: this.activeShopId,
+      stock_sale_id: saleId,
+      batch_product_id: i.batchProductId,
+      product_id: i.productId,
+      quantity: i.quantity,
+      unit_price: i.unitPrice,
+      subtotal: i.subtotal
+    }));
+
+    if (itemRows.length > 0) {
+      const { error: insertErr } = await this.scopeShopQuery(this.sb.from('stock_sale_items').insert(itemRows));
+      if (insertErr) return false;
+    }
+
+    await this.adjustProductStock(items, -1);
+    return true;
+  }
+
+  deleteStockSale(saleId: number): Observable<boolean> {
+    return from(this.doDeleteStockSale(saleId));
+  }
+
+  private async doDeleteStockSale(saleId: number): Promise<boolean> {
+    if (!this.activeShopId || !saleId) return false;
+
+    const { data: existingItems, error: existingErr } = await this.scopeShopQuery(
+      this.sb.from('stock_sale_items').select('product_id, quantity')
+    ).eq('stock_sale_id', saleId);
+    if (existingErr) return false;
+
+    const { error: deleteErr } = await this.scopeShopQuery(this.sb.from('stock_sales').delete()).eq('id', saleId);
+    if (deleteErr) return false;
+
+    await this.adjustProductStock(existingItems || [], 1);
+    return true;
+  }
+
+  private async adjustProductStock(items: Array<{ productId?: number; product_id?: number; quantity?: number }>, direction: 1 | -1): Promise<void> {
+    const quantityByProduct = new Map<number, number>();
+    for (const item of items || []) {
+      const productId = Number(item.productId ?? item.product_id ?? 0);
+      const quantity = Number(item.quantity || 0);
+      if (!productId || quantity <= 0) continue;
+      quantityByProduct.set(productId, (quantityByProduct.get(productId) || 0) + quantity);
+    }
+
+    for (const [productId, quantity] of quantityByProduct.entries()) {
+      const { data: product, error: productErr } = await this.scopeShopQuery(
+        this.sb.from('products').select('stock')
+      ).eq('id', productId).maybeSingle();
+      if (productErr || !product) continue;
+      const current = Number((product as any).stock || 0);
+      const next = direction === 1
+        ? current + quantity
+        : Math.max(0, current - quantity);
+      await this.scopeShopQuery(this.sb.from('products').update({ stock: next })).eq('id', productId);
+    }
+  }
+
   // =====================
   // Shipping helpers (UI: batch-first view, per-item fees)
   // =====================
@@ -1942,6 +2093,7 @@ export class DatabaseService {
 
     const rows = Object.values(agg).map(r => ({
       shop_id: this.activeShopId,
+      batch_id: batchId,
       batch_name: batchName,
       client_id: r.clientId,
       product_id: r.productId,
@@ -1957,6 +2109,7 @@ export class DatabaseService {
       if (!productId || qty <= 0 || productIdsWithOrders.has(productId)) return null;
       return {
         shop_id: this.activeShopId,
+        batch_id: batchId,
         batch_name: batchName,
         client_id: null,
         product_id: productId,
@@ -2049,6 +2202,7 @@ export class DatabaseService {
 
     const rows = Object.values(agg).map(r => ({
       shop_id: this.activeShopId,
+      batch_id: batchId,
       batch_name: batchName,
       client_id: r.clientId,
       product_id: r.productId,
@@ -2075,6 +2229,7 @@ export class DatabaseService {
         const { error } = await this.scopeShopQuery(this.sb.from('shipping_fees').insert([
           {
             shop_id: this.activeShopId,
+            batch_id: batchId,
             batch_name: batchName,
             client_id: null,
             product_id: productId,
@@ -2110,6 +2265,7 @@ export class DatabaseService {
   private async doFinalizeShippingBatch(batchName: string): Promise<boolean> {
     if (!this.activeShopId) return false;
     if (!batchName) return false;
+    const batchId = await this.getBatchIdByName(batchName);
     const { data: queueRows } = await this.scopeShopQuery(
       this.sb.from('shipping_fees').select('id, client_id, product_name, quantity, fee')
     )
@@ -2153,6 +2309,7 @@ export class DatabaseService {
         delivery_date: null,
         status: 'pending',
         delivery_item_status: 'pending',
+        batch_id: batchId,
         batch_name: batchName,
         notes: 'Created from shipping fees'
       });
@@ -2187,6 +2344,7 @@ export class DatabaseService {
 
   private async doEnsureShippingFeesForBatch(batchName: string): Promise<boolean> {
     if (!this.activeShopId) return false;
+    const batchId = await this.getBatchIdByName(batchName);
     const { data: deliveries, error } = await this.scopeShopQuery(
       this.sb.from('deliveries').select('id, items, batch_name')
     )
@@ -2203,6 +2361,7 @@ export class DatabaseService {
         const qty = m ? Number(m[2]) : 1;
         rows.push({
           shop_id: this.activeShopId,
+          batch_id: batchId,
           batch_name: batchName,
           delivery_id: (d as any).id,
           product_name: name,
@@ -2359,35 +2518,56 @@ export class DatabaseService {
   }
 
   saveShippingFees(rows: Array<{ batchName: string; deliveryId: number; productName: string; quantity: number; fee: number; }>): Observable<boolean> {
-    if (!rows || rows.length === 0) return of(true);
-    if (!this.activeShopId) return of(false);
-    // upsert into shipping_fees; rely on migration to have created a unique index on (delivery_id, product_name)
-    // convert camelCase client rows to snake_case DB columns
+    return from(this.doSaveShippingFees(rows));
+  }
+
+  private async doSaveShippingFees(rows: Array<{ batchName: string; deliveryId: number; productName: string; quantity: number; fee: number; }>): Promise<boolean> {
+    if (!rows || rows.length === 0) return true;
+    if (!this.activeShopId) return false;
+
+    const batchNames = Array.from(new Set(rows.map(r => r.batchName).filter(Boolean)));
+    const batchIdByName = new Map<string, number | null>();
+    for (const batchName of batchNames) {
+      batchIdByName.set(batchName, await this.getBatchIdByName(batchName));
+    }
+
+    // Upsert into shipping_fees; rely on migration to have created a unique index on (delivery_id, product_name).
     const dbRows = rows.map(r => ({
       shop_id: this.activeShopId,
+      batch_id: batchIdByName.get(r.batchName) ?? null,
       batch_name: r.batchName,
       delivery_id: r.deliveryId,
       product_name: r.productName,
       quantity: r.quantity,
       fee: r.fee
     }));
-    // use onConflict to avoid duplicate key insert errors
-    return from(this.scopeShopQuery(
+
+    const { error } = await this.scopeShopQuery(
       this.sb.from('shipping_fees').upsert(dbRows, { onConflict: 'delivery_id,product_name' })
-    )).pipe(map(({ error }) => !error));
+    );
+    return !error;
   }
 
-  // Persist a per-batch total fee. Upserts on batch_name.
+  // Persist a per-batch total fee. Upserts on batch_name while carrying batch_id when available.
   saveBatchTotal(batchName: string, totalFee: number): Observable<boolean> {
-    if (!batchName) return of(true);
-    if (!this.activeShopId) return of(false);
-    const dbRow: any = { batch_name: batchName, total_fee: totalFee };
+    return from(this.doSaveBatchTotal(batchName, totalFee));
+  }
+
+  private async doSaveBatchTotal(batchName: string, totalFee: number): Promise<boolean> {
+    if (!batchName) return true;
+    if (!this.activeShopId) return false;
+    const dbRow: any = {
+      batch_id: await this.getBatchIdByName(batchName),
+      batch_name: batchName,
+      total_fee: totalFee
+    };
     if (this.activeShopId) {
       dbRow.shop_id = this.activeShopId;
     }
-    return from(this.scopeShopQuery(
+    const { error } = await this.scopeShopQuery(
       this.sb.from('shipping_batches').upsert(dbRow, { onConflict: 'shop_id,batch_name' })
-    )).pipe(map(({ error }) => !error));
+    );
+    return !error;
   }
 
   // Read persisted batch total (returns 0 when not found)
@@ -2596,21 +2776,35 @@ export class DatabaseService {
   }
 
   saveShippingPayments(rows: Array<{ deliveryId: number; clientId?: number; batchName?: string | null; totalFee: number; paidAmount: number; status?: 'unpaid'|'partial'|'paid' }>): Observable<boolean> {
-    if (!rows || rows.length === 0) return of(true);
-    if (!this.activeShopId) return of(false);
+    return from(this.doSaveShippingPayments(rows));
+  }
+
+  private async doSaveShippingPayments(rows: Array<{ deliveryId: number; clientId?: number; batchName?: string | null; totalFee: number; paidAmount: number; status?: 'unpaid'|'partial'|'paid' }>): Promise<boolean> {
+    if (!rows || rows.length === 0) return true;
+    if (!this.activeShopId) return false;
+
+    const batchNames = Array.from(new Set(rows.map(r => r.batchName || '').filter(Boolean)));
+    const batchIdByName = new Map<string, number | null>();
+    for (const batchName of batchNames) {
+      batchIdByName.set(batchName, await this.getBatchIdByName(batchName));
+    }
+
     const dbRows = rows.map(r => ({
       shop_id: this.activeShopId,
       delivery_id: r.deliveryId,
       client_id: r.clientId ?? null,
+      batch_id: r.batchName ? (batchIdByName.get(r.batchName) ?? null) : null,
       batch_name: r.batchName ?? null,
       total_fee: r.totalFee,
       paid_amount: r.paidAmount,
       status: r.status || (r.paidAmount <= 0 ? 'unpaid' : (r.paidAmount >= r.totalFee ? 'paid' : 'partial'))
     }));
+
     // upsert by delivery_id
-    return from(this.scopeShopQuery(
+    const { error } = await this.scopeShopQuery(
       this.sb.from('shipping_payments').upsert(dbRows, { onConflict: 'delivery_id' })
-    )).pipe(map(({ error }) => !error));
+    );
+    return !error;
   }
 
   getClientsShippingTotals(batchName: string | null): Observable<{ clientName: string; totalFee: number }[]> {
@@ -2711,11 +2905,13 @@ export class DatabaseService {
     const status: 'unpaid'|'partial'|'paid' = totalFee <= 0
       ? 'paid'
       : (paid <= 0 ? 'unpaid' : (paid >= totalFee ? 'paid' : 'partial'));
+    const batchId = await this.getBatchIdByName(batchName);
 
     const dbRow = {
       shop_id: this.activeShopId,
       delivery_id: null,
       client_id: clientId,
+      batch_id: batchId,
       batch_name: batchName ?? null,
       total_fee: totalFee,
       paid_amount: paid,
@@ -2739,6 +2935,7 @@ export class DatabaseService {
       const { error } = await this.scopeShopQuery(
         this.sb.from('shipping_payments').update({
           delivery_id: null,
+          batch_id: batchId,
           total_fee: totalFee,
           paid_amount: paid,
           status
@@ -2828,7 +3025,7 @@ export class DatabaseService {
       .is('delivery_id', null);
     if (updateErr) return false;
 
-    await this.scopeShopQuery(this.sb.from('shipping_payments').update({ delivery_id: deliveryId }))
+    await this.scopeShopQuery(this.sb.from('shipping_payments').update({ delivery_id: deliveryId, batch_id: batchId }))
       .eq('batch_name', batchName)
       .eq('client_id', clientId);
 
@@ -3138,29 +3335,33 @@ export class DatabaseService {
     return from(this.doApplyBuyingListArrivalToStock(batchId, batchName));
   }
 
-  private async doApplyBuyingListArrivalToStock(batchId: number, batchName: string): Promise<boolean> {
-    const { data: items, error } = await this.sb.from('buying_list')
-      .select('product_id, quantity_arrived')
-      .eq('batch_name', batchName);
+  private async doApplyBuyingListArrivalToStock(batchId: number, _batchName: string): Promise<boolean> {
+    const { data: items, error } = await this.scopeShopQuery(this.sb.from('buying_list')
+      .select('product_id, ordered_qty')
+    )
+      .eq('batch_id', batchId);
 
     if (error) return false;
     const rows = items || [];
     for (const row of rows) {
       const productId = row.product_id as number | null;
-      const qty = Number(row.quantity_arrived || 0);
+      const qty = Number(row.ordered_qty || 0);
       if (!productId || qty <= 0) continue;
-      const { data: product } = await this.sb.from('products')
+      const { data: product } = await this.scopeShopQuery(this.sb.from('products')
         .select('stock')
+      )
         .eq('id', productId)
         .single();
       const current = Number(product?.stock || 0);
-      await this.sb.from('products')
+      await this.scopeShopQuery(this.sb.from('products')
         .update({ stock: current + qty })
+      )
         .eq('id', productId);
     }
 
-    await this.sb.from('order_batches')
+    await this.scopeShopQuery(this.sb.from('batches')
       .update({ stock_applied: true })
+    )
       .eq('id', batchId);
 
     return true;
@@ -4069,15 +4270,32 @@ export class DatabaseService {
     const previousStatus = ((ai as any).status || 'confirmed') as string;
     const batchId = (ai as any).batch_id ?? null;
     const batchProductId = (ai as any).batch_product_id ?? null;
+    const productId = (ai as any).product_id ?? null;
     const stockContribution = previousConfirmedQty;
+
+    if (previousStatus === 'sent_to_shipping' && batchId && productId) {
+      const { error: shippingFeesErr } = await this.scopeShopQuery(this.sb.from('shipping_fees').delete())
+        .eq('batch_id', batchId)
+        .eq('product_id', productId);
+      if (shippingFeesErr) return false;
+    }
+
+    if (previousStatus === 'sent_to_shipping') {
+      if (batchId && batchProductId) {
+        const { error: trackingErr } = await this.scopeShopQuery(this.sb.from('product_tracking').delete())
+          .eq('batch_id', batchId)
+          .eq('batch_product_id', batchProductId);
+        if (trackingErr) return false;
+      }
+    }
 
     const { error: resetErr } = await this.scopeShopQuery(this.sb.from('arrival_items').update({ received_qty: 0, confirmed_qty: 0, status: 'pending' }))
       .eq('id', arrivalItemId);
     if (resetErr) return false;
 
-    if ((ai as any).product_id && stockContribution > 0) {
+    if (productId && stockContribution > 0) {
       const { data: product, error: productErr } = await this.scopeShopQuery(this.sb.from('products').select('stock'))
-        .eq('id', (ai as any).product_id)
+        .eq('id', productId)
         .maybeSingle();
       if (productErr) {
         await this.scopeShopQuery(this.sb.from('arrival_items').update({
@@ -4091,7 +4309,7 @@ export class DatabaseService {
       const current = Number(product?.stock || 0);
       const newStock = Math.max(0, current - stockContribution);
       const { error: stockErr } = await this.scopeShopQuery(this.sb.from('products').update({ stock: newStock }))
-        .eq('id', (ai as any).product_id);
+        .eq('id', productId);
       if (stockErr) {
         await this.scopeShopQuery(this.sb.from('arrival_items').update({
           received_qty: previousReceivedQty,
@@ -4123,7 +4341,7 @@ export class DatabaseService {
       let del = this.scopeShopQuery(this.sb.from('damaged_items').delete())
         .eq('batch_id', batchId)
         .eq('batch_product_id', batchProductId);
-      if ((ai as any).product_id) del = del.eq('product_id', (ai as any).product_id);
+      if (productId) del = del.eq('product_id', productId);
       const { error: normalizedDeleteErr } = await del;
       if (normalizedDeleteErr) return false;
     }
@@ -4260,9 +4478,9 @@ export class DatabaseService {
     const clientMap: Record<number, string> = {};
 
     if (clientIds.length > 0) {
-      const { data: customers } = await this.sb.from('customers')
-        .select('id, name')
-        .in('id', clientIds);
+      const { data: customers } = await this.scopeShopQuery(
+        this.sb.from('customers').select('id, name')
+      ).in('id', clientIds);
       (customers || []).forEach((c: any) => clientMap[c.id] = c.name);
     }
 
@@ -4441,14 +4659,39 @@ export class DatabaseService {
     return from(this.doDeleteBatchCascade(batchName));
   }
 
+  deleteBatchCascadeById(batchId: number, batchName?: string): Observable<boolean> {
+    return from(this.doDeleteBatchCascadeById(batchId, batchName));
+  }
+
   private async doDeleteBatchCascade(batchName: string): Promise<boolean> {
     try {
-      // Get batch first to have access to batch_id
-      const { data: batchData, error: batchFetchErr } = await this.sb.from('batches').select('id').eq('name', batchName).maybeSingle();
+      // Compatibility wrapper for older callers. New code should delete by batch_id.
+      const { data: batchData } = await this.scopeShopQuery(this.sb.from('batches').select('id, name'))
+        .eq('name', batchName)
+        .maybeSingle();
       const batchId = batchData?.id;
       
       if (!batchId) {
         console.warn('[db] Batch not found for deletion:', batchName);
+        return false;
+      }
+
+      return this.doDeleteBatchCascadeById(batchId, batchData?.name || batchName);
+    } catch (err) {
+      console.error('[db] Error in deleteBatchCascade:', err);
+      return false;
+    }
+  }
+
+  private async doDeleteBatchCascadeById(batchId: number, batchName?: string): Promise<boolean> {
+    try {
+      const { data: batchData } = await this.scopeShopQuery(this.sb.from('batches').select('id, name'))
+        .eq('id', batchId)
+        .maybeSingle();
+      const resolvedBatchName = batchData?.name || batchName || '';
+
+      if (!batchData?.id) {
+        console.warn('[db] Batch not found for deletion:', batchId);
         return false;
       }
 
@@ -4464,7 +4707,7 @@ export class DatabaseService {
 
       // 2. Delete stock_sale_items that reference our batch products (RESTRICT on batch_product_id)
       if (batchProductIds.length > 0) {
-        const delErr2 = await this.sb.from('stock_sale_items').delete().in('batch_product_id', batchProductIds);
+        const delErr2 = await this.scopeShopQuery(this.sb.from('stock_sale_items').delete()).in('batch_product_id', batchProductIds);
         if (delErr2.error) {
           console.error('[db] Error deleting stock_sale_items:', delErr2.error, ' - Status:', delErr2.status);
           return false;
@@ -4473,12 +4716,12 @@ export class DatabaseService {
       }
 
       // 3. Get and delete shipping_invoices and their items
-      const { data: shippingInvoices } = await this.sb.from('shipping_invoices').select('id').eq('batch_id', batchId);
+      const { data: shippingInvoices } = await this.scopeShopQuery(this.sb.from('shipping_invoices').select('id')).eq('batch_id', batchId);
       if (shippingInvoices && shippingInvoices.length > 0) {
         const siIds = shippingInvoices.map((si: any) => si.id);
         
         // Delete shipping_invoice_items first (RESTRICT on shipping_invoice_id)
-        const delErr3a = await this.sb.from('shipping_invoice_items').delete().in('shipping_invoice_id', siIds);
+        const delErr3a = await this.scopeShopQuery(this.sb.from('shipping_invoice_items').delete()).in('shipping_invoice_id', siIds);
         if (delErr3a.error) {
           console.error('[db] Error deleting shipping_invoice_items:', delErr3a.error, ' - Status:', delErr3a.status);
           return false;
@@ -4486,7 +4729,7 @@ export class DatabaseService {
         console.log('[db] Deleted shipping_invoice_items');
 
         // Delete shipping_invoices (references batch_id)
-        const delErr3b = await this.sb.from('shipping_invoices').delete().in('id', siIds);
+        const delErr3b = await this.scopeShopQuery(this.sb.from('shipping_invoices').delete()).in('id', siIds);
         if (delErr3b.error) {
           console.error('[db] Error deleting shipping_invoices:', delErr3b.error, ' - Status:', delErr3b.status);
           return false;
@@ -4494,36 +4737,70 @@ export class DatabaseService {
         console.log('[db] Deleted shipping_invoices');
       }
 
-      // 4. Delete shipping_fees (uses batch_name)
-      const delErr4 = await this.sb.from('shipping_fees').delete().eq('batch_name', batchName);
+      // 4. Delete shipping ledger rows. Prefer batch_id, then clean up legacy name-based rows.
+      const delErr4 = await this.scopeShopQuery(this.sb.from('shipping_fees').delete()).eq('batch_id', batchId);
       if (delErr4.error) {
         console.error('[db] Error deleting shipping_fees:', delErr4.error, ' - Status:', delErr4.status);
         return false;
       }
+      if (resolvedBatchName) {
+        const legacyFeesDelete = await this.scopeShopQuery(this.sb.from('shipping_fees').delete()).eq('batch_name', resolvedBatchName);
+        if (legacyFeesDelete.error) {
+          console.error('[db] Error deleting legacy shipping_fees:', legacyFeesDelete.error, ' - Status:', legacyFeesDelete.status);
+          return false;
+        }
+      }
       console.log('[db] Deleted shipping_fees');
 
+      const shippingPaymentsDelete = await this.scopeShopQuery(this.sb.from('shipping_payments').delete()).eq('batch_id', batchId);
+      if (shippingPaymentsDelete.error) {
+        console.error('[db] Error deleting shipping_payments:', shippingPaymentsDelete.error, ' - Status:', shippingPaymentsDelete.status);
+        return false;
+      }
+      if (resolvedBatchName) {
+        const legacyPaymentsDelete = await this.scopeShopQuery(this.sb.from('shipping_payments').delete()).eq('batch_name', resolvedBatchName);
+        if (legacyPaymentsDelete.error) {
+          console.error('[db] Error deleting legacy shipping_payments:', legacyPaymentsDelete.error, ' - Status:', legacyPaymentsDelete.status);
+          return false;
+        }
+
+        const shippingBatchDelete = await this.scopeShopQuery(this.sb.from('shipping_batches').delete()).eq('batch_name', resolvedBatchName);
+        if (shippingBatchDelete.error) {
+          console.error('[db] Error deleting shipping_batches:', shippingBatchDelete.error, ' - Status:', shippingBatchDelete.status);
+          return false;
+        }
+      }
+      console.log('[db] Deleted shipping payment summaries');
+
       // 5. Delete deliveries (references batch_id)
-      const delErr5 = await this.sb.from('deliveries').delete().eq('batch_id', batchId);
+      const delErr5 = await this.scopeShopQuery(this.sb.from('deliveries').delete()).eq('batch_id', batchId);
       if (delErr5.error) {
         console.error('[db] Error deleting deliveries:', delErr5.error, ' - Status:', delErr5.status);
         return false;
       }
       console.log('[db] Deleted deliveries');
 
-      // 6. Delete damage_order_allocations (uses batch_name)
-      const delErr6 = await this.scopeTable('damage_order_allocations').delete().eq('batch_name', batchName);
+      // 6. Delete damage_order_allocations by batch_id, then legacy name-based rows.
+      const delErr6 = await this.scopeShopQuery(this.sb.from('damage_order_allocations').delete()).eq('batch_id', batchId);
       if (delErr6.error) {
         console.error('[db] Error deleting damage_order_allocations:', delErr6.error, ' - Status:', delErr6.status);
         return false;
       }
+      if (resolvedBatchName) {
+        const legacyDamageDelete = await this.scopeShopQuery(this.sb.from('damage_order_allocations').delete()).eq('batch_name', resolvedBatchName);
+        if (legacyDamageDelete.error) {
+          console.error('[db] Error deleting legacy damage_order_allocations:', legacyDamageDelete.error, ' - Status:', legacyDamageDelete.status);
+          return false;
+        }
+      }
       console.log('[db] Deleted damage_order_allocations');
 
       // 7. Delete order_items and orders for this batch
-      const { data: orders } = await this.sb.from('orders').select('id').eq('batch_id', batchId);
+      const { data: orders } = await this.scopeShopQuery(this.sb.from('orders').select('id')).eq('batch_id', batchId);
       
       if (orders && orders.length > 0) {
         const orderIds = orders.map((o: any) => o.id);
-        const delErr7a = await this.sb.from('order_items').delete().in('order_id', orderIds);
+        const delErr7a = await this.scopeShopQuery(this.sb.from('order_items').delete()).in('order_id', orderIds);
         if (delErr7a.error) {
           console.error('[db] Error deleting order_items:', delErr7a.error, ' - Status:', delErr7a.status);
           return false;
@@ -4531,7 +4808,7 @@ export class DatabaseService {
         console.log('[db] Deleted order_items');
       }
 
-      const delErr7b = await this.sb.from('orders').delete().eq('batch_id', batchId);
+      const delErr7b = await this.scopeShopQuery(this.sb.from('orders').delete()).eq('batch_id', batchId);
       if (delErr7b.error) {
         console.error('[db] Error deleting orders:', delErr7b.error, ' - Status:', delErr7b.status);
         return false;
@@ -4539,7 +4816,7 @@ export class DatabaseService {
       console.log('[db] Deleted orders');
 
       // 8. Delete buying_list items by batch_id
-      const delErr8 = await this.sb.from('buying_list').delete().eq('batch_id', batchId);
+      const delErr8 = await this.scopeShopQuery(this.sb.from('buying_list').delete()).eq('batch_id', batchId);
       if (delErr8.error) {
         console.error('[db] Error deleting buying_list:', delErr8.error, ' - Status:', delErr8.status);
         return false;
@@ -4547,7 +4824,7 @@ export class DatabaseService {
       console.log('[db] Deleted buying_list');
 
       // 9. Delete arrival_items
-      const delErr9 = await this.sb.from('arrival_items').delete().eq('batch_id', batchId);
+      const delErr9 = await this.scopeShopQuery(this.sb.from('arrival_items').delete()).eq('batch_id', batchId);
       if (delErr9.error) {
         console.error('[db] Error deleting arrival_items:', delErr9.error, ' - Status:', delErr9.status);
         return false;
@@ -4555,7 +4832,7 @@ export class DatabaseService {
       console.log('[db] Deleted arrival_items');
 
       // 10. Delete damaged_items
-      const delErr10 = await this.sb.from('damaged_items').delete().eq('batch_id', batchId);
+      const delErr10 = await this.scopeShopQuery(this.sb.from('damaged_items').delete()).eq('batch_id', batchId);
       if (delErr10.error) {
         console.error('[db] Error deleting damaged_items:', delErr10.error, ' - Status:', delErr10.status);
         return false;
@@ -4563,7 +4840,7 @@ export class DatabaseService {
       console.log('[db] Deleted damaged_items');
 
       // 11. Delete follow_ups
-      const delErr11 = await this.sb.from('follow_ups').delete().eq('batch_id', batchId);
+      const delErr11 = await this.scopeShopQuery(this.sb.from('follow_ups').delete()).eq('batch_id', batchId);
       if (delErr11.error) {
         console.error('[db] Error deleting follow_ups:', delErr11.error, ' - Status:', delErr11.status);
         return false;
@@ -4579,7 +4856,7 @@ export class DatabaseService {
       console.log('[db] Deleted product_tracking');
 
       // 13. Delete batch_product_shipping
-      const delErr13 = await this.sb.from('batch_product_shipping').delete().eq('batch_id', batchId);
+      const delErr13 = await this.scopeShopQuery(this.sb.from('batch_product_shipping').delete()).eq('batch_id', batchId);
       if (delErr13.error) {
         console.error('[db] Error deleting batch_product_shipping:', delErr13.error, ' - Status:', delErr13.status);
         return false;
@@ -4596,17 +4873,17 @@ export class DatabaseService {
 
       // 15. Finally delete the batch itself
       console.log('[db] Attempting to delete batch record:', batchName, 'by ID:', batchId);
-      const delErr15 = await this.sb.from('batches').delete().eq('id', batchId);
+      const delErr15 = await this.scopeShopQuery(this.sb.from('batches').delete()).eq('id', batchId);
       if (delErr15.error) {
         console.error('[db] Error deleting batch record:', delErr15.error, ' - Status:', delErr15.status);
         return false;
       }
       console.log('[db] Deleted batch record');
 
-      console.log('[db] Batch deleted successfully:', batchName);
+      console.log('[db] Batch deleted successfully:', resolvedBatchName || batchId);
 
       // Notify all subscribers that a batch was deleted
-      this.batchDeletedSource.next(batchName);
+      this.batchDeletedSource.next(resolvedBatchName || String(batchId));
       return true;
     } catch (err) {
       console.error('Error deleting batch cascade:', err);
@@ -4909,9 +5186,9 @@ export class DatabaseService {
   /**
    * Deletes ALL business data from the database.
    * Order matters due to foreign key constraints:
-   *   order_items → orders → clients
-   *   deliveries → clients
-   *   buying_list, expenses, order_batches are independent
+   *   order_items -> orders -> customers
+   *   deliveries -> customers
+   *   buying_list, expenses, batches are independent
    * Does NOT delete users, roles, or role_permissions.
    */
   clearAllData(): Observable<{ success: boolean; errors: string[] }> {
@@ -4928,13 +5205,13 @@ export class DatabaseService {
       'expenses',
       'buying_list',
       'orders',
-      'order_batches',
+      'batches',
       'products',
-      'clients',
+      'customers',
     ];
 
     for (const table of tables) {
-      const { error } = await this.sb.from(table).delete().gte('id', 0);
+      const { error } = await this.scopeShopQuery(this.sb.from(table).delete()).gte('id', 0);
       if (error) {
         errors.push(`${table}: ${error.message}`);
       }

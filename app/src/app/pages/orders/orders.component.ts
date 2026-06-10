@@ -34,7 +34,7 @@ import {
           <div class="ord-header-icon"><span class="material-icons">shopping_cart</span></div>
           <div>
             <h1 class="ord-header-title">Orders</h1>
-            <p class="ord-header-sub">Manage order batches and customer orders</p>
+            <p class="ord-header-sub">Manage batches and customer orders</p>
           </div>
         </div>
         <div class="ord-header-actions">
@@ -42,7 +42,7 @@ import {
                   class="ord-btn ord-btn-primary" (click)="openCreateBatchModal()">
             <span class="material-icons">add</span> New Batch
           </button>
-          <button *ngIf="activeTab === 'orders' && selectedBatch?.status === 'open' && authService.canPerformOrdersOperation('canAddItemsToOrder')"
+          <button *ngIf="activeTab === 'orders' && canCreateOrderInSelectedBatch"
                   class="ord-btn ord-btn-primary" (click)="openCreateOrderModal()">
             <span class="material-icons">add</span> New Order
           </button>
@@ -157,7 +157,7 @@ import {
               <h3>No orders yet</h3>
               <p *ngIf="selectedBatch?.status === 'open'">Start by creating your first order for this batch.</p>
               <p *ngIf="selectedBatch?.status === 'closed'">This batch has been closed with no recorded orders.</p>
-              <button *ngIf="selectedBatch?.status === 'open' && authService.canPerformOrdersOperation('canAddItemsToOrder')"
+              <button *ngIf="canCreateOrderInSelectedBatch"
                       class="ord-btn ord-btn-primary" (click)="openCreateOrderModal()">
                 <span class="material-icons">add</span> New Order
               </button>
@@ -197,7 +197,7 @@ import {
           <div class="ord-modal-header-icon"><span class="material-icons">folder</span></div>
           <div class="ord-modal-header-text">
             <div class="ord-modal-title">{{ editingBatch ? 'Rename Batch' : 'Create Batch' }}</div>
-            <div class="ord-modal-sub">{{ editingBatch ? 'Update the batch name' : 'Create a new order batch' }}</div>
+            <div class="ord-modal-sub">{{ editingBatch ? 'Update the batch name' : 'Create a new batch' }}</div>
           </div>
           <button class="ord-modal-close" (click)="showBatchModal = false">
             <span class="material-icons">close</span>
@@ -352,7 +352,7 @@ import {
               </table>
             </div>
             <!-- ── Add Items Panel ── -->
-            <ng-container *ngIf="isAddingItemsToOrder && selectedBatch?.status === 'open'">
+            <ng-container *ngIf="isAddingItemsToOrder && canAddItemsToViewingOrder">
               <div class="ord-section-divider"><span class="ord-section-label">Add Items</span></div>
               <div *ngFor="let item of addItemsRows; let i = index" class="ord-item-row">
                 <div class="ord-form-group ord-item-product">
@@ -535,12 +535,12 @@ import {
                 WhatsApp
               </button>
             </ng-container>
-            <button *ngIf="viewingOrder && !savedOrderReceipt && selectedBatch?.status === 'open'" class="ord-btn ord-btn-secondary"
+            <button *ngIf="viewingOrder && !savedOrderReceipt && canAddItemsToViewingOrder" class="ord-btn ord-btn-secondary"
                     (click)="startAddItemsToOrder()">
               <span class="material-icons">add</span>
               Add Items
             </button>
-            <button *ngIf="!viewingOrder && !savedOrderReceipt" class="ord-btn ord-btn-primary"
+            <button *ngIf="!viewingOrder && !savedOrderReceipt && canCreateOrderInSelectedBatch" class="ord-btn ord-btn-primary"
                     (click)="saveOrder()" [disabled]="savingOrder || !orderForm.clientId">
               <span *ngIf="savingOrder" class="ord-spinner"></span>
               Create Order
@@ -1072,6 +1072,18 @@ export class OrdersComponent implements OnInit {
     return this.addItemsRows.some(i => !!i.productId);
   }
 
+  get canCreateOrderInSelectedBatch(): boolean {
+    return this.selectedBatch?.status === 'open'
+      && this.authService.canPerformOrdersOperation('canCreateOrder');
+  }
+
+  get canAddItemsToViewingOrder(): boolean {
+    if (!this.viewingOrder || !this.selectedBatch) return false;
+    if (!this.authService.canPerformOrdersOperation('canAddItemsToOrder')) return false;
+    return this.selectedBatch.status === 'open'
+      || this.authService.canPerformOrdersOperation('canEditOrderAfterBatchClosed');
+  }
+
   readonly orderBatchTitleResolver = (batch: OrderBatch) => batch.name;
   readonly orderBatchSubtitleResolver = (batch: OrderBatch) =>
     batch.createdAt ? new Date(batch.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
@@ -1117,9 +1129,22 @@ export class OrdersComponent implements OnInit {
     icon: 'list_alt',
     buttonName: 'Product Summary'
   };
-  readonly orderActionOptions: ActionOption[] = [
-    { id: 'view', label: 'View order', icon: 'eye', color: 'black' }
-  ];
+  get orderActionOptions(): ActionOption[] {
+    const actions: ActionOption[] = [
+      { id: 'view', label: 'View order', icon: 'eye', color: 'black' }
+    ];
+
+    if (this.authService.canPerformOrdersOperation('canDeleteOrder')) {
+      actions.push({
+        id: 'delete',
+        label: 'Delete order',
+        icon: 'trash',
+        color: 'red'
+      });
+    }
+
+    return actions;
+  }
 
   initializeOrderTable() {
     this.orderColumns = [
@@ -1189,6 +1214,7 @@ export class OrdersComponent implements OnInit {
   // BATCH CRUD
   // ────────────────────────────────────────────────────
   openCreateBatchModal() {
+    if (!this.authService.canPerformOrdersOperation('canCreateOrder')) return;
     this.editingBatch = null;
     this.batchForm = { name: '' };
     this.showBatchModal = true;
@@ -1202,6 +1228,7 @@ export class OrdersComponent implements OnInit {
 
   saveBatch() {
     if (!this.batchForm.name.trim() || this.savingBatch) return;
+    if (!this.editingBatch && !this.authService.canPerformOrdersOperation('canCreateOrder')) return;
     this.savingBatch = true;
     if (this.editingBatch) {
       this.dbService.updateOrderBatch(this.editingBatch.id!, this.batchForm.name.trim()).subscribe(() => {
@@ -1283,6 +1310,11 @@ export class OrdersComponent implements OnInit {
   onOrderTableActionClick(event: { action: ActionOption; item: any }) {
     if (event.action.id === 'view') {
       this.viewOrder(event.item.order as Order);
+      return;
+    }
+
+    if (event.action.id === 'delete') {
+      this.deleteOrder(event.item.order as Order);
     }
   }
 
@@ -1307,6 +1339,12 @@ export class OrdersComponent implements OnInit {
   }
 
   deleteOrder(order: Order) {
+    if (!this.authService.canPerformOrdersOperation('canDeleteOrder')) return;
+    if (this.selectedBatch?.status === 'closed'
+      && !this.authService.canPerformOrdersOperation('canEditOrderAfterBatchClosed')) {
+      alert('You do not have permission to delete orders after a batch is closed.');
+      return;
+    }
     if (!confirm(`Delete order #${order.id}? This cannot be undone.`)) return;
     this.deletingOrderIds.add(order.id!);
     this.dbService.deleteOrder(order.id!).subscribe(success => {
@@ -1341,6 +1379,7 @@ export class OrdersComponent implements OnInit {
   // ORDER MODAL
   // ────────────────────────────────────────────────────
   openCreateOrderModal() {
+    if (!this.canCreateOrderInSelectedBatch) return;
     this.viewingOrder = null;
     this.orderViewLoading = false;
     this.orderForm = {
@@ -1434,6 +1473,7 @@ export class OrdersComponent implements OnInit {
   // ADD ITEMS TO EXISTING ORDER
   // ────────────────────────────────────────────────────
   startAddItemsToOrder() {
+    if (!this.canAddItemsToViewingOrder) return;
     this.addItemsRows = [this.blankItem()];
     this.isAddingItemsToOrder = true;
   }
@@ -1474,6 +1514,7 @@ export class OrdersComponent implements OnInit {
 
   saveAddedItems() {
     if (!this.viewingOrder?.id || this.savingAddItems) return;
+    if (!this.canAddItemsToViewingOrder) return;
     const validItems = this.addItemsRows.filter(i => i.productId);
     if (!validItems.length) return;
     this.savingAddItems = true;
@@ -1510,6 +1551,7 @@ export class OrdersComponent implements OnInit {
 
   saveOrder() {
     if (!this.orderForm.clientId || this.savingOrder) return;
+    if (!this.canCreateOrderInSelectedBatch) return;
     this.savingOrder = true;
 
     const newItems = this.orderForm.items.filter(i => i.productId);
@@ -1764,6 +1806,7 @@ export class OrdersComponent implements OnInit {
   // CLOSE / REOPEN BATCH
   // ────────────────────────────────────────────────────
   openCloseBatchModal() {
+    if (!this.authService.canPerformOrdersOperation('canCloseBatch')) return;
     this.closingBatch = false;
     this.syncCloseBatchButtons();
     if (this.selectedBatch?.id) {
@@ -1787,6 +1830,7 @@ export class OrdersComponent implements OnInit {
 
   closeBatch() {
     if (!this.selectedBatch || this.closingBatch) return;
+    if (!this.authService.canPerformOrdersOperation('canCloseBatch')) return;
     this.closingBatch = true;
     this.syncCloseBatchButtons();
     this.dbService.sendBatchToBuyingList(this.selectedBatch.id!, this.selectedBatch.name).subscribe(() => {
@@ -1801,6 +1845,7 @@ export class OrdersComponent implements OnInit {
 
   reopenBatch() {
     if (!this.selectedBatch || !confirm(`Reopen batch "${this.selectedBatch.name}"?`)) return;
+    if (!this.authService.canPerformOrdersOperation('canReopenBatch')) return;
     this.dbService.reopenOrderBatch(this.selectedBatch.id!).subscribe(() => {
       this.selectedBatch = { ...this.selectedBatch!, status: 'open' };
     });

@@ -2,9 +2,12 @@
 
 Repository: https://github.com/kelvinZoe/BatchCommerce
 
-This repository contains the web and desktop (Electron) builds for Shakhis Commerce (BatchCommerce).
+BatchCommerce is a Supabase-backed Angular app for WhatsApp preorder and stock commerce. It helps shop owners manage batch products, customer orders, buying lists, arrivals, shipping fees, shipping-ledger payments, deliveries, and stock sales.
 
 - App code: `app/`
-- Server / admin API: `server/`
+- Protected admin API: `server/`
+- Canonical architecture: `app/ARCHITECTURE.md`
 
-See `app/README.md` for detailed build and packaging instructions.
+The current canonical runtime is the web app. Older Electron/SQLite references are historical and should not guide new development.
+
+See `app/README.md` for setup and build instructions.

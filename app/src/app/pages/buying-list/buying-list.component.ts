@@ -29,7 +29,7 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
           <div class="bl-header-icon"><span class="material-icons">shopping_bag</span></div>
           <div>
             <h1 class="bl-header-title">Buying List</h1>
-            <p class="bl-header-sub">Track products to buy per order batch</p>
+            <p class="bl-header-sub">Track products to buy per batch</p>
           </div>
         </div>
         <div class="bl-header-actions">
@@ -57,7 +57,7 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
             [selectedYear]="batchFilterYear"
             [currentYear]="currentYear"
             [emptyTitle]="'No batches yet'"
-            [emptyDescription]="'Close an order batch to send items to the buying list.'"
+            [emptyDescription]="'Close a batch to send items to the buying list.'"
             [titleResolver]="buyingBatchTitleResolver"
             [subtitleResolver]="buyingBatchSubtitleResolver"
             [iconResolver]="buyingBatchIconResolver"
@@ -541,6 +541,10 @@ export class BuyingListComponent implements OnInit {
     return this.authService.canPerformBuyingListOperation('canSendToArrivals');
   }
 
+  private canEditSentItem(item: BuyingListItem): boolean {
+    return !item.movedToArrivals || this.authService.canPerformBuyingListOperation('canEditAfterSent');
+  }
+
   get itemMetadata(): TableMetadata | null {
     if (this.itemTotal === 0) return null;
     return {
@@ -904,10 +908,12 @@ export class BuyingListComponent implements OnInit {
   }
 
   onItemTableInputChange(event: { item: BuyingListItem; value: any }) {
+    if (!this.canEditOrderedQuantity(event.item)) return;
     this.onOrderedQuantityDraftChange(event.item, String(event.value ?? ''));
   }
 
   onItemTableDropdownChange(event: { item: BuyingListItem; value: any }) {
+    if (!this.canEditStatus(event.item)) return;
     const next = String(event.value ?? '') as BuyingStatus;
     if ((event.item as any).statusDraft !== undefined) {
       (event.item as any).statusDraft = next;
@@ -947,6 +953,14 @@ export class BuyingListComponent implements OnInit {
   openModal(item?: BuyingListItem) {
     if (!this.selectedBatch?.id) {
       alert('Select a batch first');
+      return;
+    }
+    if (!item && !this.authService.canPerformBuyingListOperation('canAddItemToBuyingList')) {
+      alert('You do not have permission to add buying list items');
+      return;
+    }
+    if (item && !this.canSaveItem(item)) {
+      alert('You do not have permission to edit this buying list item');
       return;
     }
     if (this.batchProducts.length === 0) {
@@ -1048,13 +1062,13 @@ export class BuyingListComponent implements OnInit {
   canEditOrderedQuantity(item: BuyingListItem): boolean {
     return this.authService.canPerformBuyingListOperation('canEditQuantityOrdered') &&
       !(item.status === 'arrived' && !this.authService.canPerformBuyingListOperation('canEditAfterArrived')) &&
-      !item.movedToArrivals;
+      this.canEditSentItem(item);
   }
 
   canEditStatus(item: BuyingListItem): boolean {
     return this.authService.canPerformBuyingListOperation('canChangeStatus') &&
       !(item.status === 'arrived' && !this.authService.canPerformBuyingListOperation('canEditAfterArrived')) &&
-      !item.movedToArrivals;
+      this.canEditSentItem(item);
   }
 
   canSaveItem(item: BuyingListItem): boolean {
@@ -1133,6 +1147,7 @@ export class BuyingListComponent implements OnInit {
   }
 
   sendSelectedToArrivals() {
+    if (!this.authService.canPerformBuyingListOperation('canSendToArrivals')) return;
     if (this.sendingToArrivals) return;
     const selected = this.items.filter(i => i.id && this.selectedArrivalIds.has(i.id));
     const eligible = selected.filter(i => this.isArrivalSelectable(i));
@@ -1162,6 +1177,7 @@ export class BuyingListComponent implements OnInit {
   // Move a single item to arrivals for the active batch
   moveItemToArrivals(item: BuyingListItem) {
     if (!item.id) return;
+    if (!this.authService.canPerformBuyingListOperation('canSendToArrivals')) return;
     const batchLabel = this.selectedBatch?.name || item.batchName || 'this batch';
     if (!confirm(`Move "${item.productName}" to Arrivals for batch "${batchLabel}"?`)) return;
     // Optimistically mark as moved to prevent duplicate clicks
@@ -1273,6 +1289,14 @@ export class BuyingListComponent implements OnInit {
   saveItem() {
     if (!this.selectedBatch?.id) {
       alert('Select a batch first');
+      return;
+    }
+    if (!this.editingItem && !this.authService.canPerformBuyingListOperation('canAddItemToBuyingList')) {
+      alert('You do not have permission to add buying list items');
+      return;
+    }
+    if (this.editingItem && !this.canSaveItem(this.editingItem)) {
+      alert('You do not have permission to edit this buying list item');
       return;
     }
 

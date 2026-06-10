@@ -4,14 +4,7 @@ import { CommonModule } from '@angular/common';
 import { AuthService } from './services/auth.service';
 import { ShopConfigService } from './services/shop-config.service';
 import { ThemeService } from './services/theme.service';
-import { AppResource } from './models';
-
-interface NavItem {
-  route: string;
-  icon: string;
-  label: string;
-  resource: AppResource;
-}
+import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
 
 @Component({
   selector: 'app-root',
@@ -22,7 +15,7 @@ interface NavItem {
       <aside class="sidebar">
         <!-- Logo -->
         <div class="sidebar-logo">
-          <span class="sidebar-logo-icon">🛒</span>
+          <img src="assets/batchcommerce_icon.png" alt="Logo" style="width: 28px; height: 28px; border-radius: 6px; object-fit: cover; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25); flex-shrink: 0;" />
           <span class="sidebar-logo-text">{{ shopConfig.shopName }}</span>
         </div>
 
@@ -110,7 +103,6 @@ interface NavItem {
       padding: 20px 18px;
       border-bottom: 1px solid #ccc;
     }
-    .sidebar-logo-icon { font-size: 26px; }
     .sidebar-logo-text {
       font-size: 18px;
       font-weight: 700;
@@ -252,29 +244,8 @@ interface NavItem {
 export class AppComponent {
   title = 'Commerce';
 
-  mainNav: NavItem[] = [
-    { route: '/dashboard',        icon: 'dashboard',        label: 'Dashboard',        resource: 'dashboard' },
-    { route: '/clients',          icon: 'people',           label: 'Clients',          resource: 'clients' },
-    { route: '/products',         icon: 'inventory_2',      label: 'Products',         resource: 'products' },
-    { route: '/orders',           icon: 'shopping_cart',    label: 'Orders',           resource: 'orders' },
-    { route: '/buying-list',      icon: 'shopping_bag',     label: 'Buying List',      resource: 'buying_list' },
-    { route: '/arrivals',         icon: 'inventory',        label: 'Arrivals',         resource: 'arrivals' },
-    { route: '/product-tracking', icon: 'track_changes',    label: 'Tracking',         resource: 'product_tracking' },
-    { route: '/shipping',         icon: 'paid',             label: 'Shipping',         resource: 'shipping' },
-    { route: '/shipping-ledger',  icon: 'local_shipping',   label: 'Shipping Ledger',  resource: 'shipping' },
-    { route: '/deliveries',       icon: 'local_shipping',   label: 'Deliveries',       resource: 'deliveries' },
-    { route: '/stock-sales',       icon: 'storefront',       label: 'Stock Sales',      resource: 'stock_sales' },
-    { route: '/damaged-items',    icon: 'report_problem',   label: 'Damaged Items',    resource: 'damaged_items' },
-    { route: '/reports',          icon: 'analytics',        label: 'Reports',          resource: 'reports' },
-  ];
-
-  adminNav: NavItem[] = [
-    { route: '/import',   icon: 'upload_file',          label: 'Import Data',        resource: 'import' },
-    { route: '/batches',  icon: 'inventory_2',          label: 'Manage Batches',     resource: 'batches' },
-    { route: '/users',    icon: 'manage_accounts',      label: 'Users',              resource: 'users' },
-    { route: '/roles',    icon: 'admin_panel_settings',  label: 'Roles & Permissions', resource: 'roles' },
-    { route: '/settings', icon: 'settings',              label: 'Settings',           resource: 'settings' },
-  ];
+  mainNav = MAIN_NAV_ITEMS;
+  adminNav = ADMIN_NAV_ITEMS;
 
   constructor(
     public authService: AuthService,

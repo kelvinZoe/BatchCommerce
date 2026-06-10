@@ -24,18 +24,7 @@ import { firstValueFrom } from 'rxjs';
 
         <div class="brand-content">
           <div class="brand-logo">
-            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-              <rect width="48" height="48" rx="14" fill="url(#lg1)"/>
-              <path d="M10 16h4l3 14h14l3-10H17" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="20" cy="34" r="2" fill="#fff"/>
-              <circle cx="32" cy="34" r="2" fill="#fff"/>
-              <defs>
-                <linearGradient id="lg1" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#6366f1"/>
-                  <stop offset="1" stop-color="#4f46e5"/>
-                </linearGradient>
-              </defs>
-            </svg>
+            <img src="assets/batchcommerce_icon.png" alt="BatchCommerce" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);" />
             <span class="brand-name">BatchCommerce</span>
           </div>
 

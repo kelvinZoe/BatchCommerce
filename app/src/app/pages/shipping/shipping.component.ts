@@ -17,6 +17,7 @@ import {
 } from '../../components/table/table.component';
 import { ModalShellComponent } from '../../components/modal-shell/modal-shell.component';
 import { DatabaseService } from '../../services/database.service';
+import { AuthService } from '../../services/auth.service';
 
 interface ShippingBatch {
   name: string;
@@ -58,7 +59,7 @@ interface ShippingItem {
           <div class="sh-header-icon"><span class="material-icons">local_shipping</span></div>
           <div>
             <h1 class="sh-header-title">Shipping</h1>
-            <p class="sh-header-sub">Manage shipping fees for order batches</p>
+            <p class="sh-header-sub">Manage shipping fees for batches</p>
           </div>
         </div>
         <div class="sh-header-actions">
@@ -357,7 +358,10 @@ export class ShippingComponent implements OnInit {
   viewingLedger = false;
   ledger: { clientName: string; totalFee: number }[] = [];
 
-  constructor(private db: DatabaseService) {}
+  constructor(
+    private db: DatabaseService,
+    public authService: AuthService
+  ) {}
 
   ngOnInit(): void { 
     this.initShippingColumns();
@@ -474,6 +478,7 @@ export class ShippingComponent implements OnInit {
   }
 
   saveItem(it: ShippingItem) {
+    if (!this.canEditShippingFees()) return;
     const key = String(it.id);
     if (!this.isDirty(it)) return;
     this.savingItemId = it.id;
@@ -522,6 +527,7 @@ export class ShippingComponent implements OnInit {
   }
 
   saveSelected() {
+    if (!this.canEditShippingFees()) return;
     const rows = this.items
       .filter((_, i) => this.checked[i] && this.isDirty(this.items[i]))
       .flatMap(it => this.getFeeUpdateRows(it));
@@ -543,6 +549,7 @@ export class ShippingComponent implements OnInit {
   }
 
   saveAll() {
+    if (!this.canEditShippingFees()) return;
     const rows = this.items.filter(it => this.isDirty(it)).flatMap(it => this.getFeeUpdateRows(it));
     if (rows.length === 0 || !this.currentBatch) return;
     this.savingAll = true;
@@ -696,6 +703,7 @@ export class ShippingComponent implements OnInit {
       damages: item.damagedQty ? `${item.damagedQty} Damaged` : 'No Damage',
       damagesColor: item.damagedQty ? 'red' : 'gray',
       shippingTotal: ((Number(item.fee || 0) * Number(item.quantity || 0))).toFixed(2),
+      feeDisabled: !this.canEditShippingFees() || this.savingItemId === item.id || this.savingSelected || this.savingAll,
       actions: [
         {
           id: 'view-clients',
@@ -708,7 +716,7 @@ export class ShippingComponent implements OnInit {
           label: 'Save',
           icon: 'floppy',
           color: 'green',
-          disabled: !this.isDirty(item) || this.savingSelected || this.savingAll,
+          disabled: !this.canEditShippingFees() || !this.isDirty(item) || this.savingSelected || this.savingAll,
           loading: this.savingItemId === item.id
         }
       ] as ActionOption[]
@@ -734,6 +742,7 @@ export class ShippingComponent implements OnInit {
   }
 
   onShippingTableInputChange(event: { column: TableColumn; item: ShippingItem; value: any }) {
+    if (!this.canEditShippingFees()) return;
     const target = this.items.find(item => item.id === event.item.id);
     if (!target) return;
     const key = event.column.key as keyof ShippingItem;
@@ -783,7 +792,8 @@ export class ShippingComponent implements OnInit {
         inputMin: 0,
         inputStep: 0.01,
         inputPlaceholder: '0.00',
-        inputUpdateOn: 'change'
+        inputUpdateOn: 'change',
+        disabledKey: 'feeDisabled'
       },
       { key: 'shippingTotal', label: 'Total', type: 'string' },
       { key: 'actions', label: 'Actions', type: 'actions' }
@@ -795,5 +805,10 @@ export class ShippingComponent implements OnInit {
       { key: 'shippingQuantity', label: 'Shipping Qty', type: 'string' },
       { key: 'shortfallQuantity', label: 'Shortfall', type: 'string' }
     ];
+  }
+
+  private canEditShippingFees(): boolean {
+    return this.authService.canPerformShippingOperation('canEditShippingItem')
+      || this.authService.canPerformShippingOperation('canChangeShippingValue');
   }
 }

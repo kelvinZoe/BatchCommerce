@@ -12,6 +12,38 @@ import { BatchDetailHeaderComponent, BatchDetailHeaderTagConfig } from '../../co
 import { TableComponent, TableColumn, TableMetadata, TableFilterConfig, ActionOption } from '../../components/table/table.component';
 import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } from '../../models';
 
+interface PriceChangePreviewItem {
+  id: number;
+  orderId?: number;
+  saleId?: number;
+  customerName: string;
+  quantity: number;
+  currentPrice: number;
+  newPrice: number;
+  oldTotal: number;
+  newTotal: number;
+  type: 'Preorder' | 'Stock Sale';
+}
+
+interface PriceChangePreview {
+  affectedRecordCount?: number;
+  affectedOrderCount?: number;
+  affectedPreorderItemCount?: number;
+  affectedStockSaleItemCount?: number;
+  affectedOrders: PriceChangePreviewItem[];
+  totalCostChange: number;
+}
+
+interface PendingPriceUpdate {
+  batchProductId: number;
+  preorderPrice: number;
+  preorderDiscountMinQty: number;
+  preorderDiscountPrice: number;
+  stockPrice: number;
+  stockDiscountMinQty: number;
+  stockDiscountPrice: number;
+}
+
 @Component({
   selector: 'app-products',
   standalone: true,
@@ -231,7 +263,7 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
             <label class="pp-label">Batch Name <span class="pp-required">*</span></label>
             <input class="pp-input" type="text" [(ngModel)]="newBatchName"
                    placeholder="e.g., January 2026 Batch"
-                   [disabled]="savingBatch || editingBatch?.status === 'closed'" />
+                   [disabled]="savingBatch || !canEditCurrentBatchName" />
           </div>
         </div>
       </app-modal-shell>
@@ -314,15 +346,29 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
             <div class="pp-form-row">
               <div class="pp-form-group">
                 <label class="pp-label">Price (GHS)</label>
-                <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="batchProductForm.preorderPrice" (focus)="clearIfZero('preorderPrice')" min="0" /></div>
+                <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="batchProductForm.preorderPrice" (focus)="clearIfZero('preorderPrice')" min="0" [disabled]="!canEditBatchProductPricingFields" /></div>
               </div>
               <div class="pp-form-group">
                 <label class="pp-label">Discount from qty</label>
-                <input class="pp-input" type="number" [(ngModel)]="batchProductForm.preorderDiscountMinQty" (focus)="clearIfZero('preorderDiscountMinQty')" min="0" placeholder="0 = no discount" />
+                <input class="pp-input" type="number" [(ngModel)]="batchProductForm.preorderDiscountMinQty" (focus)="clearIfZero('preorderDiscountMinQty')" min="0" placeholder="0 = no discount" [disabled]="!canEditBatchProductPricingFields" />
               </div>
               <div class="pp-form-group">
                 <label class="pp-label">Discount Price (GHS)</label>
-                <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="batchProductForm.preorderDiscountPrice" (focus)="clearIfZero('preorderDiscountPrice')" min="0" /></div>
+                <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="batchProductForm.preorderDiscountPrice" (focus)="clearIfZero('preorderDiscountPrice')" min="0" [disabled]="!canEditBatchProductPricingFields" /></div>
+              </div>
+
+              <!-- Preorder Discount Explainer -->
+              <div class="pp-discount-explainer" *ngIf="batchProductForm.preorderPrice > 0 && batchProductForm.preorderDiscountMinQty > 0 && batchProductForm.preorderDiscountPrice > 0 && batchProductForm.preorderDiscountPrice <= batchProductForm.preorderPrice">
+                <span class="material-icons">info_outline</span>
+                <span>
+                  Unit price drops to <strong>GHS {{ batchProductForm.preorderDiscountPrice }}</strong> when buying <strong>{{ batchProductForm.preorderDiscountMinQty }}</strong>+ items. Total cost: <strong>GHS {{ batchProductForm.preorderDiscountMinQty * batchProductForm.preorderDiscountPrice }}</strong> (saves GHS {{ (batchProductForm.preorderPrice - batchProductForm.preorderDiscountPrice) * batchProductForm.preorderDiscountMinQty }}).
+                </span>
+              </div>
+              <div class="pp-discount-warning" *ngIf="batchProductForm.preorderPrice > 0 && batchProductForm.preorderDiscountPrice > batchProductForm.preorderPrice">
+                <span class="material-icons">warning</span>
+                <span>
+                  <strong>Caution:</strong> The discount price (GHS {{ batchProductForm.preorderDiscountPrice }}) is greater than the regular price (GHS {{ batchProductForm.preorderPrice }}). Did you enter the total amount instead of the discounted <strong>unit price</strong> (e.g. GHS 19 instead of GHS 190)?
+                </span>
               </div>
             </div>
 
@@ -332,15 +378,29 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
             <div class="pp-form-row">
               <div class="pp-form-group">
                 <label class="pp-label">Stock Price (GHS)</label>
-                <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="batchProductForm.stockPrice" (focus)="clearIfZero('stockPrice')" min="0" /></div>
+                <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="batchProductForm.stockPrice" (focus)="clearIfZero('stockPrice')" min="0" [disabled]="!canEditBatchProductPricingFields" /></div>
               </div>
               <div class="pp-form-group">
                 <label class="pp-label">Discount from qty</label>
-                <input class="pp-input" type="number" [(ngModel)]="batchProductForm.stockDiscountMinQty" (focus)="clearIfZero('stockDiscountMinQty')" min="0" placeholder="0 = no discount" />
+                <input class="pp-input" type="number" [(ngModel)]="batchProductForm.stockDiscountMinQty" (focus)="clearIfZero('stockDiscountMinQty')" min="0" placeholder="0 = no discount" [disabled]="!canEditBatchProductPricingFields" />
               </div>
               <div class="pp-form-group">
                 <label class="pp-label">Discount Price (GHS)</label>
-                <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="batchProductForm.stockDiscountPrice" (focus)="clearIfZero('stockDiscountPrice')" min="0" /></div>
+                <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="batchProductForm.stockDiscountPrice" (focus)="clearIfZero('stockDiscountPrice')" min="0" [disabled]="!canEditBatchProductPricingFields" /></div>
+              </div>
+
+              <!-- Stock Discount Explainer -->
+              <div class="pp-discount-explainer" *ngIf="batchProductForm.stockPrice > 0 && batchProductForm.stockDiscountMinQty > 0 && batchProductForm.stockDiscountPrice > 0 && batchProductForm.stockDiscountPrice <= batchProductForm.stockPrice">
+                <span class="material-icons">info_outline</span>
+                <span>
+                  Unit price drops to <strong>GHS {{ batchProductForm.stockDiscountPrice }}</strong> when buying <strong>{{ batchProductForm.stockDiscountMinQty }}</strong>+ items. Total cost: <strong>GHS {{ batchProductForm.stockDiscountMinQty * batchProductForm.stockDiscountPrice }}</strong> (saves GHS {{ (batchProductForm.stockPrice - batchProductForm.stockDiscountPrice) * batchProductForm.stockDiscountMinQty }}).
+                </span>
+              </div>
+              <div class="pp-discount-warning" *ngIf="batchProductForm.stockPrice > 0 && batchProductForm.stockDiscountPrice > batchProductForm.stockPrice">
+                <span class="material-icons">warning</span>
+                <span>
+                  <strong>Caution:</strong> The discount price (GHS {{ batchProductForm.stockDiscountPrice }}) is greater than the regular price (GHS {{ batchProductForm.stockPrice }}). Did you enter the total amount instead of the discounted <strong>unit price</strong> (e.g. GHS 19 instead of GHS 190)?
+                </span>
               </div>
             </div>
 
@@ -360,7 +420,7 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
                 </ng-container>
                 <!-- New product or editing: editable -->
                 <input *ngIf="!useExistingProduct || editingBatchProduct"
-                  class="pp-input" type="number" [(ngModel)]="batchProductForm.inStockQty" (focus)="clearIfZero('inStockQty')" min="0" />
+                  class="pp-input" type="number" [(ngModel)]="batchProductForm.inStockQty" (focus)="clearIfZero('inStockQty')" min="0" [disabled]="!canEditBatchProductPricingFields" />
               </div>
             </div>
 
@@ -415,6 +475,20 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
               <label class="pp-label">Discount Price (GHS)</label>
               <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="productFormData.stockDiscountPrice" min="0" (focus)="clearProductFieldIfZero('stockDiscountPrice', $event)" /></div>
             </div>
+
+            <!-- Catalog Stock Discount Explainer -->
+            <div class="pp-discount-explainer" *ngIf="productFormData.stockPrice > 0 && productFormData.stockDiscountMinQty > 0 && productFormData.stockDiscountPrice > 0 && productFormData.stockDiscountPrice <= productFormData.stockPrice">
+              <span class="material-icons">info_outline</span>
+              <span>
+                Unit price drops to <strong>GHS {{ productFormData.stockDiscountPrice }}</strong> when buying <strong>{{ productFormData.stockDiscountMinQty }}</strong>+ items. Total cost: <strong>GHS {{ productFormData.stockDiscountMinQty * productFormData.stockDiscountPrice }}</strong> (saves GHS {{ (productFormData.stockPrice - productFormData.stockDiscountPrice) * productFormData.stockDiscountMinQty }}).
+              </span>
+            </div>
+            <div class="pp-discount-warning" *ngIf="productFormData.stockPrice > 0 && productFormData.stockDiscountPrice > productFormData.stockPrice">
+              <span class="material-icons">warning</span>
+              <span>
+                <strong>Caution:</strong> The discount price (GHS {{ productFormData.stockDiscountPrice }}) is greater than the regular price (GHS {{ productFormData.stockPrice }}). Did you enter the total amount instead of the discounted <strong>unit price</strong> (e.g. GHS 19 instead of GHS 190)?
+              </span>
+            </div>
           </div>
         </div>
       </app-modal-shell>
@@ -455,7 +529,7 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
         size="lg"
         tone="warning"
         title="Confirm Price Change"
-        subtitle="This will recalculate prices for affected customer orders"
+        subtitle="This will recalculate prices for affected preorder and stock-sale items"
         icon="warning"
         [showClose]="!isRecalculatingPrices"
         [closeOnBackdrop]="!isRecalculatingPrices"
@@ -470,30 +544,44 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
                 <span class="pp-price-change-label">Product:</span>
                 <span class="pp-price-change-value">{{ editingBatchProduct?.productName }}</span>
               </div>
-              <div class="pp-price-change-row" *ngIf="pricePreviewData?.currentPrice !== undefined">
-                <span class="pp-price-change-label">Current Price:</span>
-                <span class="pp-price-change-value">GHS {{ pricePreviewData.currentPrice | number:'1.2-2' }}</span>
+              <div class="pp-price-change-row">
+                <span class="pp-price-change-label">Preorder Price:</span>
+                <span class="pp-price-change-value">
+                  GHS {{ editingBatchProduct?.preorderPrice | number:'1.2-2' }}
+                  <span class="pp-price-arrow">→</span>
+                  <span class="pp-price-new">GHS {{ pendingPriceUpdate?.preorderPrice | number:'1.2-2' }}</span>
+                </span>
               </div>
               <div class="pp-price-change-row">
-                <span class="pp-price-change-label">New Price:</span>
-                <span class="pp-price-change-value pp-price-new">GHS {{ pricePreviewData?.newPrice | number:'1.2-2' }}</span>
+                <span class="pp-price-change-label">Stock Price:</span>
+                <span class="pp-price-change-value">
+                  GHS {{ editingBatchProduct?.stockPrice | number:'1.2-2' }}
+                  <span class="pp-price-arrow">→</span>
+                  <span class="pp-price-new">GHS {{ pendingPriceUpdate?.stockPrice | number:'1.2-2' }}</span>
+                </span>
               </div>
             </div>
 
-            <!-- Affected orders section -->
+            <!-- Affected items section -->
             <div class="pp-section-divider">
-              <span class="pp-section-label">Affected Orders</span>
+              <span class="pp-section-label">Affected Items</span>
             </div>
-            <p class="pp-price-change-info" *ngIf="pricePreviewData?.affectedOrderCount">
+            <p class="pp-price-change-info" *ngIf="affectedPriceChangeRecordCount">
               <span class="material-icons">shopping_cart</span>
-              {{ pricePreviewData.affectedOrderCount }} order{{ pricePreviewData.affectedOrderCount !== 1 ? 's' : '' }} will be updated
+              {{ affectedPriceChangeRecordCount }} item{{ affectedPriceChangeRecordCount !== 1 ? 's' : '' }} will be updated
+              <span class="pp-price-change-counts" *ngIf="hasPriceChangeTypeCounts">
+                ({{ affectedPreorderItemCount }} preorder, {{ affectedStockSaleItemCount }} stock sale)
+              </span>
             </p>
 
-            <!-- Affected orders list -->
-            <div class="pp-affected-orders" *ngIf="pricePreviewData?.affectedOrders && pricePreviewData.affectedOrders.length > 0; else noOrdersMsg">
-              <div class="pp-affected-order-item" *ngFor="let order of pricePreviewData.affectedOrders | slice:0:5">
+            <!-- Affected items list -->
+            <div class="pp-affected-orders" *ngIf="priceChangeItems.length > 0; else noOrdersMsg">
+              <div class="pp-affected-order-item" *ngFor="let order of priceChangeItems | slice:0:5">
                 <div class="pp-affected-order-details">
-                  <div class="pp-affected-order-name">{{ $any(order).customerName }}</div>
+                  <div class="pp-affected-order-name">
+                    {{ order.customerName }}
+                    <span class="pp-affected-order-type">{{ order.type }}</span>
+                  </div>
                   <div class="pp-affected-order-qty">{{ $any(order).quantity }} × GHS {{ $any(order).currentPrice | number:'1.2-2' }} → GHS {{ $any(order).newPrice | number:'1.2-2' }}</div>
                 </div>
                 <div class="pp-affected-order-cost">
@@ -502,23 +590,23 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
                   <span class="pp-affected-order-cost-new">GHS {{ ($any(order).quantity * $any(order).newPrice) | number:'1.2-2' }}</span>
                 </div>
               </div>
-              <div class="pp-affected-orders-more" *ngIf="pricePreviewData.affectedOrders.length > 5">
-                ... and {{ pricePreviewData.affectedOrders.length - 5 }} more order{{ (pricePreviewData.affectedOrders.length - 5) !== 1 ? 's' : '' }}
+              <div class="pp-affected-orders-more" *ngIf="priceChangeItems.length > 5">
+                ... and {{ priceChangeItems.length - 5 }} more item{{ (priceChangeItems.length - 5) !== 1 ? 's' : '' }}
               </div>
             </div>
             <ng-template #noOrdersMsg>
-              <div class="pp-no-orders">No affected orders found</div>
+              <div class="pp-no-orders">No affected preorder or stock-sale items found</div>
             </ng-template>
 
             <!-- Total impact summary -->
-            <div class="pp-price-change-impact" *ngIf="pricePreviewData?.totalCostChange !== undefined">
+            <div class="pp-price-change-impact" *ngIf="pricePreviewData">
               <div class="pp-impact-row">
                 <span class="pp-impact-label">Total Cost Change:</span>
-                <span class="pp-impact-value" [class.pp-impact-increase]="pricePreviewData.totalCostChange > 0" [class.pp-impact-decrease]="pricePreviewData.totalCostChange < 0">
-                  <span *ngIf="pricePreviewData.totalCostChange > 0" class="material-icons">trending_up</span>
-                  <span *ngIf="pricePreviewData.totalCostChange < 0" class="material-icons">trending_down</span>
-                  <span *ngIf="pricePreviewData.totalCostChange === 0" class="material-icons">trending_flat</span>
-                  GHS {{ Math.abs(pricePreviewData.totalCostChange) | number:'1.2-2' }}
+                <span class="pp-impact-value" [class.pp-impact-increase]="priceChangeTotalCostChange > 0" [class.pp-impact-decrease]="priceChangeTotalCostChange < 0">
+                  <span *ngIf="priceChangeTotalCostChange > 0" class="material-icons">trending_up</span>
+                  <span *ngIf="priceChangeTotalCostChange < 0" class="material-icons">trending_down</span>
+                  <span *ngIf="priceChangeTotalCostChange === 0" class="material-icons">trending_flat</span>
+                  GHS {{ Math.abs(priceChangeTotalCostChange) | number:'1.2-2' }}
                 </span>
               </div>
             </div>
@@ -797,6 +885,50 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
     .pp-bulk-delete-list { font-size:13px; color:#64748b; margin:8px 0 0 20px; padding:0; }
     .pp-bulk-delete-list li { margin:4px 0; }
 
+    /* Discount Explainers & Warnings */
+    .pp-discount-explainer {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      color: #1d4ed8;
+      font-size: 11.5px;
+      line-height: 1.4;
+      margin-top: -6px;
+      margin-bottom: 8px;
+    }
+    .pp-discount-explainer .material-icons {
+      font-size: 16px;
+      color: #3b82f6;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .pp-discount-warning {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      color: #b45309;
+      font-size: 11.5px;
+      line-height: 1.4;
+      margin-top: -6px;
+      margin-bottom: 8px;
+    }
+    .pp-discount-warning .material-icons {
+      font-size: 16px;
+      color: #f59e0b;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
     /* Section dividers */
     .pp-section-divider { display:flex; align-items:center; gap:10px; margin:18px 0 12px; }
     .pp-section-divider::before,.pp-section-divider::after { content:''; flex:1; height:1px; background:#f1f5f9; }
@@ -815,16 +947,19 @@ import { BatchProduct, OrderBatch, ProductCatalog, ProductPermissionConfig } fro
     .pp-price-change-row + .pp-price-change-row { border-top:1px solid #e2e8f0; padding-top:10px; }
     .pp-price-change-label { color:#64748b; font-weight:500; }
     .pp-price-change-value { color:#0f172a; font-weight:600; }
+    .pp-price-arrow { color:#94a3b8; font-weight:500; margin:0 6px; }
     .pp-price-new { color:#16a34a; font-size:14px; }
 
     .pp-price-change-info { color:#059669; font-size:13px; margin:12px 0; display:flex; align-items:center; gap:6px; }
     .pp-price-change-info .material-icons { font-size:18px; }
+    .pp-price-change-counts { color:#64748b; font-size:12px; }
 
     .pp-affected-orders { background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; max-height:250px; overflow-y:auto; }
     .pp-affected-order-item { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; border-bottom:1px solid #e2e8f0; font-size:12px; }
     .pp-affected-order-item:last-child { border-bottom:none; }
     .pp-affected-order-details { flex:1; }
     .pp-affected-order-name { font-weight:600; color:#0f172a; margin-bottom:3px; }
+    .pp-affected-order-type { display:inline-flex; align-items:center; margin-left:6px; padding:2px 7px; border-radius:999px; background:#e0f2fe; color:#0369a1; font-size:10px; font-weight:700; }
     .pp-affected-order-qty { font-size:11px; color:#64748b; }
     .pp-affected-order-cost { display:flex; align-items:center; gap:8px; font-size:12px; white-space:nowrap; }
     .pp-affected-order-cost-old { color:#94a3b8; text-decoration:line-through; }
@@ -911,7 +1046,7 @@ export class ProductsComponent implements OnInit {
 
   // Price change confirmation modal
   showPriceChangeModal = false;
-  pricePreviewData: any = null;
+  pricePreviewData: PriceChangePreview | null = null;
   isRecalculatingPrices = false;
   priceChangeError = '';
 
@@ -922,7 +1057,7 @@ export class ProductsComponent implements OnInit {
         buttonName: this.editingBatch ? 'Update Batch' : 'Create Batch',
         color: 'base_color',
         action: 'confirm',
-        disabled: this.savingBatch || this.editingBatch?.status === 'closed' || !this.newBatchName.trim(),
+        disabled: this.savingBatch || !this.canEditCurrentBatchName || !this.newBatchName.trim(),
         loading: this.savingBatch
       }
     ];
@@ -979,7 +1114,32 @@ export class ProductsComponent implements OnInit {
       }
     ];
   }
-  pendingPriceUpdate: any = null;
+  pendingPriceUpdate: PendingPriceUpdate | null = null;
+
+  get priceChangeItems(): PriceChangePreviewItem[] {
+    return this.pricePreviewData?.affectedOrders || [];
+  }
+
+  get affectedPriceChangeRecordCount(): number {
+    return this.pricePreviewData?.affectedRecordCount ?? this.pricePreviewData?.affectedOrderCount ?? 0;
+  }
+
+  get affectedPreorderItemCount(): number {
+    return this.pricePreviewData?.affectedPreorderItemCount || 0;
+  }
+
+  get affectedStockSaleItemCount(): number {
+    return this.pricePreviewData?.affectedStockSaleItemCount || 0;
+  }
+
+  get hasPriceChangeTypeCounts(): boolean {
+    return this.pricePreviewData?.affectedPreorderItemCount !== undefined
+      || this.pricePreviewData?.affectedStockSaleItemCount !== undefined;
+  }
+
+  get priceChangeTotalCostChange(): number {
+    return this.pricePreviewData?.totalCostChange || 0;
+  }
 
   // Manage Products (Catalog) tab properties
   loadingCatalog = true;
@@ -1039,6 +1199,7 @@ export class ProductsComponent implements OnInit {
     stockDiscountPrice: 0,
     inStockQty: 0
   };
+  private addBatchProductSystemDefaults = this.createEmptyBatchProductForm();
 
   constructor(
     private dbService: DatabaseService,
@@ -1156,8 +1317,11 @@ export class ProductsComponent implements OnInit {
   }
 
   private getBatchProductActions(item: BatchProduct): ActionOption[] {
-    const canEdit = this.authService.canPerformProductOperation('canEditBatchProduct') && (this.authService.isAdmin || this.selectedBatch?.status !== 'closed');
-    const canDelete = this.authService.canPerformProductOperation('canDeleteProductFromBatch') && (this.authService.isAdmin || this.selectedBatch?.status !== 'closed');
+    const batchIsClosed = this.selectedBatch?.status === 'closed';
+    const canEditClosed = !batchIsClosed || this.authService.canPerformProductOperation('canEditBatchProductAfterBatchClosed');
+    const canDeleteClosed = !batchIsClosed || this.authService.canPerformProductOperation('canDeleteProductAfterBatchClosed');
+    const canEdit = this.authService.canPerformProductOperation('canEditBatchProduct') && canEditClosed;
+    const canDelete = this.authService.canPerformProductOperation('canDeleteProductFromBatch') && canDeleteClosed;
     const actions: ActionOption[] = [];
     if (canEdit) actions.push({ id: 'edit', label: 'Edit', icon: 'pencil', color: 'blue' });
     if (canDelete) actions.push({ id: 'delete', label: 'Delete', icon: 'trash', color: 'red' });
@@ -1177,6 +1341,19 @@ export class ProductsComponent implements OnInit {
 
   get totalBatchPages() {
     return Math.max(1, Math.ceil(this.batchTotal / this.batchPageSize));
+  }
+
+  get canEditCurrentBatchName(): boolean {
+    if (!this.editingBatch) return true;
+    if (this.editingBatch.status !== 'closed') return this.authService.canPerformProductOperation('canEditBatchName');
+    return this.authService.canPerformProductOperation('canEditBatchName')
+      && this.authService.canPerformProductOperation('canEditBatchProductAfterBatchClosed');
+  }
+
+  get canEditBatchProductPricingFields(): boolean {
+    return this.editingBatchProduct
+      ? this.authService.canPerformProductOperation('canEditBatchProductPricing')
+      : this.authService.canPerformProductOperation('canEditPricesAndStockOnAdd');
   }
 
   get totalBatchProductPages() {
@@ -1360,7 +1537,8 @@ export class ProductsComponent implements OnInit {
   }
 
   editBatch(batch: OrderBatch) {
-    if (batch.status === 'closed') return;
+    if (!this.authService.canPerformProductOperation('canEditBatchName')) return;
+    if (batch.status === 'closed' && !this.authService.canPerformProductOperation('canEditBatchProductAfterBatchClosed')) return;
     this.editingBatch = batch;
     this.newBatchName = batch.name;
     this.showBatchModal = true;
@@ -1385,7 +1563,7 @@ export class ProductsComponent implements OnInit {
   saveBatch() {
     if (!this.newBatchName.trim()) return;
     this.savingBatch = true;
-    if (this.editingBatch?.status === 'closed') {
+    if (this.editingBatch && !this.canEditCurrentBatchName) {
       this.savingBatch = false;
       return;
     }
@@ -1407,7 +1585,8 @@ export class ProductsComponent implements OnInit {
   }
 
   deleteBatch(batch: OrderBatch) {
-    if (batch.status === 'closed') return;
+    if (!this.authService.canPerformProductOperation('canDeleteBatch')) return;
+    if (batch.status === 'closed' && !this.authService.canPerformProductOperation('canDeleteProductAfterBatchClosed')) return;
     if (!batch.id || this.deletingBatchIds.has(batch.id)) return;
     if (!confirm(`Delete batch "${batch.name}"? This will remove its products and orders.`)) return;
     this.deletingBatchIds.add(batch.id);
@@ -1432,8 +1611,7 @@ export class ProductsComponent implements OnInit {
   }
 
   openBatchProductModal(item?: BatchProduct) {
-    // If batch is closed, only admin can edit
-    if (item && this.selectedBatch?.status === 'closed' && !this.authService.isAdmin) {
+    if (item && this.selectedBatch?.status === 'closed' && !this.authService.canPerformProductOperation('canEditBatchProductAfterBatchClosed')) {
       alert('Cannot edit products in a closed batch.');
       return;
     }
@@ -1464,6 +1642,7 @@ export class ProductsComponent implements OnInit {
       this.resetExistingProductSelection();
       this.productForm = { name: '', description: '' };
       this.batchProductForm = this.createEmptyBatchProductForm();
+      this.addBatchProductSystemDefaults = this.createEmptyBatchProductForm();
     }
     if (!item && this.useExistingProduct) {
       this.loadCatalog();
@@ -1496,6 +1675,7 @@ export class ProductsComponent implements OnInit {
     this.existingProductStock = null;
     this.loadingExistingProduct = false;
     this.batchProductForm = this.createEmptyBatchProductForm();
+    this.addBatchProductSystemDefaults = this.createEmptyBatchProductForm();
     if (!id) return;
 
     // Show current stock from the catalogue (already loaded)
@@ -1503,12 +1683,14 @@ export class ProductsComponent implements OnInit {
     if (catalogEntry) {
       this.existingProductStock = catalogEntry.stock ?? 0;
       this.batchProductForm = this.createEmptyBatchProductForm(this.existingProductStock);
+      this.addBatchProductSystemDefaults = { ...this.batchProductForm };
     } else {
       this.dbService.getProduct(Number(id)).subscribe(product => {
         if (requestId !== this.existingProductSelectionRequestId || Number(this.selectedCatalogProductId) !== Number(id)) return;
         if (product) {
           this.existingProductStock = product.stock ?? 0;
           this.batchProductForm = this.createEmptyBatchProductForm(this.existingProductStock);
+          this.addBatchProductSystemDefaults = { ...this.batchProductForm };
         }
       });
     }
@@ -1529,9 +1711,11 @@ export class ProductsComponent implements OnInit {
           stockDiscountPrice:      recent.stockDiscountPrice      ?? 0,
           inStockQty
         };
+        this.addBatchProductSystemDefaults = { ...this.batchProductForm };
         return;
       }
       this.batchProductForm = this.createEmptyBatchProductForm(inStockQty);
+      this.addBatchProductSystemDefaults = { ...this.batchProductForm };
     });
   }
 
@@ -1550,8 +1734,7 @@ export class ProductsComponent implements OnInit {
       return;
     }
 
-    // Batch status check - if batch is closed, only admin can proceed
-    if (this.selectedBatch.status === 'closed' && !this.authService.isAdmin) {
+    if (this.selectedBatch.status === 'closed' && !this.authService.canPerformProductOperation('canEditBatchProductAfterBatchClosed')) {
       this.batchProductAddError = 'Cannot modify products in a closed batch.';
       this.savingBatchProduct = false;
       return;
@@ -1559,31 +1742,46 @@ export class ProductsComponent implements OnInit {
 
     const batchId = this.selectedBatch.id;
     const selectedId = this.selectedCatalogProductId ? Number(this.selectedCatalogProductId) : 0;
+    const sourceForm = !this.editingBatchProduct && !this.authService.canPerformProductOperation('canEditPricesAndStockOnAdd')
+      ? this.addBatchProductSystemDefaults
+      : this.batchProductForm;
+
     const payload: BatchProduct = {
       batchId,
       productId: selectedId,
-      preorderPrice: Number(this.batchProductForm.preorderPrice || 0),
-      preorderDiscountMinQty: Number(this.batchProductForm.preorderDiscountMinQty || 0),
-      preorderDiscountPrice: Number(this.batchProductForm.preorderDiscountPrice || 0),
-      stockPrice: Number(this.batchProductForm.stockPrice || 0),
-      stockDiscountMinQty: Number(this.batchProductForm.stockDiscountMinQty || 0),
-      stockDiscountPrice: Number(this.batchProductForm.stockDiscountPrice || 0),
-      inStockQty: Number(this.batchProductForm.inStockQty || 0)
+      preorderPrice: Number(sourceForm.preorderPrice || 0),
+      preorderDiscountMinQty: Number(sourceForm.preorderDiscountMinQty || 0),
+      preorderDiscountPrice: Number(sourceForm.preorderDiscountPrice || 0),
+      stockPrice: Number(sourceForm.stockPrice || 0),
+      stockDiscountMinQty: Number(sourceForm.stockDiscountMinQty || 0),
+      stockDiscountPrice: Number(sourceForm.stockDiscountPrice || 0),
+      inStockQty: Number(sourceForm.inStockQty || 0)
     };
 
     this.batchProductAddError = '';
     this.savingBatchProduct = true;
 
     if (this.editingBatchProduct?.id) {
-      // Check if price has changed
+      // Check if price or discount settings have changed
       const priceChanged = 
         payload.preorderPrice !== this.editingBatchProduct.preorderPrice ||
-        payload.stockPrice !== this.editingBatchProduct.stockPrice;
+        payload.preorderDiscountMinQty !== this.editingBatchProduct.preorderDiscountMinQty ||
+        payload.preorderDiscountPrice !== this.editingBatchProduct.preorderDiscountPrice ||
+        payload.stockPrice !== this.editingBatchProduct.stockPrice ||
+        payload.stockDiscountMinQty !== this.editingBatchProduct.stockDiscountMinQty ||
+        payload.stockDiscountPrice !== this.editingBatchProduct.stockDiscountPrice;
 
       if (priceChanged) {
         // Show preview modal for price change confirmation
         this.savingBatchProduct = false;
-        this.previewAndConfirmPriceChange(payload.preorderPrice, payload.stockPrice);
+        this.previewAndConfirmPriceChange(
+          payload.preorderPrice,
+          payload.preorderDiscountMinQty,
+          payload.preorderDiscountPrice,
+          payload.stockPrice,
+          payload.stockDiscountMinQty,
+          payload.stockDiscountPrice
+        );
         return;
       }
 
@@ -1671,8 +1869,7 @@ export class ProductsComponent implements OnInit {
       return;
     }
 
-    // Batch status check - if batch is closed, only admin can delete
-    if (this.selectedBatch?.status === 'closed' && !this.authService.isAdmin) {
+    if (this.selectedBatch?.status === 'closed' && !this.authService.canPerformProductOperation('canDeleteProductAfterBatchClosed')) {
       alert('Cannot delete products from a closed batch.');
       return;
     }
@@ -1960,24 +2157,41 @@ export class ProductsComponent implements OnInit {
     }
   }
 
-  previewAndConfirmPriceChange(newPreorderPrice: number, newStockPrice: number) {
+  previewAndConfirmPriceChange(
+    newPreorderPrice: number,
+    newPreorderDiscountMinQty: number,
+    newPreorderDiscountPrice: number,
+    newStockPrice: number,
+    newStockDiscountMinQty: number,
+    newStockDiscountPrice: number
+  ) {
     if (!this.editingBatchProduct?.id) return;
 
+    const batchProductId = this.editingBatchProduct.id;
     this.priceChangeError = '';
     this.savingBatchProduct = true;  // Show loading on the first modal button
 
-    // Use the new preorder price for preview (or fall back to stock price if preorder is 0)
-    const priceForPreview = newPreorderPrice > 0 ? newPreorderPrice : newStockPrice;
-
-    this.dbService.previewPriceChange(this.editingBatchProduct.id, priceForPreview).subscribe({
+    this.dbService.previewPriceChange(
+      batchProductId,
+      newPreorderPrice,
+      newPreorderDiscountMinQty,
+      newPreorderDiscountPrice,
+      newStockPrice,
+      newStockDiscountMinQty,
+      newStockDiscountPrice
+    ).subscribe({
       next: (preview) => {
         this.savingBatchProduct = false;  // Hide loading after preview loads
         this.isRecalculatingPrices = false;
         this.pricePreviewData = preview;
         this.pendingPriceUpdate = {
-          batchProductId: this.editingBatchProduct?.id,
+          batchProductId,
           preorderPrice: newPreorderPrice,
-          stockPrice: newStockPrice
+          preorderDiscountMinQty: newPreorderDiscountMinQty,
+          preorderDiscountPrice: newPreorderDiscountPrice,
+          stockPrice: newStockPrice,
+          stockDiscountMinQty: newStockDiscountMinQty,
+          stockDiscountPrice: newStockDiscountPrice
         };
         this.showPriceChangeModal = true;
       },
@@ -1993,25 +2207,40 @@ export class ProductsComponent implements OnInit {
   confirmPriceUpdate() {
     if (!this.pendingPriceUpdate) return;
 
-    // Permission check - only admin can edit prices on batch products
-    if (!this.authService.isAdmin) {
-      this.priceChangeError = 'Only administrators can modify product prices in batches.';
+    if (!this.authService.canPerformProductOperation('canEditBatchProductPricing')) {
+      this.priceChangeError = 'You do not have permission to modify product prices in batches.';
       return;
     }
 
     this.priceChangeError = '';
     this.isRecalculatingPrices = true;
 
-    const { batchProductId, preorderPrice, stockPrice } = this.pendingPriceUpdate;
+    const {
+      batchProductId,
+      preorderPrice,
+      preorderDiscountMinQty,
+      preorderDiscountPrice,
+      stockPrice,
+      stockDiscountMinQty,
+      stockDiscountPrice
+    } = this.pendingPriceUpdate;
 
-    this.dbService.updateBatchProductPriceWithRecalc(batchProductId, preorderPrice, stockPrice).subscribe({
+    this.dbService.updateBatchProductPriceWithRecalc(
+      batchProductId,
+      preorderPrice,
+      preorderDiscountMinQty,
+      preorderDiscountPrice,
+      stockPrice,
+      stockDiscountMinQty,
+      stockDiscountPrice
+    ).subscribe({
       next: (result) => {
         this.isRecalculatingPrices = false;
         this.closePriceChangeModal();
         // Reload batch products to reflect changes
         this.loadBatchProducts();
         // Optional: show success message
-        console.log(`Successfully updated ${result.affectedOrderCount} order(s)`);
+        console.log(`Successfully recalculated affected preorder items and stock sale items.`);
       },
       error: (err) => {
         this.isRecalculatingPrices = false;

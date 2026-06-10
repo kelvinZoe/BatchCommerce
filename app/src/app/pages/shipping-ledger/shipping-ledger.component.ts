@@ -556,7 +556,7 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
         status: row.status,
         sentToDeliveries: row.sentToDeliveries ? 'Sent' : 'Pending',
         deliveryColor: row.sentToDeliveries ? 'blue' : 'gray',
-        paidDisabled: !this.authService.canPerformShippingLedgerOperation('canAddAmountPaid') || !!row.sentToDeliveries || this.sendingKeys.has(key) || this.savingSet.has(key),
+        paidDisabled: !this.canEditPaidAmount(row) || this.sendingKeys.has(key) || this.savingSet.has(key),
         actions: [
           {
             id: 'view-items',
@@ -772,7 +772,7 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
   }
 
   onPaidChange(r: LedgerRow, val: number | string) {
-    if (!this.authService.canPerformShippingLedgerOperation('canAddAmountPaid') || r.sentToDeliveries) return;
+    if (!this.canEditPaidAmount(r)) return;
     const paid = Number(val || 0);
     let newPaid = isNaN(paid) ? 0 : paid;
     if ((r.totalFee || 0) === 0) {
@@ -805,7 +805,7 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
   private performClientSave(r: LedgerRow) {
     const key = this.rowKey(r);
     this.savingSet.add(key);
-    if (!this.authService.canPerformShippingLedgerOperation('canAddAmountPaid') || r.sentToDeliveries) { this.savingSet.delete(key); return; }
+    if (!this.canEditPaidAmount(r)) { this.savingSet.delete(key); return; }
     const clientId = r.clientId ?? 0;
     if (!clientId) { this.savingSet.delete(key); return; }
     this.db.saveClientPayments(r.batchName ?? null, clientId, Number(r.paidAmount || 0)).subscribe(ok => {
@@ -821,6 +821,7 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
   sendToDeliveries(r: LedgerRow) {
     if (!r.clientId || !r.batchName) return;
     if (!this.authService.canPerformShippingLedgerOperation('canMoveToDeliveries')) return;
+    if (r.sentToDeliveries || r.status !== 'paid') return;
     const key = this.rowKey(r);
     if (this.sendingKeys.has(key)) return;
     this.sendingKeys.add(key);
@@ -836,6 +837,12 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
 
   toggleItems(r: LedgerRow) {
     this.openItemsModal(r);
+  }
+
+  private canEditPaidAmount(row: LedgerRow): boolean {
+    if (!this.authService.canPerformShippingLedgerOperation('canAddAmountPaid')) return false;
+    if (!row.sentToDeliveries) return true;
+    return this.authService.canPerformShippingLedgerOperation('canEditAmountPaidAfterMove');
   }
 
   private async ensureClientItems(row: LedgerRow): Promise<Array<{ productName: string; fee: number; quantity: number }>> {

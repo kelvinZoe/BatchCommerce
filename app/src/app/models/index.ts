@@ -82,7 +82,7 @@ export interface ShopMembership {
 
 export type MembershipStatus = 'pending_verification' | 'active' | 'suspended' | 'removed';
 
-// ── Order Batches ─────────────────────────────────────
+// ── Batches ───────────────────────────────────────────
 export type OrderBatchStatus = 'open' | 'closed';
 
 export interface OrderBatch {
@@ -288,17 +288,29 @@ export const DASHBOARD_COMPONENTS: {
 
 /** Controls which product operations a role can perform */
 export interface ProductPermissionConfig {
-  canAddBatch: boolean;              // Can create new order batches
+  canAddBatch: boolean;              // Can create new batches
+  canDeleteBatch: boolean;           // Can delete batches from the Products page
+  canEditBatchName: boolean;         // Can rename batches from the Products page
   canAddProductToBatch: boolean;     // Can add products to batches (new or existing)
+  canEditPricesAndStockOnAdd: boolean; // Can edit prices and stock values while adding to a batch
   canEditBatchProduct: boolean;      // Can edit existing batch products
+  canEditBatchProductPricing: boolean; // Can edit prices and stock values on existing batch products
+  canEditBatchProductAfterBatchClosed: boolean; // Can edit batch products after a batch is closed
   canDeleteProductFromBatch: boolean;// Can delete products from batches
+  canDeleteProductAfterBatchClosed: boolean; // Can delete batch products after a batch is closed
 }
 
 export const DEFAULT_PRODUCT_CONFIG: ProductPermissionConfig = {
   canAddBatch: false,
+  canDeleteBatch: false,
+  canEditBatchName: false,
   canAddProductToBatch: false,
+  canEditPricesAndStockOnAdd: false,
   canEditBatchProduct: false,
-  canDeleteProductFromBatch: false
+  canEditBatchProductPricing: false,
+  canEditBatchProductAfterBatchClosed: false,
+  canDeleteProductFromBatch: false,
+  canDeleteProductAfterBatchClosed: false
 };
 
 export const PRODUCT_OPERATIONS: {
@@ -307,10 +319,16 @@ export const PRODUCT_OPERATIONS: {
   icon: string;
   description: string;
 }[] = [
-  { key: 'canAddBatch',               label: 'Add Batch',             icon: 'create_new_folder',  description: 'Create new order batches' },
+  { key: 'canAddBatch',               label: 'Add Batch',             icon: 'create_new_folder',  description: 'Create new batches' },
+  { key: 'canDeleteBatch',            label: 'Delete Batch',          icon: 'folder_delete',      description: 'Delete batches from the Products page' },
+  { key: 'canEditBatchName',          label: 'Rename Batch',          icon: 'drive_file_rename_outline', description: 'Edit a batch name' },
   { key: 'canAddProductToBatch',      label: 'Add Products to Batch', icon: 'playlist_add',      description: 'Add products to a batch' },
+  { key: 'canEditPricesAndStockOnAdd', label: 'Set Prices While Adding', icon: 'price_change',    description: 'Edit prices and stock values when adding products to a batch' },
   { key: 'canEditBatchProduct',       label: 'Edit Batch Products',   icon: 'edit_note',         description: 'Edit existing products already attached to a batch' },
+  { key: 'canEditBatchProductPricing', label: 'Edit Batch Product Prices', icon: 'request_quote', description: 'Edit prices and stock values on an existing batch product' },
+  { key: 'canEditBatchProductAfterBatchClosed', label: 'Edit After Batch Closed', icon: 'lock_open', description: 'Edit batch products after the batch is closed' },
   { key: 'canDeleteProductFromBatch', label: 'Delete Batch Product',  icon: 'delete_sweep',      description: 'Remove products from batches' },
+  { key: 'canDeleteProductAfterBatchClosed', label: 'Delete After Batch Closed', icon: 'delete_forever', description: 'Delete batch products after the batch is closed' },
 ];
 
 /** Orders page operation permissions */
@@ -332,7 +350,7 @@ export const ORDERS_OPERATIONS: { key: keyof OrdersPermissionConfig; label: stri
   { key: 'canCreateOrder', label: 'Create Orders', icon: 'add_shopping_cart', description: 'Create new orders' },
   { key: 'canAddItemsToOrder', label: 'Add Items to Order', icon: 'add_circle', description: 'Add more items to existing orders' },
   { key: 'canDeleteOrder', label: 'Delete Orders', icon: 'delete', description: 'Delete orders' },
-  { key: 'canCloseBatch', label: 'Close Batch', icon: 'lock', description: 'Close order batches' },
+  { key: 'canCloseBatch', label: 'Close Batch', icon: 'lock', description: 'Close batches' },
   { key: 'canReopenBatch', label: 'Reopen Batch', icon: 'lock_open', description: 'Reopen closed batches' },
   { key: 'canEditOrderAfterBatchClosed', label: 'Edit After Close', icon: 'edit_note', description: 'Edit orders after batch is closed' },
 ];
@@ -344,11 +362,12 @@ export interface BuyingListPermissionConfig {
   canEditAfterArrived: boolean;      // Edit after status changed to arrived
   canAddItemToBuyingList: boolean;   // Add new items to buying list
   canSendToArrivals: boolean;        // Send items to arrivals
+  canEditAfterSent: boolean;         // Edit after item has been sent onward
 }
 
 export const DEFAULT_BUYING_LIST_CONFIG: BuyingListPermissionConfig = {
   canEditQuantityOrdered: false, canChangeStatus: false, canEditAfterArrived: false,
-  canAddItemToBuyingList: false, canSendToArrivals: false
+  canAddItemToBuyingList: false, canSendToArrivals: false, canEditAfterSent: false
 };
 
 export const BUYING_LIST_OPERATIONS: { key: keyof BuyingListPermissionConfig; label: string; icon: string; description: string }[] = [
@@ -357,6 +376,7 @@ export const BUYING_LIST_OPERATIONS: { key: keyof BuyingListPermissionConfig; la
   { key: 'canEditAfterArrived', label: 'Edit After Arrival', icon: 'edit_note', description: 'Edit items after marked as arrived' },
   { key: 'canAddItemToBuyingList', label: 'Add Items', icon: 'add_circle', description: 'Add new items to buying list' },
   { key: 'canSendToArrivals', label: 'Send to Arrivals', icon: 'send', description: 'Send items to arrivals' },
+  { key: 'canEditAfterSent', label: 'Edit After Sent', icon: 'published_with_changes', description: 'Edit an item after it has been sent onward' },
 ];
 
 /** Arrivals page operation permissions */
@@ -364,16 +384,19 @@ export interface ArrivalsPermissionConfig {
   canChangeReceivedValue: boolean;   // Change received value
   canConfirmReceivedItems: boolean;  // Confirm received items
   canSendToShipping: boolean;        // Send to shipping
+  canReverseToArrivals: boolean;     // Reverse an item back to arrivals
 }
 
 export const DEFAULT_ARRIVALS_CONFIG: ArrivalsPermissionConfig = {
-  canChangeReceivedValue: false, canConfirmReceivedItems: false, canSendToShipping: false
+  canChangeReceivedValue: false, canConfirmReceivedItems: false, canSendToShipping: false,
+  canReverseToArrivals: false
 };
 
 export const ARRIVALS_OPERATIONS: { key: keyof ArrivalsPermissionConfig; label: string; icon: string; description: string }[] = [
   { key: 'canChangeReceivedValue', label: 'Change Received Value', icon: 'edit', description: 'Update received quantities' },
   { key: 'canConfirmReceivedItems', label: 'Confirm Items', icon: 'done_all', description: 'Confirm received items' },
   { key: 'canSendToShipping', label: 'Send to Shipping', icon: 'local_shipping', description: 'Send items to shipping' },
+  { key: 'canReverseToArrivals', label: 'Reverse to Arrivals', icon: 'undo', description: 'Reverse an item back to arrivals' },
 ];
 
 /** Shipping page operation permissions */
@@ -413,29 +436,34 @@ export interface StockSalesPermissionConfig {
   canDeleteSale: boolean;            // Delete a sale
   canEditSale: boolean;              // Edit a sale
   canAddSale: boolean;               // Add new sale
+  canCloseSale: boolean;             // Close/finalize a sale
 }
 
 export const DEFAULT_STOCK_SALES_CONFIG: StockSalesPermissionConfig = {
-  canDeleteSale: false, canEditSale: false, canAddSale: false
+  canDeleteSale: false, canEditSale: false, canAddSale: false, canCloseSale: false
 };
 
 export const STOCK_SALES_OPERATIONS: { key: keyof StockSalesPermissionConfig; label: string; icon: string; description: string }[] = [
   { key: 'canDeleteSale', label: 'Delete Sale', icon: 'delete', description: 'Delete sales records' },
   { key: 'canEditSale', label: 'Edit Sale', icon: 'edit', description: 'Edit existing sales' },
   { key: 'canAddSale', label: 'Add Sale', icon: 'add_circle', description: 'Add new sales' },
+  { key: 'canCloseSale', label: 'Close Sale', icon: 'task_alt', description: 'Close or finalize a sale' },
 ];
 
 /** Manage Batches page operation permissions */
 export interface ManageBatchesPermissionConfig {
   canDeleteBatch: boolean;           // Delete a batch
+  canRenameBatch: boolean;           // Rename a batch
 }
 
 export const DEFAULT_MANAGE_BATCHES_CONFIG: ManageBatchesPermissionConfig = {
-  canDeleteBatch: false
+  canDeleteBatch: false,
+  canRenameBatch: false
 };
 
 export const MANAGE_BATCHES_OPERATIONS: { key: keyof ManageBatchesPermissionConfig; label: string; icon: string; description: string }[] = [
   { key: 'canDeleteBatch', label: 'Delete Batch', icon: 'delete', description: 'Delete batches' },
+  { key: 'canRenameBatch', label: 'Rename Batch', icon: 'drive_file_rename_outline', description: 'Rename batches' },
 ];
 
 /** Roles page operation permissions */
@@ -469,6 +497,8 @@ export const USERS_OPERATIONS: { key: keyof UsersPermissionConfig; label: string
   { key: 'canAddUser',    label: 'Add User',    icon: 'person_add', description: 'Create new user accounts' },
   { key: 'canDeleteUser', label: 'Delete User', icon: 'person_remove', description: 'Delete user accounts' },
 ];
+
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete';
 
 /**
  * Every page/resource in the app mapped to its CRUD abilities.
@@ -517,25 +547,66 @@ export type AppResource =
   | 'shipping'
   | 'batches';
 
-export const ALL_RESOURCES: { key: AppResource; label: string; icon: string }[] = [
-  { key: 'dashboard',    label: 'Dashboard',    icon: 'dashboard' },
-  { key: 'arrivals',     label: 'Arrivals',     icon: 'inventory' },
-  { key: 'product_tracking', label: 'Product Tracking', icon: 'track_changes' },
-  { key: 'reports',      label: 'Reports',      icon: 'analytics' },
-  { key: 'products',     label: 'Products',     icon: 'inventory_2' },
-  { key: 'clients',      label: 'Clients',      icon: 'people' },
-  { key: 'orders',       label: 'Orders',       icon: 'shopping_cart' },
-  { key: 'deliveries',   label: 'Deliveries',   icon: 'local_shipping' },
-  { key: 'buying_list',  label: 'Buying List',  icon: 'shopping_bag' },
-  { key: 'damaged_items', label: 'Damaged Items', icon: 'report_problem' },
-  { key: 'shipping',     label: 'Shipping Ledger', icon: 'local_shipping' },
-  { key: 'expenses',     label: 'Expenses',     icon: 'account_balance_wallet' },
-  { key: 'stock_sales',  label: 'Stock Sales',  icon: 'storefront' },
-  { key: 'import',       label: 'Import Data',  icon: 'upload_file' },
-  { key: 'batches',      label: 'Manage Batches', icon: 'inventory_2' },
-  { key: 'users',        label: 'Users',        icon: 'manage_accounts' },
-  { key: 'roles',        label: 'Roles',        icon: 'admin_panel_settings' },
-  { key: 'settings',     label: 'Settings',     icon: 'settings' },
+export interface AppResourceMeta {
+  key: AppResource;
+  label: string;
+  icon: string;
+  description: string;
+}
+
+export interface AppNavItem {
+  route: string;
+  icon: string;
+  label: string;
+  resource: AppResource;
+}
+
+export const APP_RESOURCE_CATALOG: AppResourceMeta[] = [
+  { key: 'dashboard', label: 'Dashboard', icon: 'dashboard', description: 'Business overview, finance, inventory, and activity widgets.' },
+  { key: 'clients', label: 'Clients', icon: 'people', description: 'Customer/contact records used by orders, shipping, and deliveries.' },
+  { key: 'products', label: 'Products', icon: 'inventory_2', description: 'Product catalog plus batch-specific product pricing.' },
+  { key: 'orders', label: 'Orders', icon: 'shopping_cart', description: 'Customer preorder capture, order edits, and batch closing controls.' },
+  { key: 'buying_list', label: 'Buying List', icon: 'shopping_bag', description: 'Batch purchase planning and send-to-arrivals workflow.' },
+  { key: 'arrivals', label: 'Arrivals', icon: 'inventory', description: 'Receive purchased stock, confirm shortages, and move items onward.' },
+  { key: 'product_tracking', label: 'Product Tracking', icon: 'track_changes', description: 'Track product shipping progress after arrivals.' },
+  { key: 'shipping', label: 'Shipping', icon: 'paid', description: 'Shipping fee setup and shipping ledger payment workflows.' },
+  { key: 'deliveries', label: 'Deliveries', icon: 'local_shipping', description: 'Delivery queue, statuses, categories, and delivery adjustments.' },
+  { key: 'stock_sales', label: 'Stock Sales', icon: 'storefront', description: 'Sell available inventory outside the preorder pipeline.' },
+  { key: 'damaged_items', label: 'Damaged Items', icon: 'report_problem', description: 'Damage reporting, shortage allocation, and follow-up support.' },
+  { key: 'reports', label: 'Reports', icon: 'analytics', description: 'Business reporting and analysis screens.' },
+  { key: 'expenses', label: 'Expenses', icon: 'account_balance_wallet', description: 'Operational expense tracking.' },
+  { key: 'import', label: 'Import Data', icon: 'upload_file', description: 'Bulk spreadsheet import tools.' },
+  { key: 'batches', label: 'Manage Batches', icon: 'inventory_2', description: 'Admin batch management and destructive batch cleanup.' },
+  { key: 'users', label: 'Users', icon: 'manage_accounts', description: 'Team membership, role assignment, and account status controls.' },
+  { key: 'roles', label: 'Roles', icon: 'admin_panel_settings', description: 'Role definitions and permission configuration.' },
+  { key: 'settings', label: 'Settings', icon: 'settings', description: 'Shop profile, workspace settings, and data management.' },
+];
+
+export const ALL_RESOURCES: { key: AppResource; label: string; icon: string }[] =
+  APP_RESOURCE_CATALOG.map(({ key, label, icon }) => ({ key, label, icon }));
+
+export const MAIN_NAV_ITEMS: AppNavItem[] = [
+  { route: '/dashboard', icon: 'dashboard', label: 'Dashboard', resource: 'dashboard' },
+  { route: '/clients', icon: 'people', label: 'Clients', resource: 'clients' },
+  { route: '/products', icon: 'inventory_2', label: 'Products', resource: 'products' },
+  { route: '/orders', icon: 'shopping_cart', label: 'Orders', resource: 'orders' },
+  { route: '/buying-list', icon: 'shopping_bag', label: 'Buying List', resource: 'buying_list' },
+  { route: '/arrivals', icon: 'inventory', label: 'Arrivals', resource: 'arrivals' },
+  { route: '/product-tracking', icon: 'track_changes', label: 'Tracking', resource: 'product_tracking' },
+  { route: '/shipping', icon: 'paid', label: 'Shipping', resource: 'shipping' },
+  { route: '/shipping-ledger', icon: 'local_shipping', label: 'Shipping Ledger', resource: 'shipping' },
+  { route: '/deliveries', icon: 'local_shipping', label: 'Deliveries', resource: 'deliveries' },
+  { route: '/stock-sales', icon: 'storefront', label: 'Stock Sales', resource: 'stock_sales' },
+  { route: '/damaged-items', icon: 'report_problem', label: 'Damaged Items', resource: 'damaged_items' },
+  { route: '/reports', icon: 'analytics', label: 'Reports', resource: 'reports' },
+];
+
+export const ADMIN_NAV_ITEMS: AppNavItem[] = [
+  { route: '/import', icon: 'upload_file', label: 'Import Data', resource: 'import' },
+  { route: '/batches', icon: 'inventory_2', label: 'Manage Batches', resource: 'batches' },
+  { route: '/users', icon: 'manage_accounts', label: 'Users', resource: 'users' },
+  { route: '/roles', icon: 'admin_panel_settings', label: 'Roles & Permissions', resource: 'roles' },
+  { route: '/settings', icon: 'settings', label: 'Settings', resource: 'settings' },
 ];
 
 export type OrderStatus = 'pending' | 'confirmed' | 'processing' | 'ready' | 'delivered' | 'cancelled';
@@ -564,6 +635,9 @@ export interface StockSale {
   totalAmount?: number;
   itemCount?: number;
   createdAt?: string;
+  status?: 'open' | 'closed' | 'cancelled';
+  closedAt?: string | null;
+  closedBy?: number | null;
   items?: StockSaleItem[];
 }
 

@@ -142,7 +142,7 @@ import { firstValueFrom } from 'rxjs';
             <div class="action-item danger">
               <div class="action-info">
                 <strong>Clear All Data</strong>
-                <p>Remove all products, clients, orders, deliveries, buying list &amp; expenses (cannot be undone)</p>
+                <p>Remove all products, clients, batches, orders, deliveries, buying list &amp; expenses (cannot be undone)</p>
               </div>
               <button class="btn btn-danger" (click)="showClearModal = true" [disabled]="clearing">
                 <span class="material-icons">delete_forever</span>
@@ -226,7 +226,7 @@ import { firstValueFrom } from 'rxjs';
                   <li>All products</li>
                   <li>All clients</li>
                   <li>All orders &amp; order items</li>
-                  <li>All order batches</li>
+                  <li>All batches</li>
                   <li>All deliveries</li>
                   <li>All buying list items</li>
                   <li>All expenses</li>

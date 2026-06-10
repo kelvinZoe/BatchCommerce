@@ -3,7 +3,7 @@ import { BehaviorSubject, Observable, from, of } from 'rxjs';
 import { map, switchMap, tap } from 'rxjs/operators';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  User, Role, Permission, AppResource, 
+  User, Role, Permission, AppResource, PermissionAction,
   DashboardComponentConfig, ProductPermissionConfig,
   OrdersPermissionConfig, BuyingListPermissionConfig, ArrivalsPermissionConfig,
   ShippingPermissionConfig, ShippingLedgerPermissionConfig, StockSalesPermissionConfig,
@@ -1218,9 +1218,13 @@ export class AuthService {
   }
 
   // ─── Permission checking ───────────────────────────
-  can(action: 'view' | 'create' | 'edit' | 'delete', resource: AppResource): boolean {
+  private getPermission(resource: AppResource): Permission | undefined {
+    return this.permissions.find(p => p.resource === resource);
+  }
+
+  can(action: PermissionAction, resource: AppResource): boolean {
     if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === resource);
+    const perm = this.getPermission(resource);
     if (!perm) return false;
     switch (action) {
       case 'view':   return !!perm.canView;
@@ -1236,92 +1240,81 @@ export class AuthService {
   }
 
   canSeeDashboardComponent(component: keyof DashboardComponentConfig): boolean {
+    return this.canPerformPageOperation('dashboard', component);
+  }
+
+  canPerformPageOperation(resource: AppResource, operation: string): boolean {
     if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'dashboard');
+
+    const perm = this.getPermission(resource);
     if (!perm || !perm.canView) return false;
-    if (!perm.dashboardConfig) return false;
-    return !!perm.dashboardConfig[component];
+
+    const configKeys = this.getOperationConfigKeys(resource);
+    for (const configKey of configKeys) {
+      const config = perm[configKey] as Record<string, boolean> | null | undefined;
+      if (config && Object.prototype.hasOwnProperty.call(config, operation)) {
+        return !!config[operation];
+      }
+    }
+
+    return false;
+  }
+
+  private getOperationConfigKeys(resource: AppResource): Array<keyof Permission> {
+    switch (resource) {
+      case 'dashboard': return ['dashboardConfig'];
+      case 'products': return ['productConfig'];
+      case 'orders': return ['ordersConfig'];
+      case 'buying_list': return ['buyingListConfig'];
+      case 'arrivals': return ['arrivalsConfig'];
+      case 'shipping': return ['shippingConfig', 'shippingLedgerConfig'];
+      case 'stock_sales': return ['stockSalesConfig'];
+      case 'batches': return ['manageBatchesConfig'];
+      case 'roles': return ['rolesConfig'];
+      case 'users': return ['usersConfig'];
+      default: return [];
+    }
   }
 
   /** Check if user can perform a product operation */
   canPerformProductOperation(operation: keyof ProductPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'products');
-    if (!perm || !perm.canView) return false;
-    if (!perm.productConfig) return false;
-    return !!perm.productConfig[operation];
+    return this.canPerformPageOperation('products', operation);
   }
 
   canPerformOrdersOperation(op: keyof OrdersPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'orders');
-    if (!perm || !perm.canView) return false;
-    if (!perm.ordersConfig) return false;
-    return !!perm.ordersConfig[op];
+    return this.canPerformPageOperation('orders', op);
   }
 
   canPerformBuyingListOperation(op: keyof BuyingListPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'buying_list');
-    if (!perm || !perm.canView) return false;
-    if (!perm.buyingListConfig) return false;
-    return !!perm.buyingListConfig[op];
+    return this.canPerformPageOperation('buying_list', op);
   }
 
   canPerformArrivalsOperation(op: keyof ArrivalsPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'arrivals');
-    if (!perm || !perm.canView) return false;
-    if (!perm.arrivalsConfig) return false;
-    return !!perm.arrivalsConfig[op];
+    return this.canPerformPageOperation('arrivals', op);
   }
 
   canPerformShippingOperation(op: keyof ShippingPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'shipping');
-    if (!perm || !perm.canView) return false;
-    if (!perm.shippingConfig) return false;
-    return !!perm.shippingConfig[op];
+    return this.canPerformPageOperation('shipping', op);
   }
 
   canPerformShippingLedgerOperation(op: keyof ShippingLedgerPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'shipping');
-    if (!perm || !perm.canView) return false;
-    if (!perm.shippingLedgerConfig) return false;
-    return !!perm.shippingLedgerConfig[op];
+    return this.canPerformPageOperation('shipping', op);
   }
 
   canPerformStockSalesOperation(op: keyof StockSalesPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'stock_sales');
-    if (!perm || !perm.canView) return false;
-    if (!perm.stockSalesConfig) return false;
-    return !!perm.stockSalesConfig[op];
+    return this.canPerformPageOperation('stock_sales', op);
   }
 
   canPerformManageBatchesOperation(op: keyof ManageBatchesPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'batches');
-    if (!perm || !perm.canView) return false;
-    if (!perm.manageBatchesConfig) return false;
-    return !!perm.manageBatchesConfig[op];
+    return this.canPerformPageOperation('batches', op);
   }
 
   canPerformRolesOperation(op: keyof RolesPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'roles');
-    if (!perm || !perm.canView) return false;
-    if (!perm.rolesConfig) return false;
-    return !!perm.rolesConfig[op];
+    return this.canPerformPageOperation('roles', op);
   }
 
   canPerformUsersOperation(op: keyof UsersPermissionConfig): boolean {
-    if (this.isAdmin) return true;
-    const perm = this.permissions.find(p => p.resource === 'users');
-    if (!perm || !perm.canView) return false;
-    if (!perm.usersConfig) return false;
-    return !!perm.usersConfig[op];
+    return this.canPerformPageOperation('users', op);
   }
 
   private mapUserFromMembership(row: any): User {
@@ -1748,20 +1741,7 @@ export class AuthService {
 
     const permissionsByRoleId = new Map<number, Permission[]>();
     (permissions || []).forEach((row: any) => {
-      const mapped = {
-        ...toCamel(row),
-        dashboardConfig: row.resource === 'dashboard' ? (row.dashboard_config || null) : undefined,
-        productConfig: row.resource === 'products' ? (row.product_config || null) : undefined,
-        ordersConfig: row.resource === 'orders' ? (row.orders_config || null) : undefined,
-        buyingListConfig: row.resource === 'buying_list' ? (row.buying_list_config || null) : undefined,
-        arrivalsConfig: row.resource === 'arrivals' ? (row.arrivals_config || null) : undefined,
-        shippingConfig: row.resource === 'shipping' ? (row.shipping_config || null) : undefined,
-        shippingLedgerConfig: row.resource === 'shipping' ? (row.shipping_ledger_config || null) : undefined,
-        stockSalesConfig: row.resource === 'stock_sales' ? (row.stock_sales_config || null) : undefined,
-        manageBatchesConfig: row.resource === 'batches' ? (row.manage_batches_config || null) : undefined,
-        rolesConfig: row.resource === 'roles' ? (row.roles_config || null) : undefined,
-        usersConfig: row.resource === 'users' ? (row.users_config || null) : undefined
-      } as Permission;
+      const mapped = this.mapPermissionRows([row])[0];
 
       const rolePermissions = permissionsByRoleId.get(row.role_id) || [];
       rolePermissions.push(mapped);
@@ -1784,7 +1764,7 @@ export class AuthService {
 
     return from(
       this.sb.from('role_permissions').select('*').eq('shop_id', shopId).eq('role_id', roleId)
-    ).pipe(map(({ data }) => (data || []).map((p: any) => toCamel(p) as Permission)));
+    ).pipe(map(({ data }) => this.mapPermissionRows(data || [])));
   }
 
   createRole(name: string, description: string): Observable<number> {

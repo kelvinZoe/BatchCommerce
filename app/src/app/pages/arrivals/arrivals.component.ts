@@ -918,6 +918,7 @@ export class ArrivalsComponent implements OnInit {
   }
 
   updateReceivedQuantity(item: ArrivalItem, value: number) {
+    if (!this.authService.canPerformArrivalsOperation('canChangeReceivedValue')) return;
     item.receivedQuantity = value;
     this.dbService.updateArrivalItem(item).subscribe(() => {
       this.loadItems(true);
@@ -950,6 +951,7 @@ export class ArrivalsComponent implements OnInit {
   // Confirm and animate move from incoming to confirmed column
   confirmAndMove(item: ArrivalItem) {
     if (item.confirmed) return;
+    if (!this.authService.canPerformArrivalsOperation('canConfirmReceivedItems')) return;
     // mark as moving to trigger animation
     this.movingIds.add(item.id);
     // short timeout to let animation show
@@ -1035,6 +1037,7 @@ export class ArrivalsComponent implements OnInit {
   confirmDeficit() {
     if (!this.deficitItem) return;
     if (this.modalSaving) return;
+    if (!this.authService.canPerformArrivalsOperation('canConfirmReceivedItems')) return;
     this.modalSaving = true;
     const item = this.deficitItem;
     const notes = `${this.deficitReason}`;
@@ -1089,6 +1092,7 @@ export class ArrivalsComponent implements OnInit {
   confirmSurplus() {
     if (this.modalSaving) return;
     if (!this.pendingConfirmItem) return;
+    if (!this.authService.canPerformArrivalsOperation('canChangeReceivedValue')) return;
     this.modalSaving = true;
     this.dbService.confirmArrivalItem(
       this.pendingConfirmItem.id!,
@@ -1208,6 +1212,7 @@ export class ArrivalsComponent implements OnInit {
       alert('Allocation invalid: total adjusted must equal received quantity');
       return;
     }
+    if (!this.authService.canPerformArrivalsOperation('canConfirmReceivedItems')) return;
 
     if (this.modalSaving) return;
     this.modalSaving = true;
@@ -1299,6 +1304,7 @@ export class ArrivalsComponent implements OnInit {
 
   sendToShipping(item: ArrivalItem) {
     if (!item.id || item.sentToShipping) return;
+    if (!this.authService.canPerformArrivalsOperation('canSendToShipping')) return;
     this.shippingConfirmMode = 'single';
     this.shippingConfirmItem = item;
     this.showShippingConfirmModal = true;
@@ -1336,6 +1342,7 @@ export class ArrivalsComponent implements OnInit {
 
   private confirmSendSingleToShipping(item: ArrivalItem) {
     if (!item.id || item.sentToShipping) return;
+    if (!this.authService.canPerformArrivalsOperation('canSendToShipping')) return;
     this.sendingItemId = item.id;
     this.dbService.sendConfirmedArrivalItemToShipping(item.id).subscribe(ok => {
       if (ok) {
@@ -1352,7 +1359,11 @@ export class ArrivalsComponent implements OnInit {
 
   // Undo a recent confirm (available until manually undone)
   undoConfirm(item: ArrivalItem) {
-    if (!item.id || item.sentToShipping) return;
+    if (!item.id) return;
+    const canUndo = item.sentToShipping
+      ? this.authService.canPerformArrivalsOperation('canReverseToArrivals')
+      : this.authService.canPerformArrivalsOperation('canConfirmReceivedItems');
+    if (!canUndo) return;
     if (this.undoingIds.has(item.id)) return;
     this.undoingIds.add(item.id);
 
@@ -1368,6 +1379,7 @@ export class ArrivalsComponent implements OnInit {
   }
 
   sendAllConfirmed() {
+    if (!this.authService.canPerformArrivalsOperation('canSendToShipping')) return;
     if (this.pendingConfirmedCount === 0) return;
     this.shippingConfirmMode = 'batch';
     this.shippingConfirmItem = null;
@@ -1376,6 +1388,7 @@ export class ArrivalsComponent implements OnInit {
 
   private confirmSendAllConfirmed() {
     if (!this.selectedBatchName || this.pendingConfirmedCount === 0) return;
+    if (!this.authService.canPerformArrivalsOperation('canSendToShipping')) return;
     this.sendingBatch = true;
     this.dbService.sendConfirmedArrivalsToShipping(this.selectedBatchName).subscribe(ok => {
       this.sendingBatch = false;
@@ -1406,13 +1419,21 @@ export class ArrivalsComponent implements OnInit {
   private buildConfirmedActions(item: ArrivalItem): ActionOption[] {
     const actions: ActionOption[] = [];
 
-    if (item.id != null && this.authService.canPerformArrivalsOperation('canConfirmReceivedItems')) {
+    if (item.id != null && (
+      this.authService.canPerformArrivalsOperation('canConfirmReceivedItems')
+      || (item.sentToShipping && this.authService.canPerformArrivalsOperation('canReverseToArrivals'))
+    )) {
+      const reverseSent = !!item.sentToShipping;
       actions.push({
         id: 'undo',
-        label: 'Undo confirmation',
-        icon: 'arrow-counterclockwise',
+        label: reverseSent ? 'Reverse to arrivals' : 'Undo confirmation',
+        icon: reverseSent ? 'arrow-return-left' : 'arrow-counterclockwise',
         color: 'orange',
-        disabled: !!item.sentToShipping || this.sendingBatch || this.sendingItemId === item.id || this.undoingIds.has(item.id),
+        disabled: (reverseSent && !this.authService.canPerformArrivalsOperation('canReverseToArrivals'))
+          || (!reverseSent && !this.authService.canPerformArrivalsOperation('canConfirmReceivedItems'))
+          || this.sendingBatch
+          || this.sendingItemId === item.id
+          || this.undoingIds.has(item.id),
         loading: this.undoingIds.has(item.id)
       });
     }

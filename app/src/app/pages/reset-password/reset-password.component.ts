@@ -13,7 +13,7 @@ import { firstValueFrom } from 'rxjs';
     <div class="reset-page">
       <div class="reset-card">
         <div class="reset-header">
-          <span class="logo-icon">🛒</span>
+          <img src="assets/batchcommerce_icon.png" alt="Logo" class="logo-icon" />
           <h1>Set New Password</h1>
           <p>Enter a new password for your account.</p>
         </div>
@@ -96,7 +96,7 @@ import { firstValueFrom } from 'rxjs';
     .reset-header {
       text-align: center;
       padding: 40px 32px 24px;
-      .logo-icon { font-size: 48px; display: block; margin-bottom: 16px; }
+      .logo-icon { width: 56px; height: 56px; border-radius: 12px; display: block; margin: 0 auto 16px; box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25); }
       h1 { font-size: 24px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
       p { color: #64748b; font-size: 14px; }
     }

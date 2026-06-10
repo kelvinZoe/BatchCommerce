@@ -375,6 +375,9 @@ CREATE TABLE products (
   stock INTEGER NOT NULL DEFAULT 0,
   purchase_price NUMERIC(12,2) NOT NULL DEFAULT 0,
   preorder_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  stock_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  stock_discount_min_qty INTEGER NOT NULL DEFAULT 0,
+  stock_discount_price NUMERIC(12,2) NOT NULL DEFAULT 0,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
@@ -444,7 +447,9 @@ CREATE TABLE order_items (
   subtotal NUMERIC(12,2) NOT NULL DEFAULT 0,
   discount_applied BOOLEAN NOT NULL DEFAULT FALSE,
   created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
-  updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL
+  updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE buying_list (
@@ -496,6 +501,31 @@ CREATE TABLE damaged_items (
   damaged_qty INTEGER NOT NULL DEFAULT 0,
   reason TEXT NOT NULL DEFAULT 'damaged_in_transit',
   notes TEXT DEFAULT '',
+  created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
+  updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE damage_order_allocations (
+  id BIGSERIAL PRIMARY KEY,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  order_item_id BIGINT NOT NULL REFERENCES order_items(id) ON DELETE CASCADE,
+  batch_id BIGINT REFERENCES batches(id) ON DELETE CASCADE,
+  batch_product_id BIGINT REFERENCES batch_products(id) ON DELETE SET NULL,
+  product_id BIGINT REFERENCES products(id) ON DELETE SET NULL,
+  client_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+  batch_name TEXT,
+  original_quantity INTEGER NOT NULL DEFAULT 0,
+  adjusted_quantity INTEGER NOT NULL DEFAULT 0,
+  damaged_quantity INTEGER NOT NULL DEFAULT 0,
+  arrival_item_id BIGINT REFERENCES arrival_items(id) ON DELETE SET NULL,
+  damaged_item_id BIGINT REFERENCES damaged_items(id) ON DELETE SET NULL,
+  reason TEXT,
+  notes TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  undone_at TIMESTAMPTZ,
+  undone_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -574,12 +604,15 @@ CREATE TABLE shipping_invoice_items (
   fee_per_item NUMERIC(12,2) NOT NULL DEFAULT 0,
   total_fee NUMERIC(12,2) NOT NULL DEFAULT 0,
   created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
-  updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL
+  updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE shipping_batches (
   id BIGSERIAL PRIMARY KEY,
   shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  batch_id BIGINT REFERENCES batches(id) ON DELETE CASCADE,
   batch_name TEXT NOT NULL,
   total_fee NUMERIC(12,2) NOT NULL DEFAULT 0,
   created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
@@ -650,7 +683,10 @@ CREATE TABLE stock_sales (
   customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
   customer_name TEXT DEFAULT '',
   sale_channel TEXT NOT NULL DEFAULT 'walk_in',
+  status TEXT NOT NULL DEFAULT 'closed',
   total_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  closed_at TIMESTAMPTZ,
+  closed_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -670,6 +706,10 @@ CREATE TABLE stock_sale_items (
   created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
   updated_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL
 );
+
+ALTER TABLE stock_sales
+  ADD CONSTRAINT stock_sales_status_check
+  CHECK (status IN ('open', 'closed', 'cancelled'));
 
 CREATE TABLE expenses (
   id BIGSERIAL PRIMARY KEY,
@@ -716,16 +756,22 @@ CREATE INDEX idx_order_items_shop_id ON order_items(shop_id);
 CREATE INDEX idx_buying_list_shop_id ON buying_list(shop_id);
 CREATE INDEX idx_arrival_items_shop_id ON arrival_items(shop_id);
 CREATE INDEX idx_damaged_items_shop_id ON damaged_items(shop_id);
+CREATE INDEX idx_damage_order_allocations_shop_id ON damage_order_allocations(shop_id);
+CREATE INDEX idx_damage_order_allocations_order_item ON damage_order_allocations(order_item_id);
+CREATE INDEX idx_damage_order_allocations_batch ON damage_order_allocations(shop_id, batch_id, product_id, client_id);
+CREATE INDEX idx_damage_order_allocations_batch_name ON damage_order_allocations(shop_id, batch_name);
 CREATE INDEX idx_follow_ups_shop_id ON follow_ups(shop_id);
 CREATE INDEX idx_product_tracking_shop_id ON product_tracking(shop_id);
 CREATE INDEX idx_batch_product_shipping_shop_id ON batch_product_shipping(shop_id);
 CREATE INDEX idx_shipping_invoices_shop_id ON shipping_invoices(shop_id);
 CREATE INDEX idx_shipping_invoice_items_shop_id ON shipping_invoice_items(shop_id);
 CREATE INDEX idx_shipping_batches_shop_id ON shipping_batches(shop_id);
+CREATE INDEX idx_shipping_batches_batch_id ON shipping_batches(shop_id, batch_id);
 CREATE INDEX idx_shipping_fees_shop_id ON shipping_fees(shop_id);
 CREATE INDEX idx_shipping_payments_shop_id ON shipping_payments(shop_id);
 CREATE INDEX idx_deliveries_shop_id ON deliveries(shop_id);
 CREATE INDEX idx_stock_sales_shop_id ON stock_sales(shop_id);
+CREATE INDEX idx_stock_sales_shop_status_created ON stock_sales(shop_id, status, created_at DESC);
 CREATE INDEX idx_stock_sale_items_shop_id ON stock_sale_items(shop_id);
 CREATE INDEX idx_expenses_shop_id ON expenses(shop_id);
 CREATE INDEX idx_audit_log_shop_id ON audit_log(shop_id);
@@ -776,6 +822,9 @@ CREATE TRIGGER trg_arrival_items_updated BEFORE UPDATE ON arrival_items
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 CREATE TRIGGER trg_damaged_items_updated BEFORE UPDATE ON damaged_items
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER trg_damage_order_allocations_updated BEFORE UPDATE ON damage_order_allocations
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 CREATE TRIGGER trg_follow_ups_updated BEFORE UPDATE ON follow_ups
@@ -873,6 +922,11 @@ CREATE TRIGGER trg_arrival_items_actor BEFORE INSERT OR UPDATE ON arrival_items
 CREATE TRIGGER trg_damaged_items_shop BEFORE INSERT OR UPDATE ON damaged_items
   FOR EACH ROW EXECUTE FUNCTION set_shop_fields();
 CREATE TRIGGER trg_damaged_items_actor BEFORE INSERT OR UPDATE ON damaged_items
+  FOR EACH ROW EXECUTE FUNCTION set_actor_fields();
+
+CREATE TRIGGER trg_damage_order_allocations_shop BEFORE INSERT OR UPDATE ON damage_order_allocations
+  FOR EACH ROW EXECUTE FUNCTION set_shop_fields();
+CREATE TRIGGER trg_damage_order_allocations_actor BEFORE INSERT OR UPDATE ON damage_order_allocations
   FOR EACH ROW EXECUTE FUNCTION set_actor_fields();
 
 CREATE TRIGGER trg_follow_ups_shop BEFORE INSERT OR UPDATE ON follow_ups
@@ -1124,6 +1178,7 @@ ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE buying_list ENABLE ROW LEVEL SECURITY;
 ALTER TABLE arrival_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE damaged_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE damage_order_allocations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE follow_ups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_tracking ENABLE ROW LEVEL SECURITY;
 ALTER TABLE batch_product_shipping ENABLE ROW LEVEL SECURITY;
@@ -1316,6 +1371,17 @@ CREATE POLICY "Authenticated can read damaged_items"
 
 CREATE POLICY "Authenticated can write damaged_items"
   ON damaged_items
+  FOR ALL TO authenticated
+  USING (has_shop_membership(shop_id))
+  WITH CHECK (has_shop_membership(shop_id));
+
+CREATE POLICY "Authenticated can read damage_order_allocations"
+  ON damage_order_allocations
+  FOR SELECT TO authenticated
+  USING (has_shop_membership(shop_id));
+
+CREATE POLICY "Authenticated can write damage_order_allocations"
+  ON damage_order_allocations
   FOR ALL TO authenticated
   USING (has_shop_membership(shop_id))
   WITH CHECK (has_shop_membership(shop_id));

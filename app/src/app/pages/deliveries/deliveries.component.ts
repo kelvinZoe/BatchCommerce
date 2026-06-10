@@ -1,20 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import {
-  BatchListSectionComponent,
-  BatchSectionFooterDirective
-} from '../../components/batch-list-section/batch-list-section.component';
-import { BatchCardTagConfig } from '../../components/batch-card/batch-card.component';
-import { StatCardConfig, StatCardsComponent } from '../../components/stat-cards/stat-cards.component';
-import {
-  ActionOption,
-  TableColumn,
-  TableComponent,
-  TableFilterConfig,
-  TableMetadata
-} from '../../components/table/table.component';
 import { DateFilterComponent } from '../../components/date-filter/date-filter.component';
+import { DropdownComponent } from '../../components/dropdown/dropdown.component';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
 import {
@@ -26,13 +14,9 @@ import {
 @Component({
   selector: 'app-deliveries',
   standalone: true,
-  imports: [CommonModule, FormsModule, BatchListSectionComponent, BatchSectionFooterDirective, StatCardsComponent, TableComponent, DateFilterComponent],
+  imports: [CommonModule, FormsModule, DateFilterComponent, DropdownComponent],
   template: `
     <div class="dv-page">
-      <div class="dv-toast dv-toast-success" *ngIf="successMessage">
-        <span class="material-icons">check_circle</span>
-        <span>{{ successMessage }}</span>
-      </div>
 
       <div class="dv-page-header">
         <div class="dv-header-left">
@@ -50,33 +34,47 @@ import {
 
       <!-- BATCH GRID VIEW -->
       <ng-container *ngIf="!selectedBatch">
-        <app-batch-list-section
-          [loading]="loading"
-          [items]="paginatedDeliveryBatches"
-          [page]="batchPage"
-          [pageSize]="batchPageSize"
-          [total]="filteredDeliveryBatches.length"
-          [searchTerm]="batchSearchTerm"
-          [selectedMonth]="batchFilterMonth"
-          [selectedYear]="batchFilterYear"
-          [currentYear]="currentYear"
-          [searchPlaceholder]="'Search batches...'"
-          [emptyTitle]="'No delivery batches yet'"
-          [emptyDescription]="'Items will appear here after clients are sent to deliveries from the Shipping Ledger.'"
-          [titleResolver]="deliveryBatchTitleResolver"
-          [subtitleResolver]="deliveryBatchSubtitleResolver"
-          [iconResolver]="deliveryBatchIconResolver"
-          [tagsResolver]="deliveryBatchTagsResolver"
-          (searchTermChange)="onBatchSearchInput($event)"
-          (dateSelectionChange)="onBatchMonthYearChange($event)"
-          (pageChange)="setBatchPage($event)"
-          (cardClick)="openBatch($event)">
-          <ng-template batchSectionFooter let-batch>
-            <button class="dv-card-action-btn dv-cab-primary dv-open-btn" (click)="$event.stopPropagation(); openBatch(batch)">
-              <span class="material-icons">open_in_new</span> View Deliveries
-            </button>
-          </ng-template>
-        </app-batch-list-section>
+
+        <div class="dv-batch-grid" *ngIf="loading">
+          <div class="dv-batch-card dv-skeleton-card" *ngFor="let i of [1,2,3,4,5,6]">
+            <div class="dv-sk dv-sk-title"></div>
+            <div class="dv-sk dv-sk-line"></div>
+            <div class="dv-sk dv-sk-line" style="width:60%"></div>
+            <div class="dv-sk dv-sk-chip"></div>
+          </div>
+        </div>
+
+        <div class="dv-empty" *ngIf="!loading && deliveryBatches.length === 0">
+          <span class="material-icons">local_shipping</span>
+          <h3>No delivery batches yet</h3>
+          <p>Items will appear here after clients are sent to deliveries from the Shipping Ledger.</p>
+        </div>
+
+        <div class="dv-batch-grid" *ngIf="!loading && deliveryBatches.length > 0">
+          <div
+            class="dv-batch-card"
+            *ngFor="let batch of deliveryBatches"
+            (click)="openBatch(batch)"
+            [class.dv-batch-completed]="batch.deliveryStatus === 'completed'"
+          >
+            <div class="dv-batch-card-header">
+              <div class="dv-batch-icon">
+                <span class="material-icons">inventory_2</span>
+              </div>
+              <span class="dv-batch-status-chip" [class]="'dv-dstatus-' + (batch.deliveryStatus || 'pending')">
+                {{ getBatchStatusLabel(batch.deliveryStatus) }}
+              </span>
+            </div>
+            <div class="dv-batch-name">{{ batch.name }}</div>
+            <div class="dv-batch-meta">
+              <span><span class="material-icons dv-meta-icon">people</span>{{ batchDeliveryStats[batch.name]?.clients || 0 }} clients</span>
+              <span><span class="material-icons dv-meta-icon">check_circle</span>{{ batchDeliveryStats[batch.name]?.delivered || 0 }} delivered</span>
+            </div>
+            <div class="dv-batch-progress">
+              <div class="dv-batch-progress-fill" [style.width.%]="getDeliveredPct(batch)"></div>
+            </div>
+          </div>
+        </div>
 
       </ng-container>
 
@@ -96,30 +94,198 @@ import {
           </div>
         </div>
 
-        <app-stat-cards [config]="deliveryStatCards"></app-stat-cards>
+        <div class="dv-stats-row">
+          <div class="dv-stat-card dv-stat-pending">
+            <span class="material-icons">hourglass_empty</span>
+            <div class="dv-stat-num">{{ statusCounts.pending }}</div>
+            <div class="dv-stat-lbl">Pending</div>
+          </div>
+          <div class="dv-stat-card dv-stat-packaged">
+            <span class="material-icons">inventory_2</span>
+            <div class="dv-stat-num">{{ statusCounts.packaged }}</div>
+            <div class="dv-stat-lbl">Packaged</div>
+          </div>
+          <div class="dv-stat-card dv-stat-delivering">
+            <span class="material-icons">local_shipping</span>
+            <div class="dv-stat-num">{{ statusCounts.delivering }}</div>
+            <div class="dv-stat-lbl">Delivering</div>
+          </div>
+          <div class="dv-stat-card dv-stat-delivered">
+            <span class="material-icons">check_circle</span>
+            <div class="dv-stat-num">{{ statusCounts.delivered }}</div>
+            <div class="dv-stat-lbl">Delivered</div>
+          </div>
+          <div class="dv-stat-card dv-stat-fees">
+            <span class="material-icons">payments</span>
+            <div class="dv-stat-num dv-stat-num-fee">GHS {{ totalDeliveryFee | number:'1.2-2' }}</div>
+            <div class="dv-stat-lbl">Total Fees</div>
+          </div>
+        </div>
 
-        <app-table
-          [columns]="deliveryColumns"
-          [data]="deliveryTableRows"
-          [metadata]="deliveryMetadata"
-          [filters]="deliveryFilters"
-          [showSearchRow]="true"
-          [showToolbarStart]="true"
-          [initialLoading]="loadingDetail"
-          [tableLabel]="'Clients'"
-          [summaryLabel]="'Clients'"
-          [summaryValue]="filteredDeliveries.length"
-          (searchChange)="onDeliveryTableSearchChange($event)"
-          (filterChange)="onDeliveryTableFilterChange($event)"
-          (inputChange)="onDeliveryTableInputChange($event)"
-          (dropdownChange)="onDeliveryTableDropdownChange($event)"
-          (actionClick)="onDeliveryTableActionClick($event)"
-          (pageChange)="setDeliveryPage($event)">
-          <app-date-filter
-            table-toolbar-start
-            (dateChange)="onDeliveryDateChange($event)">
-          </app-date-filter>
-        </app-table>
+        <div class="dv-toolbar">
+          <div class="dv-search-wrap">
+            <span class="material-icons dv-search-icon">search</span>
+            <input
+              type="text"
+              class="dv-search"
+              placeholder="Search clients..."
+              [(ngModel)]="searchTerm"
+              (input)="onSearchInput()"
+            />
+          </div>
+          <app-dropdown [label]="statusFilterLabel" [active]="statusFilter !== 'all'">
+            <ul class="dv-dd-list">
+              <li *ngFor="let opt of statusOptions"
+                  class="dv-dd-item"
+                  [class.dv-dd-active]="statusFilter === opt.value"
+                  (click)="statusFilter = opt.value; filterDeliveries()">
+                <span class="material-icons dv-dd-check">check</span>{{ opt.label }}
+              </li>
+            </ul>
+          </app-dropdown>
+          <app-dropdown [label]="typeFilterLabel" [active]="deliveryTypeFilter !== 'all'">
+            <ul class="dv-dd-list">
+              <li *ngFor="let opt of typeOptions"
+                  class="dv-dd-item"
+                  [class.dv-dd-active]="deliveryTypeFilter === opt.value"
+                  (click)="deliveryTypeFilter = opt.value; filterDeliveries()">
+                <span class="material-icons dv-dd-check">check</span>{{ opt.label }}
+              </li>
+            </ul>
+          </app-dropdown>
+          <app-date-filter (dateChange)="dateFrom = $event.from; dateTo = $event.to; filterDeliveries()"></app-date-filter>
+        </div>
+
+        <div class="dv-table-wrap" *ngIf="loadingDetail">
+          <table class="dv-table">
+            <thead>
+              <tr>
+                <th *ngFor="let h of ['Client','Items','Delivery Type','Delivery Fee','Status','Date','']">{{ h }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let i of [1,2,3,4,5]">
+                <td *ngFor="let c of [1,2,3,4,5,6,7]"><div class="dv-sk dv-sk-cell"></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="dv-table-wrap" *ngIf="!loadingDetail">
+          <table class="dv-table">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Items</th>
+                <th>Delivery Type</th>
+                <th>Delivery Fee</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let d of paginatedDeliveries"
+                [class.dv-row-saved]="savedDeliveryIds.has(d.id!)"
+              >
+                <td>
+                  <div class="dv-client-name">{{ d.clientName || 'Unknown' }}</div>
+                  <div class="dv-client-phone">{{ d.clientPhone || '—' }}</div>
+                </td>
+                <td>
+                  <button class="dv-items-link" (click)="viewDeliveryItems(d)">
+                    {{ getItemCount(d) }} item{{ getItemCount(d) !== 1 ? 's' : '' }}
+                  </button>
+                </td>
+                <td>
+                  <select
+                    class="dv-type-select"
+                    [(ngModel)]="d.deliveryCategory"
+                    [disabled]="!authService.can('edit','deliveries') || !editableDeliveryIds.has(d.id!)"
+                  >
+                    <option [ngValue]="null">— Select —</option>
+                    <option value="riders">Riders</option>
+                    <option value="station_car_delivery">Station Car</option>
+                    <option value="ghana_post">Ghana Post</option>
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    class="dv-fee-input"
+                    step="0.01"
+                    min="0"
+                    [(ngModel)]="d.deliveryFee"
+                    [disabled]="!authService.can('edit','deliveries') || !editableDeliveryIds.has(d.id!) || d.deliveryCategory !== 'ghana_post'"
+                    [class.dv-fee-locked]="!editableDeliveryIds.has(d.id!) || d.deliveryCategory !== 'ghana_post'"
+                    placeholder="0.00"
+                  />
+                </td>
+                <td>
+                  <select
+                    [(ngModel)]="d.deliveryItemStatus"
+                    [disabled]="!authService.can('edit','deliveries') || !editableDeliveryIds.has(d.id!)"
+                    [class]="'dv-status-select dv-istatus-' + (d.deliveryItemStatus || 'pending')"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="packaged">Packaged</option>
+                    <option value="delivering">Delivering</option>
+                    <option value="delivered">Delivered</option>
+                  </select>
+                </td>
+                <td class="dv-date-cell">
+                  <span *ngIf="d.deliveryDate">{{ d.deliveryDate | date:'mediumDate' }}</span>
+                  <span *ngIf="!d.deliveryDate" class="dv-dash">—</span>
+                </td>
+                <td>
+                  <div class="dv-action-cell" *ngIf="authService.can('edit','deliveries')">
+                    <ng-container *ngIf="editableDeliveryIds.has(d.id!)">
+                      <button class="dv-save-btn" (click)="saveDeliveryRow(d)" [disabled]="savingDeliveryIds.has(d.id!)">
+                        <span class="dv-btn-spinner" *ngIf="savingDeliveryIds.has(d.id!)"></span>
+                        <span class="material-icons" *ngIf="!savingDeliveryIds.has(d.id!)">save</span>
+                      </button>
+                      <button class="dv-cancel-btn" (click)="cancelEditRow(d)" [disabled]="savingDeliveryIds.has(d.id!)">
+                        <span class="material-icons">close</span>
+                      </button>
+                    </ng-container>
+                    <button *ngIf="!editableDeliveryIds.has(d.id!)" class="dv-edit-btn" (click)="editRow(d)">
+                      <span class="material-icons">edit</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="filteredDeliveries.length === 0">
+                <td colspan="7" class="dv-empty-row">
+                  <span class="material-icons">local_shipping</span>
+                  No deliveries match your filters.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="dv-pagination" *ngIf="filteredDeliveries.length > 0">
+            <span class="dv-page-info">
+              {{ (deliveryPage - 1) * deliveryPageSize + 1 }}–{{ min(deliveryPage * deliveryPageSize, filteredDeliveries.length) }}
+              of {{ filteredDeliveries.length }}
+            </span>
+            <div class="dv-page-btns">
+              <button (click)="deliveryPage = 1" [disabled]="deliveryPage === 1">
+                <span class="material-icons">first_page</span>
+              </button>
+              <button (click)="deliveryPage = deliveryPage - 1" [disabled]="deliveryPage === 1">
+                <span class="material-icons">chevron_left</span>
+              </button>
+              <span class="dv-page-num">{{ deliveryPage }} / {{ totalDeliveryPages }}</span>
+              <button (click)="deliveryPage = deliveryPage + 1" [disabled]="deliveryPage >= totalDeliveryPages">
+                <span class="material-icons">chevron_right</span>
+              </button>
+              <button (click)="deliveryPage = totalDeliveryPages" [disabled]="deliveryPage >= totalDeliveryPages">
+                <span class="material-icons">last_page</span>
+              </button>
+            </div>
+          </div>
+        </div>
 
       </ng-container>
 
@@ -171,7 +337,7 @@ import {
               </div>
             </div>
 
-            <div class="dv-modal-section" *ngIf="authService.can('edit','deliveries')">
+            <div class="dv-modal-section" *ngIf="authService.can('edit','deliveries') && viewingDelivery?.deliveryItemStatus !== 'delivered'">
               <h4 class="dv-modal-section-title">Update Status</h4>
               <div class="dv-status-btns">
                 <button
@@ -212,114 +378,10 @@ import {
         </div>
       </div>
 
-      <div class="dv-modal-overlay" *ngIf="showStatusConfirmModal" (click)="closeStatusConfirmModal()">
-        <div class="dv-modal dv-confirm-modal" (click)="$event.stopPropagation()">
-          <div class="dv-modal-header">
-            <div class="dv-modal-title-row">
-              <span class="material-icons dv-modal-icon">inventory</span>
-              <div>
-                <h3 class="dv-modal-title">{{ statusConfirmTitle }}</h3>
-                <p class="dv-modal-sub">{{ statusConfirmDelivery?.clientName || 'Client' }}</p>
-              </div>
-            </div>
-            <button class="dv-close-btn" (click)="closeStatusConfirmModal()" [disabled]="statusConfirmSubmitting">
-              <span class="material-icons">close</span>
-            </button>
-          </div>
-
-          <div class="dv-modal-body">
-            <p class="dv-confirm-copy">{{ statusConfirmBody }}</p>
-
-            <div class="dv-info-grid dv-confirm-grid">
-              <div class="dv-info-item">
-                <span class="dv-info-label">Current Status</span>
-                <span class="dv-info-value">{{ getStatusLabel(statusConfirmCurrentStatus) }}</span>
-              </div>
-              <div class="dv-info-item">
-                <span class="dv-info-label">New Status</span>
-                <span class="dv-info-value">{{ getStatusLabel(statusConfirmNextStatus) }}</span>
-              </div>
-              <div class="dv-info-item">
-                <span class="dv-info-label">Batch</span>
-                <span class="dv-info-value">{{ statusConfirmDelivery?.batchName || '—' }}</span>
-              </div>
-              <div class="dv-info-item">
-                <span class="dv-info-label">Total Quantity</span>
-                <span class="dv-info-value">{{ statusConfirmDelivery?.quantity || 0 }}</span>
-              </div>
-            </div>
-
-            <div class="dv-modal-section" *ngIf="statusConfirmItemsList.length > 0">
-              <h4 class="dv-modal-section-title">Affected Items</h4>
-              <div class="dv-items-chips">
-                <span class="dv-item-chip" *ngFor="let item of statusConfirmItemsList">{{ item }}</span>
-              </div>
-            </div>
-
-            <p class="dv-confirm-note" *ngIf="statusConfirmItemsList.length === 0">
-              The linked delivery items for this client will be {{ statusConfirmIsRemovingStock ? 'removed from' : 'returned to' }} stock.
-            </p>
-          </div>
-
-          <div class="dv-modal-footer">
-            <button class="dv-modal-btn dv-modal-btn-ghost" (click)="closeStatusConfirmModal()" [disabled]="statusConfirmSubmitting">
-              Cancel
-            </button>
-            <button
-              class="dv-modal-btn"
-              [class.dv-modal-btn-danger]="statusConfirmIsRemovingStock"
-              [class.dv-modal-btn-primary]="!statusConfirmIsRemovingStock"
-              (click)="confirmStatusChange()"
-              [disabled]="statusConfirmSubmitting">
-              <span class="dv-btn-spinner" *ngIf="statusConfirmSubmitting"></span>
-              <span *ngIf="!statusConfirmSubmitting">{{ statusConfirmActionLabel }}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
     </div>
   `,
   styles: [`
     .dv-page { max-width: 1400px; }
-
-    .dv-toast {
-      position: fixed;
-      top: 18px;
-      right: 18px;
-      z-index: 1100;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
-      border-radius: 12px;
-      border: 1px solid transparent;
-      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
-      font-size: 13px;
-      font-weight: 700;
-      animation: dv-toast-in 0.18s ease-out;
-    }
-
-    .dv-toast .material-icons {
-      font-size: 18px;
-    }
-
-    .dv-toast-success {
-      background: #ecfdf5;
-      color: #166534;
-      border-color: #bbf7d0;
-    }
-
-    @keyframes dv-toast-in {
-      from {
-        opacity: 0;
-        transform: translateY(-8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
 
     .dv-card {
       background: #fff;
@@ -353,27 +415,6 @@ import {
     .dv-header-icon .material-icons { color: #fff; font-size: 24px; }
     .dv-title { margin: 0; font-size: 20px; font-weight: 700; }
     .dv-subtitle { margin: 2px 0 0; font-size: 13px; color: #64748b; }
-
-    .dv-card-action-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      border: 1px solid #e2e8f0;
-      border-radius: 7px;
-      background: transparent;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-      transition: background 0.12s;
-    }
-    .dv-cab-primary {
-      background: var(--primary-color, #6366f1);
-      color: #fff;
-      border-color: var(--primary-color, #6366f1);
-    }
-    .dv-cab-primary:hover { background: var(--primary-dark, #4f46e5); }
-    .dv-open-btn { width: 100%; justify-content: center; }
 
     @keyframes dv-shimmer {
       0%   { background-position: 200% 0; }
@@ -811,13 +852,6 @@ import {
     .dv-close-btn .material-icons { font-size: 18px; color: #64748b; }
     .dv-close-btn:hover { background: #e2e8f0; }
     .dv-modal-body { padding: 20px; overflow-y: auto; flex: 1; }
-    .dv-modal-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      padding: 0 20px 20px;
-      border-top: 1px solid #f1f5f9;
-    }
     .dv-info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -868,50 +902,6 @@ import {
     .dv-istatus-pill-packaged   { background: #e0e7ff; color: #3730a3; }
     .dv-istatus-pill-delivering { background: #dbeafe; color: #1e40af; }
     .dv-istatus-pill-delivered  { background: #d1fae5; color: #065f46; }
-    .dv-confirm-modal { max-width: 520px; }
-    .dv-confirm-grid { margin-bottom: 0; }
-    .dv-confirm-copy {
-      margin: 0 0 16px;
-      font-size: 14px;
-      line-height: 1.5;
-      color: #334155;
-    }
-    .dv-confirm-note {
-      margin: 0;
-      font-size: 13px;
-      color: #64748b;
-    }
-    .dv-modal-btn {
-      min-width: 148px;
-      padding: 10px 14px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      border: none;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s, opacity 0.15s;
-    }
-    .dv-modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .dv-modal-btn-ghost {
-      background: #fff;
-      color: #475569;
-      border: 1px solid #cbd5e1;
-    }
-    .dv-modal-btn-ghost:hover:not([disabled]) { background: #f8fafc; }
-    .dv-modal-btn-primary {
-      background: var(--primary-color, #6366f1);
-      color: #fff;
-    }
-    .dv-modal-btn-primary:hover:not([disabled]) { background: #4f46e5; }
-    .dv-modal-btn-danger {
-      background: #dc2626;
-      color: #fff;
-    }
-    .dv-modal-btn-danger:hover:not([disabled]) { background: #b91c1c; }
 
     .dv-damage-section {
       background: #fff7ed;
@@ -990,45 +980,9 @@ export class DeliveriesComponent implements OnInit {
   }
   dateFrom = '';
   dateTo = '';
-  batchPage = 1;
-  batchPageSize = 20;
-  batchSearchTerm = '';
-  batchFilterMonth: number | null = null;
-  batchFilterYear: number | null = null;
-  currentYear = new Date().getFullYear();
 
   deliveryPage = 1;
   deliveryPageSize = 20;
-  deliveryColumns: TableColumn[] = [];
-
-  get filteredDeliveryBatches() {
-    const term = this.batchSearchTerm.trim().toLowerCase();
-    return this.deliveryBatches.filter(batch => {
-      if (term && !batch.name.toLowerCase().includes(term)) {
-        return false;
-      }
-
-      if (this.batchFilterMonth === null || this.batchFilterYear === null) {
-        return true;
-      }
-
-      if (!batch.createdAt) {
-        return false;
-      }
-
-      const createdAt = new Date(batch.createdAt);
-      return createdAt.getFullYear() === this.batchFilterYear && createdAt.getMonth() === this.batchFilterMonth;
-    });
-  }
-
-  get paginatedDeliveryBatches() {
-    const start = (this.batchPage - 1) * this.batchPageSize;
-    return this.filteredDeliveryBatches.slice(start, start + this.batchPageSize);
-  }
-
-  get totalBatchPages() {
-    return Math.ceil(this.filteredDeliveryBatches.length / this.batchPageSize) || 1;
-  }
 
   get paginatedDeliveries() {
     const start = (this.deliveryPage - 1) * this.deliveryPageSize;
@@ -1039,81 +993,10 @@ export class DeliveriesComponent implements OnInit {
     return Math.ceil(this.filteredDeliveries.length / this.deliveryPageSize) || 1;
   }
 
+  min(a: number, b: number) { return Math.min(a, b); }
+
   get totalDeliveryFee(): number {
     return this.batchDeliveries.reduce((sum, d) => sum + (Number(d.deliveryFee) || 0), 0);
-  }
-
-  get deliveryStatCards(): StatCardConfig[] {
-    return [
-      { icon: 'hourglass_empty', statName: 'Pending', statValue: this.statusCounts.pending, color: 'orange' },
-      { icon: 'inventory_2', statName: 'Packaged', statValue: this.statusCounts.packaged, color: 'violet' },
-      { icon: 'local_shipping', statName: 'Delivering', statValue: this.statusCounts.delivering, color: 'blue' },
-      { icon: 'check_circle', statName: 'Delivered', statValue: this.statusCounts.delivered, color: 'green' },
-      { icon: 'payments', statName: 'Total Fees', statValue: `GHS ${this.totalDeliveryFee.toFixed(2)}`, color: 'green' }
-    ];
-  }
-
-  get deliveryMetadata(): TableMetadata | null {
-    if (!this.selectedBatch) return null;
-    return {
-      pageNumber: this.deliveryPage,
-      totalCount: this.filteredDeliveries.length,
-      pageSize: this.deliveryPageSize,
-      totalPages: this.totalDeliveryPages
-    };
-  }
-
-  get deliveryFilters(): TableFilterConfig[] {
-    return [
-      {
-        key: 'status',
-        label: 'All statuses',
-        value: this.statusFilter,
-        disableAll: true,
-        options: this.statusOptions.map(opt => ({ label: opt.label, value: opt.value }))
-      },
-      {
-        key: 'deliveryType',
-        label: 'All types',
-        value: this.deliveryTypeFilter,
-        disableAll: true,
-        options: this.typeOptions.map(opt => ({ label: opt.label, value: opt.value }))
-      }
-    ];
-  }
-
-  get deliveryTableRows(): any[] {
-    return this.paginatedDeliveries.map(delivery => {
-      const id = delivery.id ?? 0;
-      const saving = this.savingDeliveryIds.has(id);
-      const canEdit = this.authService.can('edit', 'deliveries');
-      const isGhanaPost = delivery.deliveryCategory === 'ghana_post';
-
-      const actions: ActionOption[] = [
-        { id: 'view-items', label: 'View Items', icon: 'eye', color: 'blue' }
-      ];
-
-      if (canEdit) {
-        actions.push(
-          { id: 'save', label: 'Save', icon: 'check2', color: 'green', loading: saving, disabled: saving }
-        );
-      }
-
-      return {
-        deliveryKey: id,
-        clientName: delivery.clientName || 'Unknown',
-        clientPhone: delivery.clientPhone || '—',
-        itemsCount: `${this.getItemCount(delivery)} item${this.getItemCount(delivery) !== 1 ? 's' : ''}`,
-        deliveryCategory: delivery.deliveryCategory ?? 'none',
-        deliveryFee: Number(delivery.deliveryFee || 0),
-        deliveryItemStatus: delivery.deliveryItemStatus || 'pending',
-        deliveryDate: delivery.deliveryDate || delivery.createdAt || null,
-        categoryDisabled: !canEdit || saving,
-        feeDisabled: !canEdit || saving || !isGhanaPost,
-        statusDisabled: !canEdit || saving,
-        actions
-      };
-    });
   }
 
   statusCounts = { pending: 0, packaged: 0, delivering: 0, delivered: 0 };
@@ -1125,18 +1008,10 @@ export class DeliveriesComponent implements OnInit {
   private snapshotMap   = new Map<number, { deliveryCategory: any; deliveryFee: any; deliveryItemStatus: any }>();
   batchDeliveries: Delivery[] = [];
   private searchDebounceTimer: any = null;
-  successMessage: string | null = null;
-  private successTimer: any = null;
 
   showItemsModal = false;
   viewingDelivery: Delivery | null = null;
   viewingDeliveryItemsList: string[] = [];
-  showStatusConfirmModal = false;
-  statusConfirmSubmitting = false;
-  statusConfirmMode: 'row' | 'quick' | null = null;
-  statusConfirmDelivery: Delivery | null = null;
-  statusConfirmCurrentStatus: DeliveryItemStatus = 'pending';
-  statusConfirmNextStatus: DeliveryItemStatus = 'pending';
   products: { id?: number; name: string }[] = [];
   damageProductId: number | null = null;
   damageQuantity = 1;
@@ -1145,9 +1020,7 @@ export class DeliveriesComponent implements OnInit {
   constructor(
     private dbService: DatabaseService,
     public authService: AuthService
-  ) {
-    this.initDeliveryColumns();
-  }
+  ) {}
 
   ngOnInit() { 
     this.loadData();
@@ -1160,74 +1033,6 @@ export class DeliveriesComponent implements OnInit {
   onSearchInput() {
     clearTimeout(this.searchDebounceTimer);
     this.searchDebounceTimer = setTimeout(() => this.filterDeliveries(), 300);
-  }
-
-  initDeliveryColumns() {
-    this.deliveryColumns = [
-      { key: 'clientName', label: 'Client', searchable: true },
-      { key: 'clientPhone', label: 'Phone' },
-      { key: 'itemsCount', label: 'Items' },
-      {
-        key: 'deliveryCategory',
-        label: 'Delivery Type',
-        type: 'dropdown',
-        disabledKey: 'categoryDisabled',
-        statusOptions: [
-          { value: 'none', label: 'Select Type', color: 'gray' },
-          { value: 'ghana_post', label: 'Ghana Post', color: 'orange' },
-          { value: 'riders', label: 'Rider', color: 'blue' },
-          { value: 'station_car_delivery', label: 'Station Car', color: 'violet' }
-        ]
-      },
-      {
-        key: 'deliveryFee',
-        label: 'Delivery Fee',
-        type: 'input',
-        inputType: 'number',
-        inputMin: 0,
-        inputStep: 0.01,
-        inputPlaceholder: '0.00',
-        inputUpdateOn: 'change',
-        disabledKey: 'feeDisabled'
-      },
-      {
-        key: 'deliveryItemStatus',
-        label: 'Status',
-        type: 'dropdown',
-        disabledKey: 'statusDisabled',
-        statusOptions: [
-          { value: 'pending', label: 'Pending', color: 'orange' },
-          { value: 'packaged', label: 'Packaged', color: 'violet' },
-          { value: 'delivering', label: 'Delivering', color: 'blue' },
-          { value: 'delivered', label: 'Delivered', color: 'green' }
-        ]
-      },
-      { key: 'deliveryDate', label: 'Date', type: 'date' },
-      { key: 'actions', label: 'Actions', type: 'actions' }
-    ];
-  }
-
-  onBatchSearchInput(value: string) {
-    this.batchSearchTerm = value;
-    this.batchPage = 1;
-  }
-
-  onBatchMonthYearChange(selection: { month: number | null; year: number | null }) {
-    this.batchFilterMonth = selection.month;
-    this.batchFilterYear = selection.year;
-    this.batchPage = 1;
-  }
-
-  setBatchPage(page: number) {
-    const next = Math.max(1, Math.min(page, this.totalBatchPages));
-    if (next === this.batchPage) return;
-    this.batchPage = next;
-  }
-
-  setDeliveryPage(page: number) {
-    const next = Math.max(1, Math.min(page, this.totalDeliveryPages));
-    if (next === this.deliveryPage) return;
-    this.deliveryPage = next;
   }
 
   loadData() {
@@ -1249,9 +1054,6 @@ export class DeliveriesComponent implements OnInit {
     this.deliveryBatches = this.allBatches
       .filter(b => batchNames.has(b.name))
       .map(b => ({ ...b, deliveryStatus: b.deliveryStatus || 'pending' }));
-    if (this.batchPage > this.totalBatchPages) {
-      this.batchPage = this.totalBatchPages;
-    }
   }
 
   calculateBatchStats() {
@@ -1275,31 +1077,6 @@ export class DeliveriesComponent implements OnInit {
     if (!s || !s.clients) return 0;
     return Math.round((s.delivered / s.clients) * 100);
   }
-
-  readonly deliveryBatchTitleResolver = (batch: OrderBatch) => batch.name;
-  readonly deliveryBatchSubtitleResolver = (batch: OrderBatch) =>
-    batch.createdAt ? new Date(batch.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
-  readonly deliveryBatchIconResolver = () => 'local_shipping';
-  readonly deliveryBatchTagsResolver = (batch: OrderBatch): BatchCardTagConfig[] => {
-    const stats = this.batchDeliveryStats[batch.name] || { clients: 0, totalQty: 0, delivered: 0 };
-    return [
-      {
-        tagName: this.getBatchStatusLabel(batch.deliveryStatus),
-        color: batch.deliveryStatus === 'completed' ? 'green' : batch.deliveryStatus === 'in_progress' ? 'blue' : 'orange',
-        icon: batch.deliveryStatus === 'completed' ? 'task_alt' : batch.deliveryStatus === 'in_progress' ? 'local_shipping' : 'pending'
-      },
-      {
-        tagName: `${stats.clients} ${stats.clients === 1 ? 'Client' : 'Clients'}`,
-        color: stats.clients > 0 ? 'blue' : 'gray',
-        icon: 'group'
-      },
-      {
-        tagName: `${stats.delivered} Delivered`,
-        color: stats.delivered > 0 ? 'green' : 'gray',
-        icon: 'check_circle'
-      }
-    ];
-  };
 
   openBatch(batch: OrderBatch) {
     this.selectedBatch = batch;
@@ -1363,63 +1140,6 @@ export class DeliveriesComponent implements OnInit {
     this.deliveryPage = 1;
   }
 
-  onDeliveryTableSearchChange(query: Record<string, string>) {
-    this.searchTerm = (query['clientName'] || '').trim();
-    this.filterDeliveries();
-  }
-
-  onDeliveryTableFilterChange(filters: Record<string, any>) {
-    this.statusFilter = filters['status'] || 'all';
-    this.deliveryTypeFilter = filters['deliveryType'] || 'all';
-    this.filterDeliveries();
-  }
-
-  onDeliveryDateChange(selection: { from: string; to: string }) {
-    this.dateFrom = selection.from;
-    this.dateTo = selection.to;
-    this.filterDeliveries();
-  }
-
-  onDeliveryTableInputChange(event: { column: TableColumn; item: any; value: any }) {
-    if (event.column.key !== 'deliveryFee') return;
-    const delivery = this.findDeliveryByKey(event.item?.deliveryKey);
-    if (!delivery) return;
-    this.ensureDeliverySnapshot(delivery);
-    delivery.deliveryFee = Number(event.value || 0);
-  }
-
-  onDeliveryTableDropdownChange(event: { column: TableColumn; item: any; value: any }) {
-    const delivery = this.findDeliveryByKey(event.item?.deliveryKey);
-    if (!delivery) return;
-    this.ensureDeliverySnapshot(delivery);
-
-    if (event.column.key === 'deliveryCategory') {
-      delivery.deliveryCategory = event.value === 'none' ? undefined : event.value;
-      if (delivery.deliveryCategory !== 'ghana_post') {
-        delivery.deliveryFee = 0;
-      }
-      return;
-    }
-
-    if (event.column.key === 'deliveryItemStatus') {
-      delivery.deliveryItemStatus = event.value as DeliveryItemStatus;
-    }
-  }
-
-  onDeliveryTableActionClick(event: { action: ActionOption; item: any }) {
-    const delivery = this.findDeliveryByKey(event.item?.deliveryKey);
-    if (!delivery) return;
-
-    if (event.action.id === 'view-items') {
-      this.viewDeliveryItems(delivery);
-      return;
-    }
-
-    if (event.action.id === 'save') {
-      this.saveDeliveryRow(delivery);
-    }
-  }
-
   editRow(d: Delivery) {
     if (!d.id) return;
     this.snapshotMap.set(d.id, {
@@ -1444,17 +1164,6 @@ export class DeliveriesComponent implements OnInit {
 
   saveDeliveryRow(d: Delivery) {
     if (!d.id) return;
-    const nextStatus = (d.deliveryItemStatus || 'pending') as DeliveryItemStatus;
-    const currentStatus = (this.snapshotMap.get(d.id)?.deliveryItemStatus || d.deliveryItemStatus || 'pending') as DeliveryItemStatus;
-    if (this.needsStockStatusConfirmation(currentStatus, nextStatus)) {
-      this.openStatusConfirmModal(d, currentStatus, nextStatus, 'row');
-      return;
-    }
-    this.persistDeliveryRow(d, nextStatus);
-  }
-
-  private persistDeliveryRow(d: Delivery, nextStatus: DeliveryItemStatus) {
-    if (!d.id) return;
     // Enforce: Station Car / Riders fee stays 0
     if (d.deliveryCategory && d.deliveryCategory !== 'ghana_post') {
       d.deliveryFee = 0;
@@ -1462,40 +1171,22 @@ export class DeliveriesComponent implements OnInit {
     const id = d.id;
     this.savingDeliveryIds.add(id);
     this.dbService.updateDeliveryInfo(id, d.deliveryCategory ?? null, Number(d.deliveryFee || 0))
-      .subscribe(infoOk => {
-        if (!infoOk) {
-          this.savingDeliveryIds.delete(id);
-          this.statusConfirmSubmitting = false;
-          alert('Failed to update delivery details.');
-          return;
-        }
-
-        this.dbService.updateDeliveryItemStatus(id, nextStatus)
-          .subscribe(statusOk => {
-            this.savingDeliveryIds.delete(id);
-            this.statusConfirmSubmitting = false;
-            if (!statusOk) {
-              alert('Failed to update delivery status.');
-              return;
+      .subscribe(() => {
+        this.dbService.updateDeliveryItemStatus(id, (d.deliveryItemStatus || 'pending') as DeliveryItemStatus)
+          .subscribe(() => {
+            if (d.deliveryItemStatus === 'delivered') {
+              d.status = 'delivered';
+              d.deliveryDate = new Date().toISOString().split('T')[0];
             }
-
-            this.applyDeliveryStatusLocally(d, nextStatus);
+            this.savingDeliveryIds.delete(id);
             this.savedDeliveryIds.add(id);
             this.editableDeliveryIds.delete(id);
             this.snapshotMap.delete(id);
             this.calculateBatchStats();
             this.computeStatusCounts();
-            this.closeStatusConfirmModal();
-            this.showSuccessToast('Delivery updated successfully.');
             setTimeout(() => this.savedDeliveryIds.delete(id), 1400);
           });
       });
-  }
-
-  findDeliveryByKey(key: number | string | undefined): Delivery | undefined {
-    const numericKey = Number(key);
-    if (!Number.isFinite(numericKey)) return undefined;
-    return this.batchDeliveries.find(delivery => delivery.id === numericKey);
   }
 
   getItemCount(delivery: Delivery): number {
@@ -1533,136 +1224,18 @@ export class DeliveriesComponent implements OnInit {
     this.viewingDelivery = null;
   }
 
-  quickUpdateStatus(status: string, bypassStatusConfirmation = false) {
+  quickUpdateStatus(status: string) {
     if (!this.viewingDelivery) return;
     const s = status as DeliveryItemStatus;
-    const currentStatus = (this.viewingDelivery.deliveryItemStatus || 'pending') as DeliveryItemStatus;
-    if (currentStatus === s && !bypassStatusConfirmation) return;
-    if (!bypassStatusConfirmation && this.needsStockStatusConfirmation(currentStatus, s)) {
-      this.openStatusConfirmModal(this.viewingDelivery, currentStatus, s, 'quick');
-      return;
-    }
-
-    this.dbService.updateDeliveryItemStatus(this.viewingDelivery.id!, s).subscribe(ok => {
-      this.statusConfirmSubmitting = false;
-      if (!ok) {
-        alert('Failed to update delivery status.');
-        return;
+    this.dbService.updateDeliveryItemStatus(this.viewingDelivery.id!, s).subscribe(() => {
+      this.viewingDelivery!.deliveryItemStatus = s;
+      if (s === 'delivered') {
+        this.viewingDelivery!.status = 'delivered';
+        this.viewingDelivery!.deliveryDate = new Date().toISOString().split('T')[0];
       }
-
-      this.applyDeliveryStatusLocally(this.viewingDelivery!, s);
       this.calculateBatchStats();
       this.filterDeliveries();
-      this.closeStatusConfirmModal();
-      this.showSuccessToast('Delivery status updated successfully.');
     });
-  }
-
-  get statusConfirmItemsList(): string[] {
-    return this.getDeliveryItemsList(this.statusConfirmDelivery);
-  }
-
-  get statusConfirmIsRemovingStock(): boolean {
-    return !this.deliveryStatusConsumesStock(this.statusConfirmCurrentStatus)
-      && this.deliveryStatusConsumesStock(this.statusConfirmNextStatus);
-  }
-
-  get statusConfirmTitle(): string {
-    return this.statusConfirmIsRemovingStock ? 'Remove items from stock?' : 'Return items to stock?';
-  }
-
-  get statusConfirmBody(): string {
-    if (this.statusConfirmIsRemovingStock) {
-      return `Changing this delivery to ${this.getStatusLabel(this.statusConfirmNextStatus)} will remove its linked items from product stock. If the status is changed back to Pending or Packaged later, the same quantities will be returned to stock.`;
-    }
-
-    return `Changing this delivery back to ${this.getStatusLabel(this.statusConfirmNextStatus)} will return its linked items to product stock until it is marked Delivering or Delivered again.`;
-  }
-
-  get statusConfirmActionLabel(): string {
-    return this.statusConfirmIsRemovingStock ? 'Remove From Stock' : 'Return To Stock';
-  }
-
-  getStatusLabel(status: string | null | undefined): string {
-    if (!status) return 'Pending';
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  }
-
-  closeStatusConfirmModal() {
-    if (this.statusConfirmSubmitting) return;
-    this.showStatusConfirmModal = false;
-    this.statusConfirmMode = null;
-    this.statusConfirmDelivery = null;
-    this.statusConfirmCurrentStatus = 'pending';
-    this.statusConfirmNextStatus = 'pending';
-    this.statusConfirmSubmitting = false;
-  }
-
-  confirmStatusChange() {
-    if (!this.statusConfirmDelivery) return;
-    this.statusConfirmSubmitting = true;
-
-    if (this.statusConfirmMode === 'row') {
-      this.persistDeliveryRow(this.statusConfirmDelivery, this.statusConfirmNextStatus);
-      return;
-    }
-
-    this.quickUpdateStatus(this.statusConfirmNextStatus, true);
-  }
-
-  private openStatusConfirmModal(
-    delivery: Delivery,
-    currentStatus: DeliveryItemStatus,
-    nextStatus: DeliveryItemStatus,
-    mode: 'row' | 'quick'
-  ) {
-    this.statusConfirmMode = mode;
-    this.statusConfirmDelivery = delivery;
-    this.statusConfirmCurrentStatus = currentStatus;
-    this.statusConfirmNextStatus = nextStatus;
-    this.showStatusConfirmModal = true;
-  }
-
-  private ensureDeliverySnapshot(delivery: Delivery) {
-    if (!delivery.id || this.snapshotMap.has(delivery.id)) return;
-    this.snapshotMap.set(delivery.id, {
-      deliveryCategory: delivery.deliveryCategory,
-      deliveryFee: delivery.deliveryFee,
-      deliveryItemStatus: delivery.deliveryItemStatus || 'pending'
-    });
-  }
-
-  private deliveryStatusConsumesStock(status: DeliveryItemStatus | null | undefined): boolean {
-    return status === 'delivering' || status === 'delivered';
-  }
-
-  private needsStockStatusConfirmation(
-    currentStatus: DeliveryItemStatus | null | undefined,
-    nextStatus: DeliveryItemStatus
-  ): boolean {
-    return this.deliveryStatusConsumesStock(currentStatus) !== this.deliveryStatusConsumesStock(nextStatus);
-  }
-
-  private applyDeliveryStatusLocally(delivery: Delivery, status: DeliveryItemStatus) {
-    delivery.deliveryItemStatus = status;
-    if (status === 'delivered') {
-      delivery.status = 'delivered';
-      delivery.deliveryDate = new Date().toISOString().split('T')[0];
-      return;
-    }
-
-    if (status === 'delivering') {
-      delivery.status = 'in_transit';
-      return;
-    }
-
-    delivery.status = 'pending';
-    delivery.deliveryDate = null;
-  }
-
-  private getDeliveryItemsList(delivery: Delivery | null): string[] {
-    if (!delivery?.items) return [];
-    return delivery.items.split(',').map(item => item.trim()).filter(Boolean);
   }
 
   reportDamagedFromDelivery() {
@@ -1673,7 +1246,7 @@ export class DeliveriesComponent implements OnInit {
       this.damageProductId, qty, this.damageNote || '', this.viewingDelivery.batchName
     ).subscribe(ok => {
       if (ok) {
-        this.showSuccessToast('Damaged item recorded successfully.');
+        alert('Damaged item recorded');
         this.damageProductId = null;
         this.damageQuantity = 1;
         this.damageNote = '';
@@ -1683,16 +1256,5 @@ export class DeliveriesComponent implements OnInit {
         alert('Failed to record damaged item');
       }
     });
-  }
-
-  private showSuccessToast(message: string) {
-    this.successMessage = message;
-    if (this.successTimer) {
-      clearTimeout(this.successTimer);
-    }
-    this.successTimer = setTimeout(() => {
-      this.successMessage = null;
-      this.successTimer = null;
-    }, 2400);
   }
 }
