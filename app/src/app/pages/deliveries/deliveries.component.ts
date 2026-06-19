@@ -67,8 +67,8 @@ import {
             </div>
             <div class="dv-batch-name">{{ batch.name }}</div>
             <div class="dv-batch-meta">
-              <span><span class="material-icons dv-meta-icon">people</span>{{ batchDeliveryStats[batch.name]?.clients || 0 }} clients</span>
-              <span><span class="material-icons dv-meta-icon">check_circle</span>{{ batchDeliveryStats[batch.name]?.delivered || 0 }} delivered</span>
+              <span><span class="material-icons dv-meta-icon">people</span>{{ batchDeliveryStats[batch.name].clients || 0 }} clients</span>
+              <span><span class="material-icons dv-meta-icon">check_circle</span>{{ batchDeliveryStats[batch.name].delivered || 0 }} delivered</span>
             </div>
             <div class="dv-batch-progress">
               <div class="dv-batch-progress-fill" [style.width.%]="getDeliveredPct(batch)"></div>

@@ -1,4 +1,4 @@
-import { Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, TemplateRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
@@ -22,6 +22,10 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
   imports: [CommonModule, FormsModule, BatchListSectionComponent, BatchSectionFooterDirective, DateFilterComponent, ModalShellComponent, TableComponent, BatchDetailHeaderComponent, StatCardsComponent],
   template: `
     <div class="bl-page">
+      <div class="bl-toast bl-toast-success" *ngIf="successMessage">
+        <span class="material-icons">check_circle</span>
+        <span>{{ successMessage }}</span>
+      </div>
 
       <!-- ══ PAGE HEADER ══ -->
       <div class="bl-header">
@@ -118,8 +122,8 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
               [data]="itemTableRows"
               [metadata]="itemMetadata"
               [showSearchRow]="true"
-              [initialLoading]="loading"
-              [searching]="loading"
+              [initialLoading]="loading && itemTableRows.length === 0"
+              [searching]="loading && itemTableRows.length > 0"
               [skeletonRows]="5"
               [filters]="itemFilters"
               [tableLabel]="'Buying Items'"
@@ -242,8 +246,8 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
             [data]="buyers"
             [metadata]="buyersMetadata"
             [showSearchRow]="false"
-            [initialLoading]="loadingBuyers"
-            [searching]="loadingBuyers"
+            [initialLoading]="loadingBuyers && buyers.length === 0"
+            [searching]="loadingBuyers && buyers.length > 0"
             [skeletonRows]="4"
             [tableLabel]="'Buyer List'"
             [summaryLabel]="'People'"
@@ -263,6 +267,28 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
           [disabled]="sendingToArrivals"
           class="bl-checkbox" />
       </ng-template>
+
+      <!-- ══ REVERSAL CONFIRM MODAL ══ -->
+      <app-modal
+        *ngIf="showReverseConfirmModal"
+        size="sm"
+        tone="warning"
+        title="Confirm Reversal"
+        sub-heading="Reverse from Arrivals back to Buying List"
+        icon="warning"
+        [buttons]="reverseConfirmButtons"
+        (closeRequested)="closeReverseConfirmModal()"
+        (buttonClick)="onReverseConfirmButton($event)">
+        <div class="bl-confirm-body">
+          <div class="bl-confirm-highlight">
+            <span class="material-icons">info</span>
+            <div>
+              <strong>{{ reverseConfirmItem?.productName }}</strong>
+              <span>Are you sure you want to reverse this item from Arrivals back to the Buying List? This only works before the arrival is confirmed.</span>
+            </div>
+          </div>
+        </div>
+      </app-modal>
 
     </div><!-- /bl-page -->
   `,
@@ -289,97 +315,12 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
     .bl-btn-ghost:hover:not(:disabled) { background: #e2e8f0; }
     .bl-btn-sm { padding: 6px 12px; font-size: 12px; }
 
-    /* ── Batch card grid ── */
-    .bl-batch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 4px 0 16px; }
-    .bl-batch-card { padding: 16px; border: 1px solid #e2e8f0; border-radius: 14px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; background: #fff; }
-    .bl-batch-card:hover { border-color: var(--primary-color, #6366f1); box-shadow: 0 4px 16px rgba(var(--primary-rgb, 99,102,241), 0.12); }
-    .bl-batch-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-    .bl-batch-card-icon { width: 40px; height: 40px; border-radius: 10px; background: rgba(var(--primary-rgb,99,102,241),0.1); color: var(--primary-color,#6366f1); display: flex; align-items: center; justify-content: center; font-size: 20px; }
-    .bl-batch-card-name { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bl-batch-card-date { font-size: 11px; color: #94a3b8; margin-bottom: 12px; }
-    .bl-batch-card-footer { display: flex; }
-    .bl-batch-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; min-height: 22px; }
-    .bl-bpill { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
-    .bl-bpill-pending { background: rgba(245, 158, 11, 0.12); color: rgba(245, 158, 11, 0.8); }
-    .bl-bpill-ordered { background: rgba(59, 130, 246, 0.12); color: rgba(59, 130, 246, 0.8); }
-    .bl-bpill-shipped { background: rgba(168, 85, 247, 0.12); color: rgba(168, 85, 247, 0.8); }
-    .bl-bpill-arrived { background: rgba(16, 185, 129, 0.12); color: rgba(16, 185, 129, 0.8); }
-    .bl-bpill-empty   { background: #f1f5f9; color: #94a3b8; }
     .bl-card-action-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 7px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 600; transition: background 0.12s; }
     .bl-cab-primary { background: var(--primary-color, #6366f1); color: #fff; border-color: var(--primary-color, #6366f1); }
     .bl-cab-primary:hover { background: var(--primary-dark, #4f46e5); }
     .bl-open-btn { width: 100%; justify-content: center; }
 
-    /* ── Status badge ── */
-    .bl-status-badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
-    .bl-sb-closed { background: rgba(var(--primary-rgb,99,102,241),0.1); color: var(--primary-color,#6366f1); }
-
-    /* ── Detail header ── */
-    .bl-detail-header { display: flex; align-items: center; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid #ccc; margin-bottom: 16px; flex-wrap: wrap; }
-    .bl-back-btn { display: inline-flex; align-items: center; gap: 4px; padding: 7px 12px; border: 1px solid #ccc; border-radius: 9px; background: #f8fafc; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; transition: background 0.12s; white-space: nowrap; }
-    .bl-back-btn:hover { background: #e2e8f0; }
-    .bl-back-btn .material-icons { font-size: 16px; }
-    .bl-detail-title-group { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-    .bl-detail-batch-icon { width: 36px; height: 36px; border-radius: 9px; background: #f1f5f9; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-    .bl-detail-batch-name { font-size: 15px; font-weight: 700; color: #0f172a; }
-    .bl-detail-batch-date { font-size: 11px; color: #94a3b8; }
-    .bl-detail-actions { display: flex; gap: 8px; flex-shrink: 0; margin-left: auto; }
-
-    /* ── Stats row ── */
-    .bl-stats-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-    .bl-stat { display: flex; align-items: center; gap: 10px; background: #f8fafc; border: 1px solid #ccc; border-radius: 12px; padding: 12px 18px; flex: 1; min-width: 120px; }
-    .bl-stat-icon { font-size: 24px; }
-    .bl-si-blue { color: #3b82f6; }
-    .bl-si-yellow { color: #f59e0b; }
-    .bl-si-green { color: #10b981; }
-    .bl-stat-value { font-size: 20px; font-weight: 700; color: #0f172a; line-height: 1.2; }
-    .bl-stat-label { font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-
-    /* ── Tables ── */
-    .bl-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #ccc; }
-    .bl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .bl-table th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; background: #f8fafc; border-bottom: 1px solid #ccc; white-space: nowrap; }
-    .bl-table td { padding: 11px 12px; border-bottom: 1px solid #ccc; vertical-align: middle; }
-    .bl-table tr:last-child td { border-bottom: none; }
-    .bl-table tr:hover td { background: #fafbff; }
-    .bl-table tfoot td { border-top: 2px solid #ccc; border-bottom: none; }
-    .bl-row-index { color: #94a3b8; font-size: 12px; font-weight: 700; }
-    .bl-product-cell { display: flex; align-items: center; gap: 10px; min-width: 220px; }
-    .bl-product-cell-muted { opacity: 0.62; }
-    .bl-product-avatar { width: 34px; height: 34px; border-radius: 12px; background: rgba(var(--primary-rgb, 99,102,241), 0.12); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
-    .bl-product-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-    .bl-product-name { font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bl-product-meta { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; color: #94a3b8; }
-    .bl-meta-divider { color: #cbd5e1; }
-    .bl-qty-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 38px; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-    .bl-qty-chip-static { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
-    .bl-qty-chip-stock { background: rgba(16, 185, 129, 0.1); color: #047857; border: 1px solid rgba(16, 185, 129, 0.16); }
-    .bl-select-cell { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; }
-    .bl-cell-dash { color: #cbd5e1; font-size: 14px; }
     .bl-checkbox { width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary-color, #6366f1); }
-    .bl-editable-cell { display: inline-flex; align-items: center; gap: 8px; min-width: 120px; }
-    .bl-editable-cell-status { min-width: 160px; }
-    .bl-inline-input { width: 88px; padding: 8px 10px; border: 1px solid #d7dde6; border-radius: 10px; font-size: 13px; font-weight: 600; text-align: center; background: #f8fafc; color: #0f172a; }
-    .bl-inline-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99,102,241), 0.12); background: #fff; }
-    .bl-inline-input:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
-    .bl-status-select { min-width: 118px; padding: 8px 12px; border: 1px solid transparent; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
-    .bl-status-select:disabled { cursor: not-allowed; opacity: 0.7; }
-    .bl-ss-pending  { background: #fef3c7; color: #92400e; }
-    .bl-ss-ordered  { background: #dbeafe; color: #1e40af; }
-    .bl-ss-shipped  { background: #fef3c7; color: #92400e; }
-    .bl-ss-arrived  { background: #d1fae5; color: #065f46; }
-    .bl-dirty-dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15); }
-    .bl-row-actions { display: inline-flex; align-items: center; gap: 8px; }
-    .bl-icon-action { width: 34px; height: 34px; border: none; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.16s ease, opacity 0.16s ease, box-shadow 0.16s ease; }
-    .bl-icon-action .material-icons { font-size: 18px; }
-    .bl-icon-action:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12); }
-    .bl-icon-action:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
-    .bl-icon-action-view { background: #d0e8f9; color: #0066cc; }
-    .bl-icon-action-save { background: #d0f9d0; color: #00a63e; }
-
-    /* ── Badges ── */
-    .bl-badge { display: inline-block; padding: 3px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
-    .bl-badge-sent { background: #e5e7eb; color: #374151; }
 
     /* ── Detail Modal ── */
     .bl-detail-modal-body { display: flex; flex-direction: column; gap: 18px; }
@@ -407,22 +348,6 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
     .bl-empty h3 { font-size: 16px; font-weight: 700; color: #0f172a; margin: 0 0 6px; }
     .bl-empty p { font-size: 13px; color: #64748b; margin: 0 0 16px; }
 
-    /* ── Skeleton ── */
-    .bl-skeleton-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 4px 0 16px; }
-    .bl-skeleton-batch-card { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid #f1f5f9; border-radius: 14px; }
-    .bl-sk { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: bl-shimmer 1.4s infinite; border-radius: 6px; }
-    @keyframes bl-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .bl-sk-icon { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
-    .bl-sk-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-    .bl-sk-line { height: 12px; }
-    .bl-sk-line-lg { width: 70%; }
-    .bl-sk-line-sm { width: 40%; }
-    .bl-sk-table { margin-top: 8px; }
-    .bl-sk-thead { display: flex; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
-    .bl-sk-th { height: 14px; flex: 1; border-radius: 4px; }
-    .bl-sk-row { display: flex; gap: 12px; padding: 12px; border-bottom: 1px solid #f8fafc; }
-    .bl-sk-td { height: 14px; flex: 1; border-radius: 4px; }
-
     /* ── Modal ── */
     .bl-modal-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
     .bl-modal { background: #fff; border-radius: 16px; width: 100%; max-width: 480px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.2); overflow: hidden; }
@@ -441,18 +366,65 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
 
     /* ── Spinner ── */
     .bl-spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: currentColor; border-radius: 50%; animation: bl-spin 0.6s linear infinite; display: inline-block; }
-    .bl-spinner-dark { border-color: rgba(15, 23, 42, 0.12); border-top-color: currentColor; }
     @keyframes bl-spin { to { transform: rotate(360deg); } }
 
     @media (max-width: 768px) {
       .bl-header { align-items: flex-start; }
       .bl-header-actions { width: 100%; justify-content: flex-start; }
-      .bl-detail-actions { margin-left: 0; width: 100%; }
+    }
+
+    /* ── Confirm Body & Highlight ── */
+    .bl-confirm-body { display: flex; flex-direction: column; gap: 12px; }
+    .bl-confirm-highlight { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid #dbeafe; background: #f8fbff; border-radius: 12px; color: #334155; }
+    .bl-confirm-highlight .material-icons { color: var(--primary-color, #6366f1); font-size: 20px; margin-top: 1px; }
+    .bl-confirm-highlight strong { display: block; font-size: 14px; color: #0f172a; margin-bottom: 2px; }
+    .bl-confirm-highlight span:last-child { font-size: 13px; color: #64748b; }
+
+    /* ── Toast ── */
+    .bl-toast {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      z-index: 1100;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+      font-size: 13px;
+      font-weight: 700;
+      animation: bl-toast-in 0.18s ease-out;
+    }
+    .bl-toast .material-icons { font-size: 18px; }
+    .bl-toast-success {
+      background: #ecfdf5;
+      color: #166534;
+      border-color: #bbf7d0;
+    }
+    @keyframes bl-toast-in {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Reversing Row Gray Out ── */
+    ::ng-deep .row-reversing td {
+      opacity: 0.5;
+      background-color: #f8fafc !important;
+    }
+    ::ng-deep .row-reversing {
+      pointer-events: none;
     }
   `]
 })
-export class BuyingListComponent implements OnInit {
+export class BuyingListComponent implements OnInit, OnDestroy {
   @ViewChild('itemSelectHeaderTpl', { static: true }) itemSelectHeaderTpl!: TemplateRef<any>;
+
+  showReverseConfirmModal = false;
+  reverseConfirmItem: BuyingListItem | null = null;
+  successMessage: string | null = null;
+  private successTimer: any = null;
 
   loading = true;
   items: BuyingListItem[] = [];
@@ -522,6 +494,7 @@ export class BuyingListComponent implements OnInit {
 
   selectedArrivalIds = new Set<number>();
   sendingToArrivals = false;
+  reversingArrivalIds = new Set<number>();
 
   // Pagination
   batchPage = 1;
@@ -541,6 +514,10 @@ export class BuyingListComponent implements OnInit {
     return this.authService.canPerformBuyingListOperation('canSendToArrivals');
   }
 
+  get canReverseFromArrivals(): boolean {
+    return this.authService.canPerformBuyingListOperation('canReverseFromArrivals');
+  }
+
   private canEditSentItem(item: BuyingListItem): boolean {
     return !item.movedToArrivals || this.authService.canPerformBuyingListOperation('canEditAfterSent');
   }
@@ -558,6 +535,7 @@ export class BuyingListComponent implements OnInit {
   get itemTableRows() {
     return this.items.map((item, index) => ({
       ...item,
+      rowClass: this.reversingArrivalIds.has(item.id || 0) ? 'row-reversing' : '',
       displayIndex: this.itemRangeStart + index,
       inStockDisplay: this.getStockForItem(item),
       orderedQuantityDraft: this.getDraftOrderedQuantity(item),
@@ -574,6 +552,14 @@ export class BuyingListComponent implements OnInit {
           icon: 'eye',
           color: 'black'
         },
+        ...(this.canReverseFromArrivals && item.movedToArrivals ? [{
+          id: 'reverse-arrival',
+          label: 'Reverse from Arrivals',
+          icon: 'arrow-return-left',
+          color: 'orange',
+          disabled: this.reversingArrivalIds.has(item.id || 0) || this.isRowSaving(item),
+          loading: this.reversingArrivalIds.has(item.id || 0)
+        } as ActionOption] : []),
         {
           id: 'save',
           label: 'Save row changes',
@@ -705,6 +691,13 @@ export class BuyingListComponent implements OnInit {
     this.dbService.batchDeleted$.subscribe(() => {
       this.loadBatches();
     });
+  }
+
+  ngOnDestroy(): void {
+    if (this.successTimer) {
+      clearTimeout(this.successTimer);
+      this.successTimer = null;
+    }
   }
 
   private setupTableConfigs() {
@@ -929,6 +922,11 @@ export class BuyingListComponent implements OnInit {
 
     if (event.action.id === 'save') {
       this.saveItemDraft(event.item);
+      return;
+    }
+
+    if (event.action.id === 'reverse-arrival') {
+      this.reverseArrival(event.item);
     }
   }
 
@@ -1199,6 +1197,78 @@ export class BuyingListComponent implements OnInit {
       this.movedItemIds.delete(item.id!);
       alert('Failed to move item to Arrivals');
     });
+  }
+
+  get isReversing(): boolean {
+    return this.reverseConfirmItem?.id ? this.reversingArrivalIds.has(this.reverseConfirmItem.id) : false;
+  }
+
+  get reverseConfirmButtons(): ModalButtonConfig[] {
+    const loading = this.isReversing;
+    return [
+      { buttonName: 'Cancel', color: 'secondary', action: 'cancel', disabled: loading },
+      {
+        buttonName: 'Confirm Reversal',
+        color: 'base_color',
+        action: 'confirm',
+        loading
+      }
+    ];
+  }
+
+  reverseArrival(item: BuyingListItem) {
+    if (!item.id || !item.movedToArrivals) return;
+    if (!this.authService.canPerformBuyingListOperation('canReverseFromArrivals')) return;
+
+    this.reverseConfirmItem = item;
+    this.showReverseConfirmModal = true;
+  }
+
+  onReverseConfirmButton(button: ModalButtonConfig) {
+    if (button.action === 'cancel') {
+      this.closeReverseConfirmModal();
+      return;
+    }
+
+    if (button.action !== 'confirm') return;
+    if (!this.reverseConfirmItem?.id) return;
+
+    const item = this.reverseConfirmItem;
+    this.reversingArrivalIds.add(item.id!);
+
+    this.dbService.reverseArrivalForBuyingItem(item.id!).subscribe({
+      next: ok => {
+        this.reversingArrivalIds.delete(item.id!);
+        this.closeReverseConfirmModal();
+        if (ok) {
+          item.movedToArrivals = false;
+          this.selectedArrivalIds.delete(item.id!);
+          this.loadItems();
+          this.loadBatches();
+          this.showSuccess('Item successfully reversed from Arrivals.');
+        } else {
+          alert('Could not reverse this item. If it has already been received or confirmed, undo that step in Arrivals first.');
+        }
+      },
+      error: () => {
+        this.reversingArrivalIds.delete(item.id!);
+        this.closeReverseConfirmModal();
+        alert('Failed to reverse this item from Arrivals');
+      }
+    });
+  }
+
+  closeReverseConfirmModal() {
+    this.showReverseConfirmModal = false;
+    this.reverseConfirmItem = null;
+  }
+
+  showSuccess(msg: string) {
+    this.successMessage = msg;
+    if (this.successTimer) clearTimeout(this.successTimer);
+    this.successTimer = setTimeout(() => {
+      this.successMessage = null;
+    }, 3000);
   }
 
   

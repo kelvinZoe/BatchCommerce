@@ -337,6 +337,51 @@ export interface ModalButtonConfig {
     @keyframes pp-shell-spin {
       to { transform: rotate(360deg); }
     }
+
+    @media (max-width: 640px) {
+      .pp-modal-overlay {
+        align-items: flex-end;
+        padding: 10px;
+      }
+
+      .pp-modal {
+        width: 100%;
+        max-width: none;
+        max-height: min(92dvh, 760px);
+        border-radius: 22px 22px 16px 16px;
+        box-shadow: 0 -18px 50px rgba(15, 23, 42, 0.22);
+      }
+
+      .pp-modal-header {
+        padding: 16px;
+      }
+
+      .pp-modal-header-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        font-size: 18px;
+      }
+
+      .pp-modal-title {
+        font-size: 14px;
+      }
+
+      .pp-modal-body {
+        padding: 16px;
+      }
+
+      .pp-modal-footer {
+        padding: 12px;
+        flex-direction: column-reverse;
+        background: #fff;
+      }
+
+      .pp-shell-btn {
+        width: 100%;
+        min-height: 44px;
+      }
+    }
   `]
 })
 export class ModalShellComponent {

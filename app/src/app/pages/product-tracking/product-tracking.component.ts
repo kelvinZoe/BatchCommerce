@@ -108,8 +108,8 @@ interface TrackingItem {
             [data]="trackingTableRows"
             [metadata]="trackingMetadata"
             [showSearchRow]="true"
-            [initialLoading]="loadingItems"
-            [searching]="loadingItems && items.length > 0"
+            [initialLoading]="loadingItems && trackingTableRows.length === 0"
+            [searching]="loadingItems && trackingTableRows.length > 0"
             [skeletonRows]="4"
             [tableLabel]="'Tracked Products'"
             [summaryLabel]="'Items'"
@@ -141,9 +141,6 @@ interface TrackingItem {
     .pt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .pt-btn-primary { background: var(--primary-color, #6366f1); color: #fff; }
     .pt-btn-primary:hover:not(:disabled) { background: var(--primary-dark, #4f46e5); }
-    .pt-btn-sm { padding: 6px 11px; font-size: 12px; }
-
-    .pt-batch-card-footer { display: flex; }
     .pt-card-action-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 7px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 600; transition: background 0.12s; }
     .pt-cab-primary { background: var(--primary-color, #6366f1); color: #fff; border-color: var(--primary-color, #6366f1); }
     .pt-cab-primary:hover { background: var(--primary-dark, #4f46e5); }
@@ -157,19 +154,6 @@ interface TrackingItem {
     .pt-detail-icon { width: 36px; height: 36px; border-radius: 9px; background: rgba(var(--primary-rgb, 99,102,241), 0.1); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
     .pt-detail-name { font-size: 15px; font-weight: 700; color: #0f172a; }
     .pt-detail-sub { font-size: 11px; color: #94a3b8; }
-    .pt-empty { text-align: center; padding: 48px 24px; }
-    .pt-empty-icon { width: 60px; height: 60px; border-radius: 16px; background: rgba(var(--primary-rgb, 99,102,241), 0.08); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px; }
-    .pt-empty h3 { font-size: 16px; font-weight: 700; color: #0f172a; margin: 0 0 6px; }
-    .pt-empty p { font-size: 13px; color: #64748b; margin: 0; }
-
-    .pt-sk { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: pt-shimmer 1.4s infinite; border-radius: 6px; }
-    @keyframes pt-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .pt-sk-table { margin-top: 4px; }
-    .pt-sk-thead { display: flex; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
-    .pt-sk-th { height: 14px; flex: 1; border-radius: 4px; }
-    .pt-sk-row { display: flex; gap: 12px; padding: 12px; border-bottom: 1px solid #f8fafc; }
-    .pt-sk-td { height: 14px; flex: 1; border-radius: 4px; }
-
     .pt-spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: currentColor; border-radius: 50%; animation: pt-spin 0.6s linear infinite; display: inline-block; flex-shrink: 0; }
     @keyframes pt-spin { to { transform: rotate(360deg); } }
   `]

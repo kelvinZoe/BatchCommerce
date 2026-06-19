@@ -1,3 +1,5 @@
+export * from './batch-workflow';
+
 export interface Product {
   id?: number;
   name: string;
@@ -198,6 +200,7 @@ export interface BuyingListItem {
 
 export interface ArrivalItem {
   id?: number;
+  batchId?: number;
   batchProductId?: number;
   productId?: number;
   productName: string;
@@ -363,11 +366,13 @@ export interface BuyingListPermissionConfig {
   canAddItemToBuyingList: boolean;   // Add new items to buying list
   canSendToArrivals: boolean;        // Send items to arrivals
   canEditAfterSent: boolean;         // Edit after item has been sent onward
+  canReverseFromArrivals: boolean;   // Reverse unconfirmed arrivals back to buying list
 }
 
 export const DEFAULT_BUYING_LIST_CONFIG: BuyingListPermissionConfig = {
   canEditQuantityOrdered: false, canChangeStatus: false, canEditAfterArrived: false,
-  canAddItemToBuyingList: false, canSendToArrivals: false, canEditAfterSent: false
+  canAddItemToBuyingList: false, canSendToArrivals: false, canEditAfterSent: false,
+  canReverseFromArrivals: false
 };
 
 export const BUYING_LIST_OPERATIONS: { key: keyof BuyingListPermissionConfig; label: string; icon: string; description: string }[] = [
@@ -377,6 +382,7 @@ export const BUYING_LIST_OPERATIONS: { key: keyof BuyingListPermissionConfig; la
   { key: 'canAddItemToBuyingList', label: 'Add Items', icon: 'add_circle', description: 'Add new items to buying list' },
   { key: 'canSendToArrivals', label: 'Send to Arrivals', icon: 'send', description: 'Send items to arrivals' },
   { key: 'canEditAfterSent', label: 'Edit After Sent', icon: 'published_with_changes', description: 'Edit an item after it has been sent onward' },
+  { key: 'canReverseFromArrivals', label: 'Reverse From Arrivals', icon: 'undo', description: 'Move unconfirmed arrivals back to the buying list' },
 ];
 
 /** Arrivals page operation permissions */
@@ -385,11 +391,12 @@ export interface ArrivalsPermissionConfig {
   canConfirmReceivedItems: boolean;  // Confirm received items
   canSendToShipping: boolean;        // Send to shipping
   canReverseToArrivals: boolean;     // Reverse an item back to arrivals
+  canReverseToBuyingList: boolean;   // Reverse unconfirmed arrivals back to buying list
 }
 
 export const DEFAULT_ARRIVALS_CONFIG: ArrivalsPermissionConfig = {
   canChangeReceivedValue: false, canConfirmReceivedItems: false, canSendToShipping: false,
-  canReverseToArrivals: false
+  canReverseToArrivals: false, canReverseToBuyingList: false
 };
 
 export const ARRIVALS_OPERATIONS: { key: keyof ArrivalsPermissionConfig; label: string; icon: string; description: string }[] = [
@@ -397,6 +404,7 @@ export const ARRIVALS_OPERATIONS: { key: keyof ArrivalsPermissionConfig; label: 
   { key: 'canConfirmReceivedItems', label: 'Confirm Items', icon: 'done_all', description: 'Confirm received items' },
   { key: 'canSendToShipping', label: 'Send to Shipping', icon: 'local_shipping', description: 'Send items to shipping' },
   { key: 'canReverseToArrivals', label: 'Reverse to Arrivals', icon: 'undo', description: 'Reverse an item back to arrivals' },
+  { key: 'canReverseToBuyingList', label: 'Reverse to Buying List', icon: 'assignment_return', description: 'Move unconfirmed arrivals back to the buying list' },
 ];
 
 /** Shipping page operation permissions */

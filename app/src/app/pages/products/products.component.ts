@@ -180,8 +180,8 @@ interface PendingPriceUpdate {
             [data]="batchProductsTableRows"
             [metadata]="batchProductsMetadata"
             [showSearchRow]="true"
-            [initialLoading]="loadingBatchProducts"
-            [searching]="false"
+            [initialLoading]="loadingBatchProducts && batchProductsTableRows.length === 0"
+            [searching]="loadingBatchProducts && batchProductsTableRows.length > 0"
             [skeletonRows]="5"
             [tableLabel]="'Batch Products'"
             [summaryLabel]="'Items'"
@@ -198,7 +198,6 @@ interface PendingPriceUpdate {
         <!-- ══ MANAGE PRODUCTS (CATALOG) VIEW ══ -->
         <ng-container *ngIf="mainTab === 'manage-products'">
 
-          <!-- Loading skeletons -->
           <!-- Catalog toolbar -->
           <div class="pp-toolbar" *ngIf="!loadingCatalog">
             <!-- Bulk delete button -->
@@ -218,8 +217,8 @@ interface PendingPriceUpdate {
             [data]="catalogTableRows"
             [metadata]="catalogMetadata"
             [showSearchRow]="true"
-            [initialLoading]="loadingCatalog"
-            [searching]="loadingCatalog"
+            [initialLoading]="loadingCatalog && catalogTableRows.length === 0"
+            [searching]="loadingCatalog && catalogTableRows.length > 0"
             [skeletonRows]="5"
             [filters]="catalogFilters"
             [tableLabel]="'Product Catalog'"
@@ -364,7 +363,7 @@ interface PendingPriceUpdate {
                   Unit price drops to <strong>GHS {{ batchProductForm.preorderDiscountPrice }}</strong> when buying <strong>{{ batchProductForm.preorderDiscountMinQty }}</strong>+ items. Total cost: <strong>GHS {{ batchProductForm.preorderDiscountMinQty * batchProductForm.preorderDiscountPrice }}</strong> (saves GHS {{ (batchProductForm.preorderPrice - batchProductForm.preorderDiscountPrice) * batchProductForm.preorderDiscountMinQty }}).
                 </span>
               </div>
-              <div class="pp-discount-warning" *ngIf="batchProductForm.preorderPrice > 0 && batchProductForm.preorderDiscountPrice > batchProductForm.preorderPrice">
+              <div class="pp-discount-warning" *ngIf="batchProductForm.preorderDiscountPrice > batchProductForm.preorderPrice">
                 <span class="material-icons">warning</span>
                 <span>
                   <strong>Caution:</strong> The discount price (GHS {{ batchProductForm.preorderDiscountPrice }}) is greater than the regular price (GHS {{ batchProductForm.preorderPrice }}). Did you enter the total amount instead of the discounted <strong>unit price</strong> (e.g. GHS 19 instead of GHS 190)?
@@ -396,7 +395,7 @@ interface PendingPriceUpdate {
                   Unit price drops to <strong>GHS {{ batchProductForm.stockDiscountPrice }}</strong> when buying <strong>{{ batchProductForm.stockDiscountMinQty }}</strong>+ items. Total cost: <strong>GHS {{ batchProductForm.stockDiscountMinQty * batchProductForm.stockDiscountPrice }}</strong> (saves GHS {{ (batchProductForm.stockPrice - batchProductForm.stockDiscountPrice) * batchProductForm.stockDiscountMinQty }}).
                 </span>
               </div>
-              <div class="pp-discount-warning" *ngIf="batchProductForm.stockPrice > 0 && batchProductForm.stockDiscountPrice > batchProductForm.stockPrice">
+              <div class="pp-discount-warning" *ngIf="batchProductForm.stockDiscountPrice > batchProductForm.stockPrice">
                 <span class="material-icons">warning</span>
                 <span>
                   <strong>Caution:</strong> The discount price (GHS {{ batchProductForm.stockDiscountPrice }}) is greater than the regular price (GHS {{ batchProductForm.stockPrice }}). Did you enter the total amount instead of the discounted <strong>unit price</strong> (e.g. GHS 19 instead of GHS 190)?
@@ -483,7 +482,7 @@ interface PendingPriceUpdate {
                 Unit price drops to <strong>GHS {{ productFormData.stockDiscountPrice }}</strong> when buying <strong>{{ productFormData.stockDiscountMinQty }}</strong>+ items. Total cost: <strong>GHS {{ productFormData.stockDiscountMinQty * productFormData.stockDiscountPrice }}</strong> (saves GHS {{ (productFormData.stockPrice - productFormData.stockDiscountPrice) * productFormData.stockDiscountMinQty }}).
               </span>
             </div>
-            <div class="pp-discount-warning" *ngIf="productFormData.stockPrice > 0 && productFormData.stockDiscountPrice > productFormData.stockPrice">
+             <div class="pp-discount-warning" *ngIf="productFormData.stockDiscountPrice > productFormData.stockPrice">
               <span class="material-icons">warning</span>
               <span>
                 <strong>Caution:</strong> The discount price (GHS {{ productFormData.stockDiscountPrice }}) is greater than the regular price (GHS {{ productFormData.stockPrice }}). Did you enter the total amount instead of the discounted <strong>unit price</strong> (e.g. GHS 19 instead of GHS 190)?
@@ -710,8 +709,79 @@ interface PendingPriceUpdate {
     .pp-btn:disabled { opacity:0.45; cursor:default; pointer-events:none; }
     .pp-btn-primary { background:var(--primary-color,#6366f1); color:#fff; }
     .pp-btn-primary:hover:not(:disabled) { background:var(--primary-dark,#4f46e5); box-shadow:0 3px 10px rgba(var(--primary-rgb,99,102,241),0.3); }
-    .pp-btn-ghost { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
-    .pp-btn-ghost:hover:not(:disabled) { background:#e2e8f0; }
+    @media (max-width: 980px) {
+      .pp-header {
+        align-items: stretch;
+        flex-direction: column;
+        padding: 18px 16px 14px;
+      }
+
+      .pp-header-left {
+        align-items: flex-start;
+        width: 100%;
+      }
+
+      .pp-header-title {
+        max-width: 16ch;
+        font-size: clamp(21px, 6vw, 30px);
+      }
+
+      .pp-header-sub {
+        max-width: 34ch;
+        font-size: 13px;
+      }
+
+      .pp-header-actions {
+        width: 100%;
+        align-items: stretch;
+      }
+
+      .pp-tab-toggle {
+        width: 100%;
+        overflow-x: auto;
+        justify-content: flex-start;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .pp-tab-toggle::-webkit-scrollbar {
+        display: none;
+      }
+
+      .pp-tab-btn {
+        flex: 0 0 auto;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .pp-header {
+        padding-inline: 12px;
+      }
+
+      .pp-header-icon {
+        width: 44px;
+        height: 44px;
+      }
+
+      .pp-header-title {
+        max-width: none;
+        font-size: 24px;
+      }
+
+      .pp-header-sub {
+        max-width: 28ch;
+        line-height: 1.35;
+      }
+
+      .pp-header-actions > .pp-btn {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .pp-card {
+        padding: 16px 12px;
+      }
+    }
 
     /* ── Toolbar ── */
     .pp-toolbar { display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
@@ -722,10 +792,6 @@ interface PendingPriceUpdate {
 
     /* ── Batch card grid ── */
     .pp-batch-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; margin-bottom:16px; }
-    .pp-status-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.02em; }
-    .pp-status-badge.pp-status-lg { padding:4px 12px; font-size:12px; }
-    .pp-status-open { background:#dcfce7; color:#166534; }
-    .pp-status-closed { background:#f1f5f9; color:#64748b; }
     .pp-card-action-btn { display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:5px 8px; border-radius:7px; border:1px solid transparent; font-size:12px; font-weight:600; cursor:pointer; transition:background 0.13s; line-height:0; }
     .pp-card-action-btn .material-icons { font-size:16px; line-height:1; }
     .pp-card-action-btn:disabled { opacity:0.35; cursor:default; pointer-events:none; }
@@ -734,36 +800,11 @@ interface PendingPriceUpdate {
     .pp-batch-open-btn { margin-left:auto; }
     .pp-batch-open-btn .material-icons { font-size:16px; line-height:1; }
 
-    /* ── Detail header ── */
-    .pp-detail-header { display:flex; align-items:center; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
-    .pp-back-btn { display:inline-flex; align-items:center; gap:4px; padding:7px 14px; border-radius:8px; border:1px solid var(--border-color,#e2e8f0); background:var(--card-background,#fff); font-size:13px; font-weight:600; color:var(--text-primary,#1e293b); cursor:pointer; transition:background 0.13s; flex-shrink:0; }
-    .pp-back-btn .material-icons { font-size:17px; }
-    .pp-back-btn:hover { background:#f1f5f9; }
-    .pp-detail-title-group { display:flex; align-items:center; gap:10px; }
-    .pp-detail-batch-icon { width:38px; height:38px; border-radius:10px; background:rgba(var(--primary-rgb,99,102,241),0.08); color:var(--primary-color,#6366f1); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
-    .pp-dbi-closed { background:#f1f5f9 !important; color:#94a3b8 !important; }
-    .pp-detail-batch-name { font-size:17px; font-weight:800; color:var(--text-primary,#0f172a); line-height:1.2; }
-    .pp-detail-batch-date { font-size:11px; color:var(--text-secondary,#94a3b8); margin-top:2px; }
-
-    /* ── Table ── */
-    .pp-table-wrap { overflow-x:auto; border:1px solid var(--border-color,#e2e8f0); border-radius:12px; margin-bottom:4px; }
-    .pp-table { width:100%; border-collapse:collapse; }
-    .pp-table thead tr { background:#f8fafc; border-bottom:1px solid var(--border-color,#ccc); }
-    .pp-table thead th { padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary,#94a3b8); text-align:left; white-space:nowrap; }
-    .pp-table tbody tr { border-bottom:1px solid #ccc; transition:background 0.1s; }
-    .pp-table tbody tr:last-child { border-bottom:none; }
-    .pp-table tbody tr:hover { background:#f8fafc; }
-    .pp-table tbody td { padding:11px 14px; font-size:13px; color:var(--text-primary,#1e293b); vertical-align:middle; text-align:left; }
-    .pp-col-price, .pp-col-qty, .pp-col-checkbox, .pp-col-actions { text-align:left; }
-    .pp-col-actions { width:100px; }
-    .pp-td-idx { color:var(--text-secondary,#94a3b8) !important; font-size:12px !important; width:44px; }
-
     /* Product cell */
     .pp-product-cell { display:flex; align-items:center; gap:10px; }
     .pp-product-avatar { width:32px; height:32px; border-radius:8px; background:var(--primary-color,#6366f1); color:#fff; font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
     .pp-product-name { font-size:13px; font-weight:600; color:var(--text-primary,#0f172a); }
     .pp-product-desc { font-size:11px; color:var(--text-secondary,#94a3b8); margin-top:1px; }
-    .pp-desc-text { font-size:13px; color:var(--text-secondary,#64748b); }
 
     /* Price/discount cells */
     .pp-price-cell { display:flex; align-items:baseline; gap:4px; justify-content:flex-start; font-weight:600; }
@@ -772,16 +813,6 @@ interface PendingPriceUpdate {
     .pp-disc-qty { background:rgba(var(--primary-rgb,99,102,241),0.12); color:var(--primary-dark,#4f46e5); font-size:10px; font-weight:700; padding:1px 6px; border-radius:20px; }
     .pp-no-discount { color:var(--text-secondary,#cbd5e1); }
     .pp-qty-chip { display:inline-block; background:#f1f5f9; color:#475569; font-size:12px; font-weight:700; padding:3px 10px; border-radius:20px; }
-
-    /* Row actions */
-    .pp-row-actions { display:flex; align-items:center; gap:6px; }
-    .pp-row-btn { display:inline-flex; align-items:center; justify-content:center; padding:6px 8px; border-radius:8px; border:none; cursor:pointer; transition:background 0.13s; line-height:0; }
-    .pp-row-btn .material-icons { font-size:16px; }
-    .pp-row-btn:disabled { opacity:0.35; cursor:default; }
-    .pp-row-btn-ghost { background:#f1f5f9; color:#475569; }
-    .pp-row-btn-ghost:hover { background:#e2e8f0; }
-    .pp-row-btn-danger { background:#fef2f2; color:#dc2626; }
-    .pp-row-btn-danger:hover:not(:disabled) { background:#fee2e2; }
 
     /* ── Empty state ── */
     .pp-empty { display:flex; flex-direction:column; align-items:center; text-align:center; padding:48px 24px; gap:10px; }
@@ -809,11 +840,6 @@ interface PendingPriceUpdate {
     .pp-sk-line { height:12px; }
     .pp-sk-line-lg { width:70%; }
     .pp-sk-line-sm { width:40%; height:10px; }
-    .pp-skeleton-table { }
-    .pp-sk-thead { display:flex; gap:12px; margin-bottom:10px; }
-    .pp-sk-th { height:14px; flex:1; }
-    .pp-sk-row { display:flex; gap:12px; margin-bottom:10px; }
-    .pp-sk-td { height:36px; flex:1; background:linear-gradient(90deg,#f8f8f8 25%,#f0f0f0 50%,#f8f8f8 75%); background-size:400% 100%; animation:pp-shimmer 1.4s linear infinite; border-radius:6px; }
     @keyframes pp-shimmer { 0%{background-position:-400% 0} 100%{background-position:400% 0} }
 
     /* ── Spinner ── */
@@ -821,20 +847,6 @@ interface PendingPriceUpdate {
     .pp-spinner-sm { width:14px; height:14px; border-top-color:#fff; border-color:rgba(255,255,255,0.3); }
     @keyframes pp-spin { to{transform:rotate(360deg)} }
 
-    /* ═══ MODALS ═══ */
-    .pp-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px; backdrop-filter:blur(2px); }
-    .pp-modal { background:#fff; border-radius:16px; box-shadow:0 24px 60px rgba(0,0,0,0.18),0 4px 16px rgba(0,0,0,0.08); display:flex; flex-direction:column; max-height:90vh; width:480px; max-width:100%; overflow:hidden; }
-    .pp-modal-sm { width:420px; }
-    .pp-modal-lg { width:840px; }
-    .pp-modal-header { display:flex; align-items:center; gap:12px; padding:20px 20px 16px; border-bottom:1px solid #f1f5f9; background:linear-gradient(135deg,#f8faff,#fff); flex-shrink:0; }
-    .pp-modal-header-icon { width:42px; height:42px; border-radius:10px; background:var(--primary-color,#6366f1); color:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
-    .pp-modal-header-text { flex:1; }
-    .pp-modal-title { font-size:16px; font-weight:700; color:#0f172a; line-height:1.2; }
-    .pp-modal-sub { font-size:12px; color:#64748b; margin-top:2px; }
-    .pp-modal-close { background:none; border:none; cursor:pointer; color:#94a3b8; padding:4px; border-radius:6px; line-height:0; transition:background 0.12s,color 0.12s; }
-    .pp-modal-close:hover { background:#f1f5f9; color:#475569; }
-    .pp-modal-body { padding:20px; overflow-y:auto; flex:1; }
-    .pp-modal-footer { padding:14px 20px; border-top:1px solid #f1f5f9; background:#fafafa; display:flex; justify-content:flex-end; gap:8px; flex-shrink:0; }
     .pp-modal-error { margin:0 20px 0; padding:10px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#dc2626; font-size:13px; display:flex; align-items:center; gap:8px; }
     .pp-modal-error .material-icons { font-size:16px; flex-shrink:0; }
 
@@ -870,16 +882,12 @@ interface PendingPriceUpdate {
 
     /* ── Checkboxes and bulk selection ── */
     .pp-checkbox { width:18px; height:18px; cursor:pointer; accent-color:var(--primary-color,#6366f1); }
-    .pp-col-checkbox { width:50px; text-align:center; padding:8px; }
-    .pp-tr-selected { background:#f0f4ff; }
-    .pp-tr-selected:hover { background:#e8edff; }
 
     /* ── Toolbar buttons ── */
     .pp-btn-danger { background:#ef4444; color:#fff; }
     .pp-btn-danger:hover:not(:disabled) { background:#dc2626; }
 
     /* ── Bulk delete modal ── */
-    .pp-modal-header-danger { background:#fef2f2; color:#dc2626; }
     .pp-bulk-delete-warning { color:#0f172a; font-size:14px; margin:0 0 12px; line-height:1.5; }
     .pp-bulk-delete-info { color:#64748b; font-size:13px; margin:12px 0 8px; }
     .pp-bulk-delete-list { font-size:13px; color:#64748b; margin:8px 0 0 20px; padding:0; }
@@ -941,7 +949,6 @@ interface PendingPriceUpdate {
     .pp-pill-active { background:var(--primary-color,#6366f1); color:#fff !important; box-shadow:0 2px 6px rgba(var(--primary-rgb,99,102,241),0.25); }
 
     /* ── Price change modal ── */
-    .pp-modal-header-warning { background:#fef3c7; color:#b45309; }
     .pp-price-change-summary { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:16px; }
     .pp-price-change-row { display:flex; justify-content:space-between; align-items:center; padding:7px 0; font-size:13px; }
     .pp-price-change-row + .pp-price-change-row { border-top:1px solid #e2e8f0; padding-top:10px; }
@@ -1064,26 +1071,31 @@ export class ProductsComponent implements OnInit {
   }
 
   get batchProductModalButtons(): ModalButtonConfig[] {
+    const preorderPriceInvalid = this.batchProductForm.preorderDiscountPrice > this.batchProductForm.preorderPrice;
+    const stockPriceInvalid = this.batchProductForm.stockDiscountPrice > this.batchProductForm.stockPrice;
+
     return [
       { buttonName: 'Cancel', color: 'secondary', action: 'cancel', disabled: this.savingBatchProduct },
       {
         buttonName: this.editingBatchProduct ? 'Update Product' : 'Add Product',
         color: 'base_color',
         action: 'confirm',
-        disabled: this.savingBatchProduct,
+        disabled: this.savingBatchProduct || preorderPriceInvalid || stockPriceInvalid,
         loading: this.savingBatchProduct
       }
     ];
   }
 
   get productModalButtons(): ModalButtonConfig[] {
+    const stockPriceInvalid = this.productFormData.stockDiscountPrice > this.productFormData.stockPrice;
+
     return [
       { buttonName: 'Cancel', color: 'secondary', action: 'cancel', disabled: this.savingProduct },
       {
         buttonName: this.editingProduct ? 'Update Product' : 'Add Product',
         color: 'base_color',
         action: 'confirm',
-        disabled: this.savingProduct || !this.productFormData.name.trim(),
+        disabled: this.savingProduct || !this.productFormData.name.trim() || stockPriceInvalid,
         loading: this.savingProduct
       }
     ];
@@ -2237,10 +2249,10 @@ export class ProductsComponent implements OnInit {
       next: (result) => {
         this.isRecalculatingPrices = false;
         this.closePriceChangeModal();
+        this.closeBatchProductModal();
         // Reload batch products to reflect changes
         this.loadBatchProducts();
         // Optional: show success message
-        console.log(`Successfully recalculated affected preorder items and stock sale items.`);
       },
       error: (err) => {
         this.isRecalculatingPrices = false;

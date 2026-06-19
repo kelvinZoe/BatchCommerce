@@ -21,7 +21,6 @@ Make sure your DB is reachable from Supabase project and that the `app_users` ro
 */
 
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -32,8 +31,13 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
-const ADMIN_EMAIL = 'admin@yourshop.com';
-const ADMIN_PASSWORD = 'U7k$4vPz!qR9tLm2'; // change after first login
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@yourshop.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+if (!ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12) {
+  console.error('Set ADMIN_PASSWORD to a unique temporary password with at least 12 characters.');
+  process.exit(1);
+}
 
 async function main() {
   // 1) Check if auth user exists
@@ -69,38 +73,20 @@ async function main() {
   const authId = authUser.id;
   console.log('Auth user id:', authId);
 
-  // 2) Find app_users row and update auth_id
-  // We'll run a direct SQL RPC via the REST / from the Supabase client
-  const updateSql = `
-    UPDATE app_users
-    SET auth_id = '${authId}'
-    WHERE username IN ('admin@yourshop.com','admin')
-    RETURNING id, username, auth_id
-  `;
-
-  const { data: updateResult, error: updateErr } = await supabase.rpc('sql', { sql: updateSql }).catch(e => ({ data: null, error: e }));
+  const { data: updateResult, error: updateErr } = await supabase
+    .from('app_users')
+    .update({ auth_id: authId })
+    .in('username', [ADMIN_EMAIL, 'admin'])
+    .select();
 
   if (updateErr) {
-    // If the project doesn't expose an sql rpc, fall back to using the REST/pg endpoint
-    // Try via from('app_users').update(...)
-    try {
-      const { data, error } = await supabase
-        .from('app_users')
-        .update({ auth_id: authId })
-        .in('username', ['admin@yourshop.com', 'admin'])
-        .select();
-      if (error) throw error;
-      console.log('Updated app_users:', data);
-    } catch (err) {
-      console.error('Failed to update app_users with auth_id. Run the following SQL manually:');
-      console.error(`UPDATE app_users SET auth_id = '${authId}' WHERE username IN ('admin@yourshop.com','admin');`);
-      process.exit(1);
-    }
-  } else {
-    console.log('Updated app_users via SQL RPC:', updateResult);
+    console.error('Failed to update app_users with auth_id:', updateErr.message || updateErr);
+    process.exit(1);
   }
 
-  console.log('Admin user creation/link complete. Login with:', ADMIN_EMAIL, ADMIN_PASSWORD);
+  console.log('Updated app_users:', updateResult);
+  console.log('Admin user creation/link complete for:', ADMIN_EMAIL);
+  console.log('Rotate the temporary password after first use.');
 }
 
 main().catch(err => {

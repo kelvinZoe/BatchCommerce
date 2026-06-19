@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
@@ -32,6 +32,10 @@ interface DamageAllocationClient {
   imports: [CommonModule, FormsModule, BatchListSectionComponent, BatchSectionFooterDirective, BatchDetailHeaderComponent, DateFilterComponent, ModalShellComponent, StatCardsComponent, TableComponent],
   template: `
     <div class="arr-page">
+      <div class="arr-toast arr-toast-success" *ngIf="successMessage">
+        <span class="material-icons">check_circle</span>
+        <span>{{ successMessage }}</span>
+      </div>
 
       <!-- ══ PAGE HEADER ══ -->
       <div class="arr-header">
@@ -146,8 +150,8 @@ interface DamageAllocationClient {
                       [data]="incomingTableRows"
                       [metadata]="null"
                       [showSearchRow]="false"
-                      [initialLoading]="loadingItems"
-                      [searching]="loadingItems"
+                      [initialLoading]="loadingItems && incomingTableRows.length === 0"
+                      [searching]="loadingItems && incomingTableRows.length > 0"
                       [skeletonRows]="4"
                       [baseColor]="baseColor"
                       (inputChange)="onIncomingTableInputChange($event)"
@@ -173,8 +177,8 @@ interface DamageAllocationClient {
                       [data]="confirmedTableRows"
                       [metadata]="null"
                       [showSearchRow]="false"
-                      [initialLoading]="loadingItems"
-                      [searching]="loadingItems"
+                      [initialLoading]="loadingItems && confirmedTableRows.length === 0"
+                      [searching]="loadingItems && confirmedTableRows.length > 0"
                       [skeletonRows]="4"
                       [baseColor]="baseColor"
                       (actionClick)="onConfirmedTableActionClick($event)">
@@ -348,6 +352,28 @@ interface DamageAllocationClient {
         </div>
       </app-modal>
 
+      <!-- ══ REVERSAL CONFIRM MODAL ══ -->
+      <app-modal
+        *ngIf="showReverseConfirmModal"
+        size="sm"
+        tone="warning"
+        title="Confirm Reversal"
+        sub-heading="Move item back to the buying list"
+        icon="warning"
+        [buttons]="reverseConfirmButtons"
+        (closeRequested)="closeReverseConfirmModal()"
+        (buttonClick)="onReverseConfirmButton($event)">
+        <div class="arr-confirm-body">
+          <div class="arr-confirm-highlight">
+            <span class="material-icons">info</span>
+            <div>
+              <strong>{{ reverseConfirmItem?.productName }}</strong>
+              <span>Are you sure you want to reverse this item back to the Buying List? This will remove the unconfirmed arrival row.</span>
+            </div>
+          </div>
+        </div>
+      </app-modal>
+
     </div><!-- /arr-page -->
   `,
   styles: [`
@@ -361,8 +387,6 @@ interface DamageAllocationClient {
     .arr-header-icon { width: 46px; height: 46px; border-radius: 12px; background: var(--primary-color, #6366f1); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
     .arr-header-title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
     .arr-header-sub { font-size: 13px; color: #64748b; margin: 2px 0 0; }
-    .arr-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
-
     /* ── Buttons ── */
     .arr-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 9px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.13s, opacity 0.13s; }
     .arr-btn .material-icons { font-size: 18px; }
@@ -371,8 +395,6 @@ interface DamageAllocationClient {
     .arr-btn-primary:hover:not(:disabled) { background: var(--primary-dark, #4f46e5); }
     .arr-btn-ghost { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
     .arr-btn-ghost:hover:not(:disabled) { background: #e2e8f0; }
-    .arr-btn-success { background: #10b981; color: #fff; }
-    .arr-btn-success:hover:not(:disabled) { background: #059669; }
     .arr-btn-danger { background: #ef4444; color: #fff; }
     .arr-btn-danger:hover:not(:disabled) { background: #dc2626; }
     .arr-btn-sm { padding: 6px 10px; font-size: 12px; }
@@ -382,45 +404,10 @@ interface DamageAllocationClient {
     .arr-confirm-highlight strong { display: block; font-size: 14px; color: #0f172a; margin-bottom: 2px; }
     .arr-confirm-highlight span:last-child { font-size: 13px; color: #64748b; }
 
-    /* ── Batch card grid ── */
-    .arr-batch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 4px 0 16px; }
-    .arr-batch-card { padding: 16px; border: 1px solid #e2e8f0; border-radius: 14px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; background: #fff; }
-    .arr-batch-card:hover { border-color: var(--primary-color, #6366f1); box-shadow: 0 4px 16px rgba(var(--primary-rgb, 99,102,241), 0.12); }
-    .arr-batch-card-top { margin-bottom: 10px; }
-    .arr-batch-card-icon { width: 40px; height: 40px; border-radius: 10px; background: rgba(var(--primary-rgb, 99,102,241), 0.1); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 20px; }
-    .arr-batch-card-name { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .arr-batch-card-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-    .arr-mini-stat { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f1f5f9; border-radius: 10px; padding: 10px 8px; }
-    .arr-mini-label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-    .arr-mini-val { font-size: 18px; font-weight: 700; color: #0f172a; }
-    .arr-mini-val-green { color: #10b981; }
-    .arr-batch-card-footer { display: flex; }
     .arr-card-action-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 7px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 600; transition: background 0.12s; }
     .arr-cab-primary { background: var(--primary-color, #6366f1); color: #fff; border-color: var(--primary-color, #6366f1); }
     .arr-cab-primary:hover { background: var(--primary-dark, #4f46e5); }
     .arr-open-btn { width: 100%; justify-content: center; }
-
-    /* ── Detail header ── */
-    .arr-detail-header { display: flex; align-items: center; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid #ccc; margin-bottom: 16px; flex-wrap: wrap; }
-    .arr-back-btn { display: inline-flex; align-items: center; gap: 4px; padding: 7px 12px; border: 1px solid #ccc; border-radius: 9px; background: #f8fafc; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; white-space: nowrap; }
-    .arr-back-btn:hover { background: #e2e8f0; }
-    .arr-back-btn .material-icons { font-size: 16px; }
-    .arr-detail-title-group { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-    .arr-detail-icon { width: 36px; height: 36px; border-radius: 9px; background: rgba(var(--primary-rgb, 99,102,241), 0.1); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-    .arr-detail-name { font-size: 15px; font-weight: 700; color: #0f172a; }
-    .arr-detail-sub { font-size: 11px; color: #94a3b8; }
-
-    /* ── Stats row ── */
-    .arr-stats-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-    .arr-stat { display: flex; align-items: center; gap: 10px; background: #f8fafc; border: 1px solid #ccc; border-radius: 12px; padding: 12px 16px; flex: 1; min-width: 110px; }
-    .arr-stat-icon { font-size: 22px; flex-shrink: 0; }
-    .arr-si-blue { color: #3b82f6; }
-    .arr-si-yellow { color: #f59e0b; }
-    .arr-si-purple { color: #8b5cf6; }
-    .arr-si-orange { color: #f97316; }
-    .arr-si-green { color: #10b981; }
-    .arr-stat-val { font-size: 20px; font-weight: 700; color: #0f172a; line-height: 1.2; }
-    .arr-stat-lbl { font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 
     /* ── Toolbar ── */
     .arr-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -453,18 +440,6 @@ interface DamageAllocationClient {
     .arr-product-name { font-weight: 600; color: #0f172a; }
     .arr-qty-input { width: 72px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; text-align: center; }
     .arr-qty-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); }
-    .arr-row-moving { opacity: 0.35; transform: translateX(16px); transition: all 350ms ease; }
-    .arr-row-fade { animation: arr-fade 300ms ease; }
-    @keyframes arr-fade { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-    .arr-badge-sent { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 2px 7px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #dbeafe; color: #1e40af; }
-
-    /* ── Icon action buttons ── */
-    .arr-row-actions { display: flex; align-items: center; justify-content: center; gap: 4px; }
-    .arr-icon-btn { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #e2e8f0; background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #64748b; font-size: 18px; transition: background 0.12s, color 0.12s; }
-    .arr-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .arr-icon-btn-warn:hover:not(:disabled) { background: #fffbeb; color: #d97706; border-color: #fcd34d; }
-    .arr-icon-btn-primary:hover:not(:disabled) { background: rgba(var(--primary-rgb,99,102,241),0.08); color: var(--primary-color,#6366f1); border-color: var(--primary-light,#a5b4fc); }
-
     /* ── Pagination ── */
     .arr-pagination { display: flex; align-items: center; justify-content: space-between; padding-top: 14px; margin-top: 12px; border-top: 1px solid #ccc; }
     .arr-pg-info { font-size: 12px; color: #64748b; }
@@ -481,15 +456,8 @@ interface DamageAllocationClient {
     .arr-empty p { font-size: 13px; color: #64748b; margin: 0 0 16px; }
 
     /* ── Skeleton ── */
-    .arr-skeleton-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 4px 0 16px; }
-    .arr-skeleton-card { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid #f1f5f9; border-radius: 14px; }
     .arr-sk { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: arr-shimmer 1.4s infinite; border-radius: 6px; }
     @keyframes arr-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .arr-sk-icon { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
-    .arr-sk-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-    .arr-sk-line { height: 12px; }
-    .arr-sk-line-lg { width: 70%; }
-    .arr-sk-line-sm { width: 40%; }
     .arr-sk-table { margin-top: 4px; }
     .arr-sk-thead { display: flex; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
     .arr-sk-th { height: 14px; flex: 1; border-radius: 4px; }
@@ -536,14 +504,56 @@ interface DamageAllocationClient {
     .arr-alloc-table-wrap .arr-qty-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99, 102, 241), 0.12); }
     .arr-alloc-warning { display: flex; align-items: center; gap: 8px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #9a3412; margin-top: 8px; }
     .arr-alloc-warning .material-icons { font-size: 18px; flex-shrink: 0; }
+
+    /* ── Toast ── */
+    .arr-toast {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      z-index: 1100;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+      font-size: 13px;
+      font-weight: 700;
+      animation: arr-toast-in 0.18s ease-out;
+    }
+    .arr-toast .material-icons { font-size: 18px; }
+    .arr-toast-success {
+      background: #ecfdf5;
+      color: #166534;
+      border-color: #bbf7d0;
+    }
+    @keyframes arr-toast-in {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Reversing Row Gray Out ── */
+    ::ng-deep .row-reversing td {
+      opacity: 0.5;
+      background-color: #f8fafc !important;
+    }
+    ::ng-deep .row-reversing {
+      pointer-events: none;
+    }
   `]
 })
 
-export class ArrivalsComponent implements OnInit {
+export class ArrivalsComponent implements OnInit, OnDestroy {
   readonly baseColor = 'var(--primary-color, #6366f1)';
   loadingBatches = true;
   loadingItems = false;
   activeTab: 'batches' | 'items' = 'batches';
+
+  showReverseConfirmModal = false;
+  reverseConfirmItem: ArrivalItem | null = null;
+  successMessage: string | null = null;
+  private successTimer: any = null;
 
   batches: OrderBatch[] = [];
   items: ArrivalItem[] = [];
@@ -577,6 +587,7 @@ export class ArrivalsComponent implements OnInit {
   sendingItemId: number | null = null;
   sendingBatch = false;
   undoingIds = new Set<number>();
+  reversingToBuyingIds = new Set<number>();
   // search debounce
   searchTimeoutId: any = null;
   batchSearchTimeoutId: any = null;
@@ -643,18 +654,29 @@ export class ArrivalsComponent implements OnInit {
   get incomingTableRows() {
     return this.incomingItems.map(item => ({
       ...item,
+      rowClass: this.reversingToBuyingIds.has(item.id || 0) ? 'row-reversing' : '',
       requestedDisplay: item.requestedQuantity ?? item.boughtQuantity ?? item.orderedQuantity ?? 0,
       orderedDisplay: item.boughtQuantity || item.orderedQuantity || 0,
       stockDisplay: item.productStock || 0,
       receivedQuantityDraft: item.receivedQuantity,
-      receivedQuantityDisabled: !this.authService.canPerformArrivalsOperation('canChangeReceivedValue') || this.movingIds.has(item.id),
+      receivedQuantityDisabled: !this.authService.canPerformArrivalsOperation('canChangeReceivedValue') || this.movingIds.has(item.id) || this.reversingToBuyingIds.has(item.id || 0),
       actions: [
+        ...(this.authService.canPerformArrivalsOperation('canReverseToBuyingList') ? [{
+          id: 'reverse-to-buying',
+          label: 'Reverse to Buying List',
+          icon: 'arrow-return-left',
+          color: 'orange',
+          disabled: this.movingIds.has(item.id)
+            || this.reversingToBuyingIds.has(item.id || 0)
+            || Number(item.receivedQuantity || 0) > 0,
+          loading: this.reversingToBuyingIds.has(item.id || 0)
+        } as ActionOption] : []),
         {
           id: 'confirm',
           label: 'Move to confirmed',
           icon: 'arrow-right',
           color: 'blue',
-          disabled: !this.authService.canPerformArrivalsOperation('canConfirmReceivedItems') || this.movingIds.has(item.id),
+          disabled: !this.authService.canPerformArrivalsOperation('canConfirmReceivedItems') || this.movingIds.has(item.id) || this.reversingToBuyingIds.has(item.id || 0),
           loading: this.movingIds.has(item.id)
         }
       ] as ActionOption[]
@@ -677,6 +699,13 @@ export class ArrivalsComponent implements OnInit {
     this.dbService.batchDeleted$.subscribe(() => {
       this.loadBatches();
     });
+  }
+
+  ngOnDestroy(): void {
+    if (this.successTimer) {
+      clearTimeout(this.successTimer);
+      this.successTimer = null;
+    }
   }
 
   get totalBatchPages() { return Math.max(1, Math.ceil(this.batchTotal / this.batchPageSize)); }
@@ -703,11 +732,6 @@ export class ArrivalsComponent implements OnInit {
 
   get pendingConfirmedCount() {
     return (this.confirmedItems || []).filter(i => !i.sentToShipping).length;
-  }
-
-  get canSendToDeliveries(): boolean {
-    if (!this.selectedBatchName) return false;
-    return this.filteredStats.count > 0 && this.filteredStats.confirmed === this.filteredStats.count;
   }
 
   get shippingConfirmTitle(): string {
@@ -932,6 +956,11 @@ export class ArrivalsComponent implements OnInit {
   }
 
   onIncomingTableActionClick(event: { action: ActionOption; item: ArrivalItem }) {
+    if (event.action.id === 'reverse-to-buying') {
+      this.reverseToBuyingList(event.item);
+      return;
+    }
+
     if (event.action.id === 'confirm') {
       this.confirmAndMove(event.item);
     }
@@ -946,6 +975,81 @@ export class ArrivalsComponent implements OnInit {
     if (event.action.id === 'ship') {
       this.sendToShipping(event.item);
     }
+  }
+
+  get isReversing(): boolean {
+    return this.reverseConfirmItem?.id ? this.reversingToBuyingIds.has(this.reverseConfirmItem.id) : false;
+  }
+
+  get reverseConfirmButtons(): ModalButtonConfig[] {
+    const loading = this.isReversing;
+    return [
+      { buttonName: 'Cancel', color: 'secondary', action: 'cancel', disabled: loading },
+      {
+        buttonName: 'Confirm Reversal',
+        color: 'base_color',
+        action: 'confirm',
+        loading
+      }
+    ];
+  }
+
+  reverseToBuyingList(item: ArrivalItem) {
+    if (!item.id) return;
+    if (!this.authService.canPerformArrivalsOperation('canReverseToBuyingList')) return;
+    if (Number(item.receivedQuantity || 0) > 0) {
+      alert('Set received quantity back to 0 before reversing this item to the Buying List.');
+      return;
+    }
+
+    this.reverseConfirmItem = item;
+    this.showReverseConfirmModal = true;
+  }
+
+  onReverseConfirmButton(button: ModalButtonConfig) {
+    if (button.action === 'cancel') {
+      this.closeReverseConfirmModal();
+      return;
+    }
+
+    if (button.action !== 'confirm') return;
+    if (!this.reverseConfirmItem?.id) return;
+
+    const item = this.reverseConfirmItem;
+    this.reversingToBuyingIds.add(item.id!);
+
+    this.dbService.reverseArrivalToBuyingList(item.id!).subscribe({
+      next: ok => {
+        this.reversingToBuyingIds.delete(item.id!);
+        this.closeReverseConfirmModal();
+        if (ok) {
+          this.loadItems(true);
+          this.loadBatchStats();
+          this.loadBatches();
+          this.showSuccess('Item successfully reversed to the Buying List.');
+        } else {
+          alert('Could not reverse this item. Confirmed or shipped arrivals must be undone first.');
+        }
+      },
+      error: () => {
+        this.reversingToBuyingIds.delete(item.id!);
+        this.closeReverseConfirmModal();
+        alert('Failed to reverse this item to the Buying List');
+      }
+    });
+  }
+
+  closeReverseConfirmModal() {
+    this.showReverseConfirmModal = false;
+    this.reverseConfirmItem = null;
+  }
+
+  showSuccess(msg: string) {
+    this.successMessage = msg;
+    if (this.successTimer) clearTimeout(this.successTimer);
+    this.successTimer = setTimeout(() => {
+      this.successMessage = null;
+    }, 3000);
   }
 
   // Confirm and animate move from incoming to confirmed column
@@ -1399,19 +1503,6 @@ export class ArrivalsComponent implements OnInit {
         alert('All confirmed items sent to shipping');
       } else {
         alert('Failed to send confirmed items');
-      }
-    });
-  }
-
-  sendToDeliveries() {
-    if (!this.selectedBatchName) return;
-    if (!this.canSendToDeliveries) return;
-    if (!confirm(`Send "${this.selectedBatchName}" to Deliveries?`)) return;
-    this.dbService.sendArrivalsToDeliveries(this.selectedBatchName).subscribe(ok => {
-      if (ok) {
-        alert('Sent to deliveries successfully.');
-      } else {
-        alert('Failed to send to deliveries.');
       }
     });
   }

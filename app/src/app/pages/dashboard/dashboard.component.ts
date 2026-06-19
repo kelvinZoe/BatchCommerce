@@ -457,7 +457,6 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
     .damage-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
     .damage-value { font-size: 18px; font-weight: 700; }
 
-    .top-damaged-products { }
     .damaged-product { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
     .damage-count { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: #fee2e2; color: #991b1b; flex-shrink: 0; }
     .product-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -474,7 +473,6 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
     .inv-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
     .inv-value { font-size: 18px; font-weight: 700; }
 
-    .recent-arrivals { }
     .arrival-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
     .arrival-item:last-child { border-bottom: none; }
     .arrival-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -593,7 +591,10 @@ export class DashboardComponent implements OnInit {
 
   private scopeShopQuery(query: any) {
     const shopId = this.activeShopId;
-    return shopId ? query.eq('shop_id', shopId) : query;
+    if (!shopId) {
+      throw new Error('Active shop context is required for dashboard data.');
+    }
+    return query.eq('shop_id', shopId);
   }
 
   can(component: keyof DashboardComponentConfig): boolean {

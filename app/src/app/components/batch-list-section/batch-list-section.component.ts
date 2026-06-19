@@ -354,10 +354,31 @@ export class BatchSectionFooterDirective {
     @media (max-width: 768px) {
       .bls-toolbar {
         align-items: stretch;
+        flex-direction: column;
       }
 
       .bls-search-wrap {
+        width: 100%;
         max-width: none;
+        min-width: 0;
+      }
+
+      .bls-toolbar-filters {
+        width: 100%;
+      }
+
+      .bls-grid,
+      .bls-skeleton-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .bls-pagination {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .bls-pg-btns {
+        justify-content: space-between;
       }
     }
   `]

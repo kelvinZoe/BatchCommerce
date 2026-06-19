@@ -36,7 +36,10 @@ export abstract class SupabaseDataAccessService {
 
   protected scopeShopQuery(query: any) {
     const shopId = this.activeShopId;
-    if (!shopId || !query || typeof query.eq !== 'function') return query;
+    if (!shopId) {
+      throw new Error('Active shop context is required for this operation.');
+    }
+    if (!query || typeof query.eq !== 'function') return query;
     return query.eq('shop_id', shopId);
   }
 

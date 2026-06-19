@@ -674,8 +674,6 @@ import {
     .ord-btn-ghost:hover:not(:disabled) { background: #e2e8f0; }
     .ord-btn-warning { background: #f59e0b; color: #fff; }
     .ord-btn-warning:hover:not(:disabled) { background: #d97706; }
-    .ord-btn-danger { background: #ef4444; color: #fff; }
-    .ord-btn-danger:hover:not(:disabled) { background: #dc2626; }
     .ord-btn-sm { padding: 6px 12px; font-size: 12px; }
     .ord-btn-link { background: none; border: none; color: var(--primary-color, #6366f1); font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 0; }
     .ord-btn-link .material-icons { font-size: 16px; }
@@ -688,30 +686,6 @@ import {
     .ord-filter-btn { padding: 5px 12px; border: none; border-radius: 7px; font-size: 12px; font-weight: 600; color: #64748b; background: transparent; cursor: pointer; transition: background 0.12s, color 0.12s; }
     .ord-filter-active { background: var(--primary-color, #6366f1); color: #fff; }
 
-    /* ── Status badge ── */
-    .ord-status-badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; }
-    .ord-sb-open { background: #dcfce7; color: #166534; }
-    .ord-sb-closed { background: #f1f5f9; color: #475569; }
-    .ord-sb-lg { font-size: 12px; padding: 4px 12px; }
-
-    /* ── Skeleton ── */
-    .ord-skeleton-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 4px 0 16px; }
-    .ord-skeleton-batch-card { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid #f1f5f9; border-radius: 14px; }
-    .ord-sk { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: ord-shimmer 1.4s infinite; border-radius: 6px; }
-    @keyframes ord-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .ord-sk-icon { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
-    .ord-sk-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-    .ord-sk-line { height: 12px; }
-    .ord-sk-line-lg { width: 70%; }
-    .ord-sk-line-sm { width: 40%; }
-    .ord-skeleton-table { margin-top: 8px; }
-    .ord-sk-thead { display: flex; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
-    .ord-sk-th { height: 14px; flex: 1; border-radius: 4px; }
-    .ord-sk-row { display: flex; gap: 12px; padding: 12px; border-bottom: 1px solid #f8fafc; }
-    .ord-sk-td { height: 14px; flex: 1; border-radius: 4px; }
-
-    /* ── Batch card grid ── */
-    .ord-batch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 4px 0 16px; }
     .ord-card-action-btn { width: 30px; height: 30px; border: 1px solid #e2e8f0; border-radius: 7px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: background 0.12s, border-color 0.12s, color 0.12s; }
     .ord-card-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .ord-cab-primary { background: var(--primary-color, #6366f1); color: #fff; border-color: var(--primary-color, #6366f1); }
@@ -727,18 +701,6 @@ import {
     .ord-bpill-arrived { background: rgba(16, 185, 129, 0.12); color: rgba(16, 185, 129, 0.8); }
     .ord-bpill-empty   { background: #f1f5f9; color: #94a3b8; }
 
-    /* ── Detail header ── */
-    .ord-detail-header { display: flex; align-items: center; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid #ccc; margin-bottom: 16px; flex-wrap: wrap; }
-    .ord-back-btn { display: inline-flex; align-items: center; gap: 4px; padding: 7px 12px; border: 1px solid #ccc; border-radius: 9px; background: #f8fafc; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; transition: background 0.12s; white-space: nowrap; }
-    .ord-back-btn:hover { background: #e2e8f0; }
-    .ord-back-btn .material-icons { font-size: 16px; }
-    .ord-detail-title-group { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-    .ord-detail-batch-icon { width: 36px; height: 36px; border-radius: 9px; background: rgba(var(--primary-rgb, 99,102,241), 0.1); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-    .ord-dbi-closed { background: #f1f5f9; color: #94a3b8; }
-    .ord-detail-batch-name { font-size: 15px; font-weight: 700; color: #0f172a; }
-    .ord-detail-batch-date { font-size: 11px; color: #94a3b8; }
-    .ord-detail-actions { display: flex; gap: 8px; flex-shrink: 0; margin-left: auto; }
-
     /* ── Orders table ── */
     .ord-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #ccc; }
     .ord-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -750,37 +712,6 @@ import {
     .ord-adjustment-history { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
     .ord-adjustment-entry { font-size: 11px; color: #94a3b8; }
     .ord-loading-note { margin-bottom: 12px; font-size: 13px; color: #64748b; }
-    .ord-id-chip { display: inline-block; padding: 2px 8px; background: rgba(var(--primary-rgb, 99,102,241), 0.08); color: var(--primary-color, #6366f1); border-radius: 6px; font-size: 12px; font-weight: 700; }
-    .ord-client-cell { display: flex; align-items: center; gap: 10px; }
-    .ord-client-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--primary-color, #6366f1); color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .ord-client-name { font-size: 13px; font-weight: 600; color: #0f172a; }
-    .ord-client-phone { font-size: 11px; color: #94a3b8; }
-    .ord-items-link { color: var(--primary-color, #6366f1); font-weight: 600; cursor: pointer; text-decoration: none; }
-    .ord-items-link:hover { text-decoration: underline; }
-    .ord-date-cell { color: #64748b; white-space: nowrap; font-size: 12px; }
-    .ord-row-actions { display: flex; gap: 4px; }
-    .ord-row-btn { width: 30px; height: 30px; border: 1px solid #e2e8f0; border-radius: 7px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #64748b; transition: background 0.12s, color 0.12s; }
-    .ord-row-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .ord-row-btn:hover:not(:disabled) { background: #f1f5f9; color: #0f172a; }
-    .ord-row-btn-danger:hover:not(:disabled) { background: #fef2f2; color: #ef4444; border-color: #fca5a5; }
-
-    /* ── Pagination ── */
-    .ord-pagination { display: flex; align-items: center; justify-content: space-between; padding-top: 14px; margin-top: 4px; border-top: 1px solid #ccc; }
-    .ord-stats-strip { display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap; padding: 10px 0 8px; }
-    .ord-stat-chip { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border-radius: 12px; font-size: 12px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-width: 130px; }
-    .ord-stat-chip .ord-stat-top { display: flex; align-items: center; gap: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
-    .ord-stat-chip .material-icons { font-size: 14px; }
-    .ord-stat-chip strong { font-size: 20px; font-weight: 700; color: #0f172a; line-height: 1.2; }
-    .ord-stat-chip-accent { background: rgba(var(--primary-rgb, 99,102,241), 0.08); border-color: rgba(var(--primary-rgb, 99,102,241), 0.2); color: var(--primary-color, #6366f1); }
-    .ord-stat-chip-accent strong { color: var(--primary-color, #6366f1); }
-    .ord-stat-chip-muted { background: #f8fafc; color: #64748b; }
-    .ord-pg-info { font-size: 12px; color: #64748b; }
-    .ord-pg-btns { display: flex; align-items: center; gap: 4px; }
-    .ord-pg-btns button { width: 30px; height: 30px; border: 1px solid #e2e8f0; border-radius: 7px; background: #f8fafc; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #475569; transition: background 0.12s; }
-    .ord-pg-btns button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .ord-pg-btns button:hover:not(:disabled) { background: #e2e8f0; }
-    .ord-pg-cur { font-size: 12px; font-weight: 600; color: #0f172a; padding: 0 8px; }
-
     /* ── Empty state ── */
     .ord-empty { text-align: center; padding: 48px 24px; }
     .ord-empty-icon { width: 60px; height: 60px; border-radius: 16px; background: rgba(var(--primary-rgb, 99,102,241), 0.08); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px; }
@@ -884,7 +815,6 @@ import {
     .ord-btn-whatsapp:hover:not(:disabled) { background: #1ebe5d; }
     .ord-btn-secondary { background: var(--primary-color, #6366f1); color: #fff; }
     .ord-btn-secondary:hover:not(:disabled) { filter: brightness(1.12); }
-    .ord-select { appearance: none; cursor: pointer; }
     .ord-summary-loading { display: flex; align-items: center; gap: 8px; color: #64748b; font-size: 13px; padding: 12px 0; }
     .ord-summary-empty { color: #94a3b8; font-size: 13px; text-align: center; padding: 16px 0; }
     .ord-psummary-list { display: flex; flex-direction: column; gap: 2px; margin: 8px 0 4px; }
@@ -1833,10 +1763,21 @@ export class OrdersComponent implements OnInit {
     if (!this.authService.canPerformOrdersOperation('canCloseBatch')) return;
     this.closingBatch = true;
     this.syncCloseBatchButtons();
-    this.dbService.sendBatchToBuyingList(this.selectedBatch.id!, this.selectedBatch.name).subscribe(() => {
-      this.dbService.closeOrderBatch(this.selectedBatch!.id!).subscribe(() => {
+    this.dbService.sendBatchToBuyingList(this.selectedBatch.id!, this.selectedBatch.name).subscribe(sentToBuyingList => {
+      if (!sentToBuyingList) {
         this.closingBatch = false;
         this.syncCloseBatchButtons();
+        alert('Could not close this batch. Make sure it has orders with items before moving it to the Buying List.');
+        return;
+      }
+
+      this.dbService.closeOrderBatch(this.selectedBatch!.id!).subscribe(closed => {
+        this.closingBatch = false;
+        this.syncCloseBatchButtons();
+        if (!closed) {
+          alert('Could not finalize the batch close. Please refresh and try again.');
+          return;
+        }
         this.showCloseBatchModal = false;
         this.selectedBatch = { ...this.selectedBatch!, status: 'closed' };
       });

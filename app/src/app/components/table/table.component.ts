@@ -91,9 +91,16 @@ export interface ToolbarButtonConfig {
   imports: [CommonModule, FormsModule, NgbDropdownModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="table-wrapper" [style.--base-color]="baseColor" [style.--table-column-count]="columns.length || 1" [style.position]="'relative'" [class.table-searching]="searching" [class.table-loading]="initialLoading">
+    <div
+      class="table-wrapper"
+      [style.--base-color]="baseColor"
+      [style.--table-column-count]="columns.length || 1"
+      [style.position]="'relative'"
+      [class.table-searching]="isRefreshing"
+      [class.table-loading]="showInitialLoader"
+      [attr.aria-busy]="isBusy">
       <!-- INITIAL LOADING SKELETON -->
-      <div *ngIf="initialLoading" class="table-initial-loader">
+      <div *ngIf="showInitialLoader" class="table-initial-loader">
         <div class="table-skeleton">
           <div class="table-skeleton__head">
             <div class="table-skeleton__th" *ngFor="let col of columns"></div>
@@ -104,7 +111,7 @@ export interface ToolbarButtonConfig {
         </div>
       </div>
       <!-- TOOLBAR (hidden during initial load) -->
-      <div *ngIf="!initialLoading && (tableLabel || summaryLabel || (filters && filters.length > 0) || showToolbarStart || showToolbarEnd || toolbarButton)" class="table-toolbar">
+      <div *ngIf="!showInitialLoader && (tableLabel || summaryLabel || (filters && filters.length > 0) || showToolbarStart || showToolbarEnd || toolbarButton)" class="table-toolbar">
         <!-- Row 1: Label & Summary -->
         <div *ngIf="tableLabel || summaryLabel" class="table-toolbar__row ms-3 me-3 mt-2">
           <div class="table-toolbar__left">
@@ -176,7 +183,7 @@ export interface ToolbarButtonConfig {
       </div>
 
       <!-- TABLE (hidden during initial load) -->
-      <div *ngIf="!initialLoading" class="table-content">
+      <div *ngIf="!showInitialLoader" class="table-content" [class.table-content--muted]="isRefreshing">
       <table class="data-table">
         <thead>
           <tr style="background: #faf8f9; border-bottom: 1px solid #e7e8e8;">
@@ -223,8 +230,8 @@ export interface ToolbarButtonConfig {
         </tbody>
 
         <!-- DATA ROWS -->
-        <tbody *ngIf="data && data.length > 0; else noData" [style.opacity]="searching ? 0.5 : 1" [style.pointerEvents]="searching ? 'none' : 'auto'" [style.transition]="'opacity 0.2s ease'">
-          <tr *ngFor="let item of sortedData; let i = index; trackBy: trackByRow">
+        <tbody *ngIf="data && data.length > 0; else noData" [style.pointerEvents]="isRefreshing ? 'none' : 'auto'">
+          <tr *ngFor="let item of sortedData; let i = index; trackBy: trackByRow" [class]="item.rowClass || ''">
             <td *ngFor="let col of columns; let isFirst = first; trackBy: trackByColumn" [style.display]="isFirst ? 'table-cell' : 'auto'" [class.first-cell]="isFirst">
               <ng-container [ngSwitch]="col.type">
                 <!-- Date -->
@@ -377,7 +384,11 @@ export interface ToolbarButtonConfig {
     </div>
 
     <!-- PAGINATION -->
-    <div *ngIf="!initialLoading && metadata && metadata.pageSize > 0 && metadata.totalPages > 0" class="pagination-container" [style.opacity]="searching ? 0.5 : 1" [style.pointerEvents]="searching ? 'none' : 'auto'">
+    <div
+      *ngIf="!showInitialLoader && metadata && metadata.pageSize > 0 && metadata.totalPages > 0"
+      class="pagination-container"
+      [class.pagination-container--muted]="isRefreshing"
+      [style.pointerEvents]="isRefreshing ? 'none' : 'auto'">
       <button
         class="pagination-btn prev-btn"
         [disabled]="metadata.pageNumber <= 1"
@@ -481,6 +492,12 @@ export interface ToolbarButtonConfig {
       overflow: hidden;
       border-radius: 0 0 16px 16px;
       background: #fff;
+      transition: filter 0.2s ease, opacity 0.2s ease;
+    }
+
+    .table-content--muted {
+      opacity: 0.55;
+      filter: grayscale(0.15) saturate(0.65);
     }
 
     .table-toolbar__row {
@@ -1036,6 +1053,12 @@ export interface ToolbarButtonConfig {
       margin-top: 16px;
       gap: 4px;
       padding-bottom: 12px;
+      transition: opacity 0.2s ease, filter 0.2s ease;
+    }
+
+    .pagination-container--muted {
+      opacity: 0.5;
+      filter: grayscale(0.15);
     }
 
     .pagination-btn {
@@ -1078,6 +1101,61 @@ export interface ToolbarButtonConfig {
     .first-cell {
       padding: 8px 12px;
     }
+
+    @media (max-width: 760px) {
+      .table-wrapper {
+        border-radius: 14px;
+        overflow: hidden;
+      }
+
+      .table-toolbar {
+        border: 1px solid #e5e7e8;
+        border-width: 0 0 1px 0;
+        border-radius: 14px 14px 0 0;
+        overflow: hidden;
+        margin-bottom: 0;
+      }
+
+      .table-toolbar__row {
+        align-items: stretch;
+        flex-direction: column;
+        margin: 0 !important;
+        padding: 10px 12px;
+      }
+
+      .table-toolbar__left,
+      .table-toolbar__right,
+      .table-toolbar__start,
+      .table-filters {
+        width: 100%;
+      }
+
+      .table-toolbar__right,
+      .table-toolbar__start {
+        justify-content: stretch;
+      }
+
+      .table-toolbar__action-btn,
+      .table-filters__btn,
+      .table-filters .btn-group {
+        width: 100%;
+      }
+
+      .table-content {
+        overflow-x: auto;
+        border-radius: 0 0 14px 14px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .data-table {
+        min-width: 720px;
+      }
+
+      .pagination-container {
+        flex-wrap: wrap;
+        padding-bottom: 8px;
+      }
+    }
   `]
 })
 export class TableComponent implements OnChanges {
@@ -1117,9 +1195,22 @@ export class TableComponent implements OnChanges {
   sortDir: 'asc' | 'desc' | null = null;
   filterSelections: Record<string, any> = {};
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private initialLoadResolved = false;
 
   get skeletonRowIndices(): number[] {
     return Array.from({ length: Math.max(1, this.skeletonRows || 5) }, (_, i) => i);
+  }
+
+  get showInitialLoader(): boolean {
+    return !!this.initialLoading && !this.initialLoadResolved && !this.hasRows;
+  }
+
+  get isRefreshing(): boolean {
+    return !this.showInitialLoader && (!!this.searching || !!this.initialLoading);
+  }
+
+  get isBusy(): boolean {
+    return this.showInitialLoader || this.isRefreshing;
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -1141,6 +1232,21 @@ export class TableComponent implements OnChanges {
           }
         }
       });
+    }
+
+    if (changes['data'] || changes['initialLoading']) {
+      this.resolveInitialLoadState();
+    }
+  }
+
+  private get hasRows(): boolean {
+    return Array.isArray(this.data) && this.data.length > 0;
+  }
+
+  private resolveInitialLoadState(): void {
+    if (this.initialLoadResolved) return;
+    if (this.hasRows || (!this.initialLoading && Array.isArray(this.data))) {
+      this.initialLoadResolved = true;
     }
   }
 

@@ -119,7 +119,7 @@ interface CartItem {
                     <span class="material-icons">block</span>
                   </button>
                   <button class="ss-icon-btn ss-icon-btn-danger" title="Delete sale"
-                          *ngIf="s.status !== 'open' && authService.canPerformStockSalesOperation('canDeleteSale')"
+                          *ngIf="s.status === 'cancelled' && authService.canPerformStockSalesOperation('canDeleteSale')"
                           (click)="deleteSale(s)">
                     <span class="material-icons">delete</span>
                   </button>
@@ -919,10 +919,10 @@ export class StockSalesComponent implements OnInit {
   }
 
   closeSale(sale: StockSale) {
-    if (!sale.id || !this.authService.canPerformStockSalesOperation('canCloseSale')) return;
-    if (!confirm(`Are you sure you want to close and finalize stock sale #SS-${sale.id}? This will lock the sale from future modifications.`)) return;
-    
-    const closedByUserId = this.authService.currentUser?.id || 0;
+    if (!sale.id || sale.status !== 'open' || !this.authService.canPerformStockSalesOperation('canCloseSale')) return;
+    if (!confirm(`Are you sure you want to close and finalize stock sale #SS-${sale.id}? This will lock the sale from future edits, cancellation, and deletion.`)) return;
+
+    const closedByUserId = this.authService.currentUser?.id ?? null;
     this.db.closeStockSale(sale.id, closedByUserId).subscribe(ok => {
       if (!ok) {
         alert('Failed to close stock sale.');
@@ -933,9 +933,9 @@ export class StockSalesComponent implements OnInit {
   }
 
   cancelSale(sale: StockSale) {
-    if (!sale.id || !this.authService.canPerformStockSalesOperation('canDeleteSale')) return;
+    if (!sale.id || sale.status !== 'open' || !this.authService.canPerformStockSalesOperation('canDeleteSale')) return;
     if (!confirm(`Are you sure you want to cancel stock sale #SS-${sale.id}? This will mark it as cancelled and return all sold items back to stock.`)) return;
-    
+
     this.db.cancelStockSale(sale.id).subscribe(ok => {
       if (!ok) {
         alert('Failed to cancel stock sale.');
@@ -947,8 +947,8 @@ export class StockSalesComponent implements OnInit {
   }
 
   deleteSale(sale: StockSale) {
-    if (!sale.id || !this.authService.canPerformStockSalesOperation('canDeleteSale')) return;
-    if (!confirm(`Delete stock sale #SS-${sale.id}? Product stock will be restored.`)) return;
+    if (!sale.id || sale.status !== 'cancelled' || !this.authService.canPerformStockSalesOperation('canDeleteSale')) return;
+    if (!confirm(`Delete cancelled stock sale #SS-${sale.id}? Product stock has already been restored; this only removes the cancelled record.`)) return;
     this.db.deleteStockSale(sale.id).subscribe(ok => {
       if (!ok) {
         alert('Failed to delete stock sale.');

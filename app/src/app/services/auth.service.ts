@@ -93,6 +93,7 @@ export class AuthService {
   private readonly productionAdminApiUrl = 'https://batchcommerce-admin.onrender.com';
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   private permissionsSubject = new BehaviorSubject<Permission[]>([]);
+  private sessionRestorePromise: Promise<void> | null = null;
   private readonly emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
   currentUser$ = this.currentUserSubject.asObservable();
@@ -100,21 +101,9 @@ export class AuthService {
 
   private get sb() { return this.supa.client; }
 
-  private get adminApiSecret(): string | null {
-    // Optional manual override only; do not ship the secret in client builds.
-    return sessionStorage.getItem('shakhis_admin_api_secret') || null;
-  }
-
   constructor(private supa: SupabaseService, private shopConfig: ShopConfigService) {
-    // Restore session from localStorage (quick restore while Supabase SDK checks JWT)
-    const saved = localStorage.getItem('shakhis_session');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        this.currentUserSubject.next(data.user);
-        this.permissionsSubject.next(data.permissions || []);
-      } catch { /* corrupted, ignore */ }
-    }
+    localStorage.removeItem('shakhis_session');
+    void this.restoreSessionFromSupabase();
 
     // Only listen for auth state changes if Supabase is already initialized
     // (it won't be on first launch before shop setup)
@@ -122,9 +111,51 @@ export class AuthService {
       this.sb.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_OUT' || !session) {
           this.clearSession();
+        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          void this.restoreSessionFromSupabase(true);
         }
       });
     }
+  }
+
+  async ensureSessionLoaded(): Promise<void> {
+    await this.restoreSessionFromSupabase();
+  }
+
+  private restoreSessionFromSupabase(force = false): Promise<void> {
+    if (!this.supa.isReady) return Promise.resolve();
+    if (this.sessionRestorePromise && !force) return this.sessionRestorePromise;
+
+    this.sessionRestorePromise = (async () => {
+      const { data, error } = await this.sb.auth.getSession();
+      const authUser = data?.session?.user;
+
+      if (error || !authUser) {
+        this.clearSession();
+        return;
+      }
+
+      const shopIdHint = this.shopConfig.shopId
+        || String(authUser.app_metadata?.['shop_id'] || authUser.user_metadata?.['shop_id'] || '').trim()
+        || null;
+      const membership = await this.resolveMembershipForAuthUser(authUser.id, shopIdHint);
+
+      if (!membership) {
+        this.clearSession();
+        return;
+      }
+
+      this.syncShopContextFromMembership(membership);
+      const permissions = await this.loadPermissionsForRole(Number(membership.role_id));
+      const user = this.buildUserFromMembership(authUser, membership);
+      this.setSession(user, permissions);
+    })().catch(() => {
+      this.clearSession();
+    }).finally(() => {
+      this.sessionRestorePromise = null;
+    });
+
+    return this.sessionRestorePromise;
   }
 
   private mapPermissionRows(rows: any[]): Permission[] {
@@ -363,8 +394,8 @@ export class AuthService {
         throw new Error('Admin API is not configured.');
       }
 
-      let authHeader = await this.getAdminApiAuthorizationHeader(true);
-      let response = await fetch(`${adminApiUrl}/admin/update-shop-profile`, {
+      const authHeader = await this.getAdminApiAuthorizationHeader();
+      const response = await fetch(`${adminApiUrl}/admin/update-shop-profile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -376,23 +407,6 @@ export class AuthService {
           slug: normalizedSlug
         })
       });
-
-      if (response.status === 401 && this.adminApiSecret) {
-        sessionStorage.removeItem('shakhis_admin_api_secret');
-        authHeader = await this.getAdminApiAuthorizationHeader(false);
-        response = await fetch(`${adminApiUrl}/admin/update-shop-profile`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: authHeader
-          },
-          body: JSON.stringify({
-            shopId,
-            name: trimmedName,
-            slug: normalizedSlug
-          })
-        });
-      }
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -480,8 +494,8 @@ export class AuthService {
       throw new Error('Admin API is not configured.');
     }
 
-    let authHeader = await this.getAdminApiAuthorizationHeader(true);
-    let response = await fetch(`${adminApiUrl}/admin/user-availability`, {
+    const authHeader = await this.getAdminApiAuthorizationHeader();
+    const response = await fetch(`${adminApiUrl}/admin/user-availability`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -489,19 +503,6 @@ export class AuthService {
       },
       body: JSON.stringify({ username, email, shopId, excludeUserId })
     });
-
-    if (response.status === 401 && this.adminApiSecret) {
-      sessionStorage.removeItem('shakhis_admin_api_secret');
-      authHeader = await this.getAdminApiAuthorizationHeader(false);
-      response = await fetch(`${adminApiUrl}/admin/user-availability`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: authHeader
-        },
-        body: JSON.stringify({ username, email, shopId, excludeUserId })
-      });
-    }
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -1203,7 +1204,6 @@ export class AuthService {
   private setSession(user: User, permissions: Permission[]) {
     this.currentUserSubject.next(user);
     this.permissionsSubject.next(permissions);
-    localStorage.setItem('shakhis_session', JSON.stringify({ user, permissions }));
   }
 
   private clearSession() {
@@ -1453,9 +1453,10 @@ export class AuthService {
       throw new Error('Admin API is not configured.');
     }
 
-    let authHeader = await this.getAdminApiAuthorizationHeader(true);
+    const authHeader = await this.getAdminApiAuthorizationHeader();
+    const password = this.requireNewUserPassword(user.password);
 
-    let response = await fetch(`${adminApiUrl}/admin/create-user`, {
+    const response = await fetch(`${adminApiUrl}/admin/create-user`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1463,7 +1464,7 @@ export class AuthService {
       },
       body: JSON.stringify({
         email: normalizedEmail,
-        password: user.password || 'password123',
+        password,
         full_name: user.fullName,
         phone: normalizedPhone,
         roleId: user.roleId,
@@ -1472,29 +1473,6 @@ export class AuthService {
         username: user.username
       })
     });
-
-    // If an old/bad session secret is present, retry once with the active user JWT.
-    if (response.status === 401 && this.adminApiSecret) {
-      sessionStorage.removeItem('shakhis_admin_api_secret');
-      authHeader = await this.getAdminApiAuthorizationHeader(false);
-      response = await fetch(`${adminApiUrl}/admin/create-user`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: authHeader
-        },
-        body: JSON.stringify({
-          email: normalizedEmail,
-          password: user.password || 'password123',
-          full_name: user.fullName,
-          phone: normalizedPhone,
-          roleId: user.roleId,
-          shopId,
-          autoConfirm: true,
-          username: user.username
-        })
-      });
-    }
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -1564,12 +1542,7 @@ export class AuthService {
     return error?.message || 'Failed to create user account. Please try again.';
   }
 
-  private async getAdminApiAuthorizationHeader(preferSessionSecret = true): Promise<string> {
-    const adminApiSecret = this.adminApiSecret;
-    if (preferSessionSecret && adminApiSecret) {
-      return `Bearer ${adminApiSecret}`;
-    }
-
+  private async getAdminApiAuthorizationHeader(): Promise<string> {
     const { data, error } = await this.sb.auth.getSession();
     const accessToken = data?.session?.access_token;
 
@@ -1578,6 +1551,14 @@ export class AuthService {
     }
 
     return `Bearer ${accessToken}`;
+  }
+
+  private requireNewUserPassword(password?: string): string {
+    const nextPassword = String(password || '').trim();
+    if (nextPassword.length < 6) {
+      throw new Error('Enter a password with at least 6 characters.');
+    }
+    return nextPassword;
   }
 
   private async doCreateUser(user: User, retryCount = 0): Promise<UserCreationResult> {
@@ -1606,10 +1587,11 @@ export class AuthService {
 
     let authData: any = null;
     let authError: any = null;
+    const password = this.requireNewUserPassword(user.password);
     const isolatedClient = this.buildIsolatedAuthClient();
     ({ data: authData, error: authError } = await isolatedClient.auth.signUp({
       email,
-      password: user.password || 'password123',
+      password,
       options: { data: { full_name: user.fullName, phone: normalizedPhone, username: user.username } }
     }));
 

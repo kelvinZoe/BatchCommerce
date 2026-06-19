@@ -126,8 +126,8 @@ interface ShippingItem {
             [metadata]="shippingMetadata"
             [filters]="shippingTableFilters"
             [showSearchRow]="true"
-            [initialLoading]="itemsLoading"
-            [searching]="itemsLoading && items.length > 0"
+            [initialLoading]="itemsLoading && shippingTableRows.length === 0"
+            [searching]="itemsLoading && shippingTableRows.length > 0"
             [skeletonRows]="5"
             [tableLabel]="'Shipping Items'"
             [summaryLabel]="'Items'"
@@ -225,26 +225,9 @@ interface ShippingItem {
     .sh-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 9px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.13s, opacity 0.13s; }
     .sh-btn .material-icons { font-size: 18px; }
     .sh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .sh-btn-primary { background: var(--primary-color, #6366f1); color: #fff; }
-    .sh-btn-primary:hover:not(:disabled) { background: var(--primary-dark, #4f46e5); }
     .sh-btn-outline { background: transparent; color: #475569; border: 1px solid #ccc; }
     .sh-btn-outline:hover:not(:disabled) { background: #f1f5f9; }
-    .sh-btn-ghost { background: transparent; color: #64748b; border: 1px solid transparent; }
-    .sh-btn-ghost:hover:not(:disabled) { background: #f1f5f9; }
-    .sh-btn-sm { padding: 6px 11px; font-size: 12px; }
 
-    /* BATCH CARD GRID */
-    .sh-batch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 4px 0 16px; }
-    .sh-batch-card { padding: 16px; border: 1px solid #e2e8f0; border-radius: 14px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; background: #fff; }
-    .sh-batch-card:hover { border-color: var(--primary-color, #6366f1); box-shadow: 0 4px 16px rgba(99,102,241,0.12); }
-    .sh-batch-card-top { margin-bottom: 10px; }
-    .sh-batch-card-icon { width: 40px; height: 40px; border-radius: 10px; background: rgba(99,102,241,0.1); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 20px; }
-    .sh-batch-card-name { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .sh-batch-card-stats { display: flex; gap: 8px; margin-bottom: 12px; }
-    .sh-mini-stat { display: flex; flex-direction: column; align-items: center; background: #f8fafc; border-radius: 8px; padding: 6px 10px; flex: 1; }
-    .sh-mini-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
-    .sh-mini-val { font-size: 16px; font-weight: 700; color: #0f172a; }
-    .sh-batch-card-footer { display: flex; }
     .sh-card-action-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 7px; background: transparent; cursor: pointer; font-size: 12px; font-weight: 600; transition: background 0.12s; }
     .sh-cab-primary { background: var(--primary-color, #6366f1); color: #fff; border-color: var(--primary-color, #6366f1); }
     .sh-cab-primary:hover { background: var(--primary-dark, #4f46e5); }
@@ -264,31 +247,6 @@ interface ShippingItem {
     .sh-empty-icon { width: 60px; height: 60px; border-radius: 16px; background: rgba(99,102,241,0.08); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px; }
     .sh-empty h3 { font-size: 16px; font-weight: 700; color: #0f172a; margin: 0 0 6px; }
     .sh-empty p { font-size: 13px; color: #64748b; margin: 0; }
-
-    /* SKELETON */
-    .sh-skeleton-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 4px 0 16px; }
-    .sh-skeleton-card { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid #f1f5f9; border-radius: 14px; }
-    .sh-sk { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: sh-shimmer 1.4s infinite; border-radius: 6px; }
-    @keyframes sh-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .sh-sk-icon { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
-    .sh-sk-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-    .sh-sk-line { height: 12px; }
-    .sh-sk-line-lg { width: 70%; }
-    .sh-sk-line-sm { width: 40%; }
-    .sh-sk-table { margin-top: 4px; }
-    .sh-sk-thead { display: flex; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
-    .sh-sk-th { height: 14px; flex: 1; border-radius: 4px; }
-    .sh-sk-row { display: flex; gap: 12px; padding: 12px; border-bottom: 1px solid #f8fafc; }
-    .sh-sk-td { height: 14px; flex: 1; border-radius: 4px; }
-
-    /* SPINNER */
-    .sh-spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: currentColor; border-radius: 50%; animation: sh-spin 0.6s linear infinite; display: inline-block; flex-shrink: 0; }
-    @keyframes sh-spin { to { transform: rotate(360deg); } }
-
-    /* BUTTON ICON */
-    .sh-btn-icon-sm { display: inline-flex; align-items: center; justify-content: center; position: relative; width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; cursor: pointer; color: #475569; transition: all 0.13s; }
-    .sh-btn-icon-sm:hover { background: #e2e8f0; border-color: #cbd5e1; }
-    .sh-badge-count { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--primary-color, #6366f1); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; border: 2px solid #fff; }
 
     .sh-modal-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #94a3b8; padding: 32px 16px; }
     .sh-modal-empty .material-icons { font-size: 32px; }

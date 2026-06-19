@@ -33,6 +33,7 @@ body {
   background-color: var(--background-color);
   color: var(--text-primary);
   line-height: 1.6;
+  overflow-x: hidden;
 }
 
 .container {
@@ -606,4 +607,68 @@ table {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --radius-lg: 14px;
+  }
+
+  html,
+  body {
+    width: 100%;
+    min-width: 320px;
+  }
+
+  .container {
+    padding-inline: 12px;
+  }
+
+  .card {
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .card-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .btn,
+  button.btn,
+  input,
+  select,
+  textarea {
+    min-height: 42px;
+  }
+
+  .btn {
+    width: 100%;
+  }
+
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  .cl-form-row,
+  .ord-form-row,
+  .bl-form-row,
+  .u-form-row,
+  .pp-form-row,
+  .ss-form-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .ord-item-row {
+    grid-template-columns: 1fr !important;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: #fff;
+  }
+
+  .arr-cols {
+    grid-template-columns: 1fr !important;
+  }
 }

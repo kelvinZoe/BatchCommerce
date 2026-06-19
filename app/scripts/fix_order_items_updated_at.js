@@ -1,34 +1,8 @@
-const { createClient } = require('@supabase/supabase-js');
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !serviceRoleKey) {
-  console.error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before running this script.');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
-  auth: { persistSession: false }
-});
-
 async function run() {
-  const sql = `
-    ALTER TABLE order_items
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
-
-    NOTIFY pgrst, 'reload schema';
-  `;
-
-  console.log('Attempting to execute SQL via rpc("sql", { sql })...');
-  const res = await supabase.rpc('sql', { sql });
-  if (res.error) {
-    console.error('RPC Error:', res.error);
-    process.exit(1);
-  }
-
-  console.log('Schema patch applied.');
+  console.error('This script no longer executes arbitrary SQL through rpc("sql").');
+  console.error('Use the checked-in Supabase migration instead:');
+  console.error('  supabase/migrations/20260610123000_fix_updated_at_trigger_columns.sql');
+  process.exit(1);
 }
 
 run().catch((error) => {

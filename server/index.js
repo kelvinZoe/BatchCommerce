@@ -9,15 +9,35 @@ const nodemailer = require('nodemailer');
 
 const app = express();
 
-// Enable CORS for local development
+function getAllowedOrigins() {
+  return String(process.env.ADMIN_API_ALLOWED_ORIGINS || process.env.APP_BASE_URL || '')
+    .split(',')
+    .map(origin => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+function isLocalOrigin(origin) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(origin || '').trim());
+}
+
+function isAllowedCorsOrigin(origin) {
+  const normalized = String(origin || '').trim().replace(/\/+$/, '');
+  if (!normalized) return true;
+  if (process.env.NODE_ENV !== 'production' && isLocalOrigin(normalized)) return true;
+  return getAllowedOrigins().includes(normalized);
+}
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = String(req.headers.origin || '').trim().replace(/\/+$/, '');
+  if (origin && isAllowedCorsOrigin(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Vary', 'Origin');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
-  // Handle preflight requests
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return isAllowedCorsOrigin(origin) ? res.sendStatus(204) : res.sendStatus(403);
   }
   next();
 });
@@ -27,7 +47,6 @@ app.use(bodyParser.json());
 const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
-  ADMIN_API_SECRET,
   RESEND_API_KEY,
   EMAIL_FROM,
   RESEND_FROM_EMAIL,
@@ -40,7 +59,7 @@ const {
 
 const DEFAULT_PRODUCTION_APP_URL = 'https://batchcommerce.vercel.app';
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !ADMIN_API_SECRET) {
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing required environment variables. See .env.example');
   process.exit(1);
 }
@@ -208,10 +227,6 @@ async function getSuggestedUsername(baseUsername, excludeUserId) {
 }
 
 async function ensureAdminAccessForShop(req, shopId) {
-  if (req.adminBypass) {
-    return { ok: true };
-  }
-
   if (!shopId) {
     return { ok: false, status: 400, body: { error: 'shopId required' } };
   }
@@ -236,6 +251,25 @@ async function ensureAdminAccessForShop(req, shopId) {
   }
 
   return { ok: true };
+}
+
+async function ensureAdminAccessForBatchProduct(req, batchProductId) {
+  const { data: batchProduct, error } = await supa
+    .from('batch_products')
+    .select('id, shop_id, batch_id, product_id, preorder_price, stock_price')
+    .eq('id', batchProductId)
+    .maybeSingle();
+
+  if (error || !batchProduct) {
+    return { ok: false, status: 404, body: { error: 'batch_product not found' } };
+  }
+
+  const adminAccess = await ensureAdminAccessForShop(req, batchProduct.shop_id);
+  if (!adminAccess.ok) {
+    return adminAccess;
+  }
+
+  return { ok: true, batchProduct };
 }
 
 async function generateVerificationLink(email, req) {
@@ -602,7 +636,8 @@ async function cleanupCreatedUser(authUserId) {
   }
 }
 
-// Protect admin routes using either the shared admin secret or a Supabase access token.
+// Protect admin routes with a Supabase access token. Route handlers must still
+// verify shop-level admin access before using the service-role client.
 async function requireAdminAuth(req, res, next) {
   const auth = String(req.headers['authorization'] || '').trim();
   const parts = auth.split(' ');
@@ -613,12 +648,6 @@ async function requireAdminAuth(req, res, next) {
 
   const token = parts[1];
 
-  // Backward-compatible support for shared admin secret.
-  if (token === ADMIN_API_SECRET) {
-    req.adminBypass = true;
-    return next();
-  }
-
   // Primary path: authenticate caller with a Supabase access token.
   const { data, error } = await supa.auth.getUser(token);
   if (error || !data?.user?.id) {
@@ -626,7 +655,6 @@ async function requireAdminAuth(req, res, next) {
   }
 
   req.authUserId = data.user.id;
-  req.adminBypass = false;
   next();
 }
 
@@ -895,24 +923,66 @@ app.post('/public/register', async (req, res) => {
 app.delete('/admin/delete-user/:authId', requireAdminAuth, async (req, res) => {
   try {
     const { authId } = req.params;
+    const shopId = String(req.query.shopId || req.body?.shopId || '').trim();
     if (!authId) return res.status(400).json({ error: 'authId required' });
 
-    // Step 1: Delete app_users row first (FK prevents deleting auth user while it still references it)
+    const adminAccess = await ensureAdminAccessForShop(req, shopId);
+    if (!adminAccess.ok) {
+      return res.status(adminAccess.status).json(adminAccess.body);
+    }
+
+    if (authId === req.authUserId) {
+      return res.status(400).json({ error: 'cannot_delete_self' });
+    }
+
+    const { data: membership, error: membershipError } = await supa
+      .from('shop_memberships')
+      .select('id, auth_user_id, app_user_id, is_owner')
+      .eq('shop_id', shopId)
+      .eq('auth_user_id', authId)
+      .maybeSingle();
+
+    if (membershipError || !membership) {
+      return res.status(404).json({ error: 'membership_not_found' });
+    }
+
+    if (membership.is_owner) {
+      return res.status(403).json({ error: 'cannot_delete_owner' });
+    }
+
+    const { error: membershipDeleteError } = await supa
+      .from('shop_memberships')
+      .delete()
+      .eq('id', membership.id);
+
+    if (membershipDeleteError) {
+      return res.status(400).json({ error: 'delete_failed', detail: membershipDeleteError.message });
+    }
+
+    const { data: remainingMembership } = await supa
+      .from('shop_memberships')
+      .select('id')
+      .eq('auth_user_id', authId)
+      .limit(1)
+      .maybeSingle();
+
+    if (remainingMembership?.id) {
+      return res.json({ success: true, removedFromShop: true, deletedAuthUser: false });
+    }
+
     const { error: appUserError } = await supa.from('app_users').delete().eq('auth_id', authId);
     if (appUserError) {
-      console.error('❌ Failed to delete app_users row:', appUserError);
-      return res.status(400).json({ error: 'delete_failed', detail: appUserError });
+      console.error('Failed to delete app_users row:', appUserError);
+      return res.status(400).json({ error: 'delete_failed', detail: appUserError.message });
     }
 
-    // Step 2: Now delete the auth user
     const { error: authError } = await supa.auth.admin.deleteUser(authId);
     if (authError) {
-      console.error('❌ Failed to delete auth user:', authError);
-      return res.status(400).json({ error: 'delete_failed', detail: authError });
+      console.error('Failed to delete auth user:', authError);
+      return res.status(400).json({ error: 'delete_failed', detail: authError.message });
     }
 
-    console.log(`✅ User fully deleted: ${authId}`);
-    return res.json({ success: true });
+    return res.json({ success: true, removedFromShop: true, deletedAuthUser: true });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'server_error', detail: String(err) });
@@ -927,16 +997,11 @@ app.post('/admin/update-batch-product-price', requireAdminAuth, async (req, res)
       return res.status(400).json({ error: 'batchProductId required' });
     }
 
-    // 1) Get the batch_product and find all related orders
-    const { data: batchProduct, error: bpError } = await supa
-      .from('batch_products')
-      .select('id, batch_id, product_id, preorder_price, stock_price')
-      .eq('id', batchProductId)
-      .single();
-
-    if (bpError || !batchProduct) {
-      return res.status(404).json({ error: 'batch_product not found' });
+    const access = await ensureAdminAccessForBatchProduct(req, batchProductId);
+    if (!access.ok) {
+      return res.status(access.status).json(access.body);
     }
+    const batchProduct = access.batchProduct;
 
     const oldPreorderPrice = batchProduct.preorder_price;
     const oldStockPrice = batchProduct.stock_price;
@@ -984,10 +1049,15 @@ app.post('/admin/update-batch-product-price', requireAdminAuth, async (req, res)
           .eq('id', item.id);
       }
 
-      // Log this price change in audit_log
-      if (actorUserId) {
+      const actorResult = req.authUserId
+        ? await supa.from('app_users').select('id').eq('auth_id', req.authUserId).maybeSingle()
+        : { data: null };
+      const actorAppUserId = actorResult.data?.id || actorUserId || null;
+
+      if (actorAppUserId) {
         await supa.from('audit_log').insert({
-          actor_user_id: actorUserId,
+          shop_id: batchProduct.shop_id,
+          actor_user_id: actorAppUserId,
           action: 'UPDATE_BATCH_PRODUCT_PRICE',
           entity_table: 'batch_products',
           entity_id: batchProductId,
@@ -1028,16 +1098,17 @@ app.post('/admin/preview-price-change', requireAdminAuth, async (req, res) => {
       return res.status(400).json({ error: 'batchProductId and newPrice required' });
     }
 
-    // Get batch_product info
-    const { data: batchProduct } = await supa
-      .from('batch_products')
-      .select('id, batch_id, product_id, product:product_id(name), preorder_price')
-      .eq('id', batchProductId)
-      .single();
-
-    if (!batchProduct) {
-      return res.status(404).json({ error: 'batch_product not found' });
+    const access = await ensureAdminAccessForBatchProduct(req, batchProductId);
+    if (!access.ok) {
+      return res.status(access.status).json(access.body);
     }
+    const batchProduct = access.batchProduct;
+
+    const { data: product } = await supa
+      .from('products')
+      .select('name')
+      .eq('id', batchProduct.product_id)
+      .maybeSingle();
 
     // Find affected orders
     const { data: orderItems } = await supa
@@ -1048,7 +1119,7 @@ app.post('/admin/preview-price-change', requireAdminAuth, async (req, res) => {
     if (!orderItems || orderItems.length === 0) {
       return res.json({
         batchProductId,
-        productName: batchProduct.product?.name,
+        productName: product?.name,
         currentPrice: batchProduct.preorder_price,
         newPrice,
         affectedOrdersCount: 0,
@@ -1091,7 +1162,7 @@ app.post('/admin/preview-price-change', requireAdminAuth, async (req, res) => {
     return res.json({
       success: true,
       batchProductId,
-      productName: batchProduct.product?.name,
+      productName: product?.name,
       currentPrice: batchProduct.preorder_price,
       newPrice,
       affectedOrdersCount: orderIdsArray.length,

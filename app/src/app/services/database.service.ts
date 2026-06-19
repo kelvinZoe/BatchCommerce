@@ -31,6 +31,22 @@ import {
   StockSaleItem,
   OrderItemAdjustment
 } from '../models';
+import {
+  BatchWorkflowSnapshot,
+  BatchWorkflowTransition,
+  canRunBatchWorkflowTransition
+} from '../models/batch-workflow';
+
+interface ShippingQueueDraftRow {
+  shop_id: string;
+  batch_id: number;
+  batch_name: string;
+  client_id: number | null;
+  product_id: number;
+  product_name: string;
+  quantity: number;
+  fee: number;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -57,6 +73,72 @@ export class DatabaseService extends SupabaseDataAccessService {
     private clients: ClientDataService
   ) {
     super(supa, authService);
+  }
+
+  private mapBatchWorkflowSnapshot(row: any): BatchWorkflowSnapshot | null {
+    if (!row?.id) return null;
+    return {
+      id: Number(row.id),
+      name: row.name || '',
+      status: row.status || 'open',
+      orderStatus: row.order_status || 'pending',
+      buyingStatus: row.buying_status || 'pending',
+      deliveryStatus: row.delivery_status || 'not_sent',
+      arrivalsSent: !!row.arrivals_sent
+    };
+  }
+
+  private async getBatchWorkflowSnapshotById(batchId: number): Promise<BatchWorkflowSnapshot | null> {
+    if (!this.activeShopId || !batchId) return null;
+    const { data, error } = await this.scopeShopQuery(
+      this.sb.from('batches').select('id, name, status, order_status, buying_status, delivery_status, arrivals_sent')
+    ).eq('id', batchId).maybeSingle();
+    if (error) return null;
+    return this.mapBatchWorkflowSnapshot(data);
+  }
+
+  private async getBatchWorkflowSnapshotByName(batchName: string): Promise<BatchWorkflowSnapshot | null> {
+    if (!this.activeShopId || !batchName) return null;
+    const { data, error } = await this.scopeShopQuery(
+      this.sb.from('batches').select('id, name, status, order_status, buying_status, delivery_status, arrivals_sent')
+    ).eq('name', batchName).maybeSingle();
+    if (error) return null;
+    return this.mapBatchWorkflowSnapshot(data);
+  }
+
+  private async hasBatchRows(tableName: string, batchId: number): Promise<boolean> {
+    const { count, error } = await this.scopeShopQuery(
+      this.sb.from(tableName).select('id', { count: 'exact', head: true })
+    ).eq('batch_id', batchId);
+    return !error && Number(count || 0) > 0;
+  }
+
+  private canRunBatchWorkflowTransition(batch: BatchWorkflowSnapshot, transition: BatchWorkflowTransition): boolean {
+    return canRunBatchWorkflowTransition(batch, transition);
+  }
+
+  private async replaceOpenShippingQueueRows(
+    batchId: number,
+    batchName: string,
+    productIds: number[],
+    rows: ShippingQueueDraftRow[]
+  ): Promise<boolean> {
+    const uniqueProductIds = Array.from(new Set(productIds.map(id => Number(id || 0)).filter(Boolean)));
+    if (uniqueProductIds.length === 0) return true;
+
+    const deleteResult = await this.scopeShopQuery(
+      this.sb.from('shipping_fees').delete()
+    )
+      .eq('batch_id', batchId)
+      .eq('batch_name', batchName)
+      .is('delivery_id', null)
+      .in('product_id', uniqueProductIds);
+    if (deleteResult.error) return false;
+
+    if (rows.length === 0) return true;
+
+    const { error } = await this.scopeShopQuery(this.sb.from('shipping_fees').insert(rows));
+    return !error;
   }
 
   // =====================
@@ -824,9 +906,23 @@ export class DatabaseService extends SupabaseDataAccessService {
   }
 
   closeOrderBatch(batchId: number): Observable<boolean> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batches').update({ status: 'closed', closed_at: new Date().toISOString() })).eq('id', batchId)
-    ).pipe(map(({ error }) => !error));
+    return from(this.doCloseOrderBatch(batchId));
+  }
+
+  private async doCloseOrderBatch(batchId: number): Promise<boolean> {
+    const batch = await this.getBatchWorkflowSnapshotById(batchId);
+    if (!batch) return false;
+    if (batch.status === 'closed') return true;
+    if (!this.canRunBatchWorkflowTransition(batch, 'orders_to_buying')) return false;
+
+    const hasBuyingList = await this.hasBatchRows('buying_list', batchId);
+    if (!hasBuyingList) return false;
+
+    const { data, error } = await this.scopeShopQuery(
+      this.sb.from('batches')
+        .update({ status: 'closed', closed_at: new Date().toISOString() })
+    ).eq('id', batchId).eq('status', 'open').select('id').maybeSingle();
+    return !error && !!data;
   }
 
   reopenOrderBatch(batchId: number): Observable<boolean> {
@@ -1261,11 +1357,18 @@ export class DatabaseService extends SupabaseDataAccessService {
   }
 
   private async doSendBatchToBuyingList(batchId: number, _batchName: string): Promise<boolean> {
+    const batch = await this.getBatchWorkflowSnapshotById(batchId);
+    if (!batch) return false;
+    if (batch.status === 'closed') {
+      return this.hasBatchRows('buying_list', batchId);
+    }
+    if (!this.canRunBatchWorkflowTransition(batch, 'orders_to_buying')) return false;
+
     // 1. Get all orders in this batch
     const { data: orders } = await this.scopeShopQuery(this.sb.from('orders').select('id'))
       .eq('batch_id', batchId);
 
-    if (!orders || orders.length === 0) return true;
+    if (!orders || orders.length === 0) return false;
 
     const orderIds = orders.map((o: any) => o.id);
 
@@ -1276,7 +1379,7 @@ export class DatabaseService extends SupabaseDataAccessService {
         .in('order_id', orderIds)
     );
 
-    if (!items || items.length === 0) return true;
+    if (!items || items.length === 0) return false;
 
     // 3. Aggregate by batch_product_id
     const aggregated: Record<number, { batchProductId: number; productId: number; totalQty: number }> = {};
@@ -1305,7 +1408,12 @@ export class DatabaseService extends SupabaseDataAccessService {
 
     const { error } = await this.sb.from('buying_list')
       .upsert(rows.map(row => ({ ...row, shop_id: this.activeShopId })), { onConflict: 'batch_id,batch_product_id' });
-    return !error;
+    if (error) return false;
+
+    await this.scopeShopQuery(
+      this.sb.from('batches').update({ order_status: 'confirmed', buying_status: 'pending' })
+    ).eq('id', batchId);
+    return true;
   }
 
   // =====================
@@ -1752,35 +1860,32 @@ export class DatabaseService extends SupabaseDataAccessService {
       this.sb.from('stock_sales').select('status')
     ).eq('id', saleId).maybeSingle();
     if (saleErr || !sale) return false;
-
-    const { data: existingItems, error: existingErr } = await this.scopeShopQuery(
-      this.sb.from('stock_sale_items').select('product_id, quantity')
-    ).eq('stock_sale_id', saleId);
-    if (existingErr) return false;
+    if ((sale as any).status !== 'cancelled') return false;
 
     const { error: deleteErr } = await this.scopeShopQuery(this.sb.from('stock_sales').delete()).eq('id', saleId);
     if (deleteErr) return false;
 
-    if ((sale as any).status !== 'cancelled') {
-      await this.adjustProductStock(existingItems || [], 1);
-    }
     return true;
   }
 
-  closeStockSale(saleId: number, closedByUserId: number): Observable<boolean> {
+  closeStockSale(saleId: number, closedByUserId: number | null): Observable<boolean> {
     return from(this.doCloseStockSale(saleId, closedByUserId));
   }
 
-  private async doCloseStockSale(saleId: number, closedByUserId: number): Promise<boolean> {
+  private async doCloseStockSale(saleId: number, closedByUserId: number | null): Promise<boolean> {
     if (!this.activeShopId || !saleId) return false;
-    const { error } = await this.scopeShopQuery(
-      this.sb.from('stock_sales').update({
-        status: 'closed',
-        closed_at: new Date().toISOString(),
-        closed_by: closedByUserId
-      })
-    ).eq('id', saleId);
-    return !error;
+    const updatePayload: Record<string, any> = {
+      status: 'closed',
+      closed_at: new Date().toISOString()
+    };
+    if (closedByUserId) {
+      updatePayload['closed_by'] = closedByUserId;
+    }
+
+    const { data, error } = await this.scopeShopQuery(
+      this.sb.from('stock_sales').update(updatePayload)
+    ).eq('id', saleId).eq('status', 'open').select('id').maybeSingle();
+    return !error && !!data;
   }
 
   cancelStockSale(saleId: number): Observable<boolean> {
@@ -1790,6 +1895,11 @@ export class DatabaseService extends SupabaseDataAccessService {
   private async doCancelStockSale(saleId: number): Promise<boolean> {
     if (!this.activeShopId || !saleId) return false;
 
+    const { data: sale, error: saleErr } = await this.scopeShopQuery(
+      this.sb.from('stock_sales').select('status')
+    ).eq('id', saleId).maybeSingle();
+    if (saleErr || !sale || (sale as any).status !== 'open') return false;
+
     // Fetch stock_sale_items linked to the sale
     const { data: existingItems, error: existingErr } = await this.scopeShopQuery(
       this.sb.from('stock_sale_items').select('product_id, quantity')
@@ -1797,12 +1907,12 @@ export class DatabaseService extends SupabaseDataAccessService {
     if (existingErr) return false;
 
     // Update status to 'cancelled'
-    const { error: saleErr } = await this.scopeShopQuery(
+    const { data: updatedSale, error: updateErr } = await this.scopeShopQuery(
       this.sb.from('stock_sales').update({
         status: 'cancelled'
       })
-    ).eq('id', saleId);
-    if (saleErr) return false;
+    ).eq('id', saleId).eq('status', 'open').select('id').maybeSingle();
+    if (updateErr || !updatedSale) return false;
 
     // Return product quantities to stock
     await this.adjustProductStock(existingItems || [], 1);
@@ -2095,9 +2205,14 @@ export class DatabaseService extends SupabaseDataAccessService {
 
   private async doSendConfirmedArrivalsToShipping(batchName: string): Promise<boolean> {
     if (!this.activeShopId) return false;
-    const { data: batch } = await this.scopeShopQuery(this.sb.from('batches').select('id, name')).eq('name', batchName).maybeSingle();
-    if (!batch) return false;
-    const batchId = (batch as any).id;
+    const shopId = this.activeShopId;
+    if (!shopId) return false;
+    const batch = await this.getBatchWorkflowSnapshotByName(batchName);
+    if (!batch || !this.canRunBatchWorkflowTransition(batch, 'arrivals_to_shipping')) return false;
+    const batchId = batch.id;
+
+    const hasArrivalItems = await this.hasBatchRows('arrival_items', batchId);
+    if (!hasArrivalItems) return false;
 
     const { data: arrivals } = await this.scopeShopQuery(
       this.sb.from('arrival_items').select('batch_product_id, product_id, confirmed_qty, products(name)')
@@ -2133,16 +2248,12 @@ export class DatabaseService extends SupabaseDataAccessService {
       agg[key].quantity += effectiveQty;
     });
 
-    const productIds = Array.from(new Set((arrivals || []).map((a: any) => a.product_id).filter(Boolean)));
-    if (productIds.length > 0) {
-      await this.scopeShopQuery(this.sb.from('shipping_fees').delete())
-        .eq('batch_name', batchName)
-        .is('delivery_id', null)
-        .in('product_id', productIds);
-    }
+    const productIds: number[] = Array.from(
+      new Set((arrivals || []).map((a: any) => Number(a.product_id || 0)).filter((id: number) => id > 0))
+    );
 
     const rows = Object.values(agg).map(r => ({
-      shop_id: this.activeShopId,
+      shop_id: shopId,
       batch_id: batchId,
       batch_name: batchName,
       client_id: r.clientId,
@@ -2158,7 +2269,7 @@ export class DatabaseService extends SupabaseDataAccessService {
       const qty = Number(a.confirmed_qty || 0);
       if (!productId || qty <= 0 || productIdsWithOrders.has(productId)) return null;
       return {
-        shop_id: this.activeShopId,
+        shop_id: shopId,
         batch_id: batchId,
         batch_name: batchName,
         client_id: null,
@@ -2171,10 +2282,8 @@ export class DatabaseService extends SupabaseDataAccessService {
 
     const allRows = [...rows, ...fallbackRows];
 
-    if (allRows.length > 0) {
-      const { error } = await this.scopeShopQuery(this.sb.from('shipping_fees').insert(allRows));
-      if (error) return false;
-    }
+    const queueUpdated = await this.replaceOpenShippingQueueRows(batchId, batchName, productIds, allRows);
+    if (!queueUpdated) return false;
 
     const trackingMap: Record<number, { batch_product_id: number; product_id: number }> = {};
     (arrivals || []).forEach((a: any) => {
@@ -2210,18 +2319,24 @@ export class DatabaseService extends SupabaseDataAccessService {
 
   private async doSendConfirmedArrivalItemToShipping(arrivalItemId: number): Promise<boolean> {
     if (!this.activeShopId) return false;
+    const shopId = this.activeShopId;
+    if (!shopId) return false;
     const { data: arrival } = await this.scopeShopQuery(
-      this.sb.from('arrival_items').select('id, batch_id, batch_product_id, product_id, confirmed_qty, products(name)')
+      this.sb.from('arrival_items').select('id, batch_id, batch_product_id, product_id, confirmed_qty, status, products(name)')
     )
       .eq('id', arrivalItemId)
       .maybeSingle();
     if (!arrival) return false;
+    if ((arrival as any).status === 'sent_to_shipping') return true;
+    if ((arrival as any).status !== 'confirmed') return false;
+
     const batchId = (arrival as any).batch_id;
     const batchProductId = (arrival as any).batch_product_id;
     const productId = (arrival as any).product_id;
 
-    const { data: batch } = await this.scopeShopQuery(this.sb.from('batches').select('id, name')).eq('id', batchId).maybeSingle();
-    const batchName = (batch as any)?.name || '';
+    const batch = await this.getBatchWorkflowSnapshotById(batchId);
+    if (!batch || !this.canRunBatchWorkflowTransition(batch, 'arrivals_to_shipping')) return false;
+    const batchName = batch.name || '';
     if (!batchName) return false;
 
     const { data: orderItems } = await this.scopeShopQuery(
@@ -2251,7 +2366,7 @@ export class DatabaseService extends SupabaseDataAccessService {
     });
 
     const rows = Object.values(agg).map(r => ({
-      shop_id: this.activeShopId,
+      shop_id: shopId,
       batch_id: batchId,
       batch_name: batchName,
       client_id: r.clientId,
@@ -2262,23 +2377,14 @@ export class DatabaseService extends SupabaseDataAccessService {
     }));
 
     if (rows.length > 0) {
-      await this.scopeShopQuery(this.sb.from('shipping_fees').delete())
-        .eq('batch_name', batchName)
-        .is('delivery_id', null)
-        .eq('product_id', rows[0].product_id);
-
-      const { error } = await this.scopeShopQuery(this.sb.from('shipping_fees').insert(rows));
-      if (error) return false;
+      const queueUpdated = await this.replaceOpenShippingQueueRows(batchId, batchName, [Number(productId || 0)], rows);
+      if (!queueUpdated) return false;
     } else {
       const qty = Number((arrival as any).confirmed_qty || 0);
       if (productId && qty > 0) {
-        await this.scopeShopQuery(this.sb.from('shipping_fees').delete())
-          .eq('batch_name', batchName)
-          .is('delivery_id', null)
-          .eq('product_id', productId);
-        const { error } = await this.scopeShopQuery(this.sb.from('shipping_fees').insert([
+        const queueUpdated = await this.replaceOpenShippingQueueRows(batchId, batchName, [Number(productId || 0)], [
           {
-            shop_id: this.activeShopId,
+            shop_id: shopId,
             batch_id: batchId,
             batch_name: batchName,
             client_id: null,
@@ -2287,8 +2393,8 @@ export class DatabaseService extends SupabaseDataAccessService {
             quantity: qty,
             fee: 0
           }
-        ]));
-        if (error) return false;
+        ]);
+        if (!queueUpdated) return false;
       }
     }
 
@@ -2302,8 +2408,10 @@ export class DatabaseService extends SupabaseDataAccessService {
       if (trackErr) return false;
     }
 
-    await this.scopeShopQuery(this.sb.from('arrival_items').update({ status: 'sent_to_shipping' }))
-      .eq('id', arrivalItemId);
+    const { data: updatedArrival, error: updateArrivalErr } = await this.scopeShopQuery(
+      this.sb.from('arrival_items').update({ status: 'sent_to_shipping' })
+    ).eq('id', arrivalItemId).eq('status', 'confirmed').select('id').maybeSingle();
+    if (updateArrivalErr || !updatedArrival) return false;
 
     return true;
   }
@@ -2315,10 +2423,13 @@ export class DatabaseService extends SupabaseDataAccessService {
   private async doFinalizeShippingBatch(batchName: string): Promise<boolean> {
     if (!this.activeShopId) return false;
     if (!batchName) return false;
-    const batchId = await this.getBatchIdByName(batchName);
+    const batch = await this.getBatchWorkflowSnapshotByName(batchName);
+    if (!batch || !this.canRunBatchWorkflowTransition(batch, 'shipping_to_deliveries')) return false;
+    const batchId = batch.id;
     const { data: queueRows } = await this.scopeShopQuery(
       this.sb.from('shipping_fees').select('id, client_id, product_name, quantity, fee')
     )
+      .eq('batch_id', batchId)
       .eq('batch_name', batchName)
       .is('delivery_id', null);
     if (!queueRows || queueRows.length === 0) return true;
@@ -2334,6 +2445,7 @@ export class DatabaseService extends SupabaseDataAccessService {
     const { data: existingDeliveries } = await this.scopeShopQuery(
       this.sb.from('deliveries').select('id, customer_id')
     )
+      .eq('batch_id', batchId)
       .eq('batch_name', batchName);
     const deliveryMap: Record<number, number> = {};
     (existingDeliveries || []).forEach((d: any) => {
@@ -2379,11 +2491,15 @@ export class DatabaseService extends SupabaseDataAccessService {
       const deliveryId = deliveryMap[Number(clientId)];
       if (!deliveryId) continue;
       await this.scopeShopQuery(this.sb.from('shipping_fees').update({ delivery_id: deliveryId }))
+        .eq('batch_id', batchId)
         .eq('batch_name', batchName)
         .is('delivery_id', null)
         .eq('client_id', Number(clientId));
     }
 
+    await this.scopeShopQuery(
+      this.sb.from('batches').update({ delivery_status: 'pending' })
+    ).eq('id', batchId);
     return true;
   }
 
@@ -3008,17 +3124,14 @@ export class DatabaseService extends SupabaseDataAccessService {
     if (!this.activeShopId) return false;
     if (!batchName || !clientId) return false;
 
-    const { data: batchRow, error: batchError } = await this.scopeShopQuery(
-      this.sb.from('batches').select('id')
-    )
-      .eq('name', batchName)
-      .maybeSingle();
-    if (batchError || !batchRow?.id) return false;
-    const batchId = Number(batchRow.id);
+    const batch = await this.getBatchWorkflowSnapshotByName(batchName);
+    if (!batch || !this.canRunBatchWorkflowTransition(batch, 'shipping_to_deliveries')) return false;
+    const batchId = batch.id;
 
     const { data: feeRows, error: feeErr } = await this.scopeShopQuery(
       this.sb.from('shipping_fees').select('id, product_name, quantity, fee')
     )
+      .eq('batch_id', batchId)
       .eq('batch_name', batchName)
       .eq('client_id', clientId)
       .is('delivery_id', null);
@@ -3070,6 +3183,7 @@ export class DatabaseService extends SupabaseDataAccessService {
 
     if (!deliveryId) return false;
     const { error: updateErr } = await this.scopeShopQuery(this.sb.from('shipping_fees').update({ delivery_id: deliveryId }))
+      .eq('batch_id', batchId)
       .eq('batch_name', batchName)
       .eq('client_id', clientId)
       .is('delivery_id', null);
@@ -3079,6 +3193,9 @@ export class DatabaseService extends SupabaseDataAccessService {
       .eq('batch_name', batchName)
       .eq('client_id', clientId);
 
+    await this.scopeShopQuery(
+      this.sb.from('batches').update({ delivery_status: 'pending' })
+    ).eq('id', batchId);
     return true;
   }
 
@@ -3092,6 +3209,9 @@ export class DatabaseService extends SupabaseDataAccessService {
 
   private async doSendBatchToDeliveries(batchId: number, batchName: string): Promise<boolean> {
     if (!this.activeShopId) return false;
+    const batch = await this.getBatchWorkflowSnapshotById(batchId);
+    if (!batch || !this.canRunBatchWorkflowTransition(batch, 'shipping_to_deliveries')) return false;
+
     // 1. Get all orders in this batch with their items and client info
     const { data: orders } = await this.scopeShopQuery(
       this.sb.from('orders').select('id, customer_id, delivery_type, customers(name, whatsapp_number, address), order_items(quantity, products(name))')
@@ -3099,6 +3219,13 @@ export class DatabaseService extends SupabaseDataAccessService {
       .eq('batch_id', batchId);
 
     if (!orders || orders.length === 0) return true;
+
+    const { data: existingDeliveries } = await this.scopeShopQuery(
+      this.sb.from('deliveries').select('id, customer_id')
+    ).eq('batch_id', batchId);
+    const existingClientIds = new Set(
+      (existingDeliveries || []).map((d: any) => Number(d.customer_id || 0)).filter(Boolean)
+    );
 
     // 2. Aggregate items per client
     const clientMap: Record<number, {
@@ -3134,9 +3261,10 @@ export class DatabaseService extends SupabaseDataAccessService {
     }
 
     // 3. Create delivery rows
-    const rows = Object.values(clientMap).map(c => ({
+    const rows = Object.values(clientMap).filter(c => !existingClientIds.has(c.clientId)).map(c => ({
       shop_id: this.activeShopId,
       batch_id: batchId,
+      batch_name: batchName,
       customer_id: c.clientId,
       shipping_invoice_id: null,
       delivery_type: c.deliveryCategory || 'Ghana Post',
@@ -3145,8 +3273,10 @@ export class DatabaseService extends SupabaseDataAccessService {
       notes: ''
     }));
 
-    const { error } = await this.scopeShopQuery(this.sb.from('deliveries').insert(rows));
-    if (error) return false;
+    if (rows.length > 0) {
+      const { error } = await this.scopeShopQuery(this.sb.from('deliveries').insert(rows));
+      if (error) return false;
+    }
 
     // 4. Update batch delivery_status
     await this.scopeShopQuery(this.sb.from('batches').update({ delivery_status: 'pending' })).eq('id', batchId);
@@ -3386,6 +3516,12 @@ export class DatabaseService extends SupabaseDataAccessService {
   }
 
   private async doApplyBuyingListArrivalToStock(batchId: number, _batchName: string): Promise<boolean> {
+    const { data: claimedBatch, error: claimErr } = await this.scopeShopQuery(
+      this.sb.from('batches').update({ stock_applied: true }).eq('id', batchId).eq('stock_applied', false).select('id').maybeSingle()
+    );
+    if (claimErr) return false;
+    if (!claimedBatch) return true;
+
     const { data: items, error } = await this.scopeShopQuery(this.sb.from('buying_list')
       .select('product_id, ordered_qty')
     )
@@ -3408,12 +3544,6 @@ export class DatabaseService extends SupabaseDataAccessService {
       )
         .eq('id', productId);
     }
-
-    await this.scopeShopQuery(this.sb.from('batches')
-      .update({ stock_applied: true })
-    )
-      .eq('id', batchId);
-
     return true;
   }
 
@@ -3440,6 +3570,7 @@ export class DatabaseService extends SupabaseDataAccessService {
       const received = Number(r.received_qty ?? 0);
       return {
         id: r.id,
+        batchId: r.batch_id,
         batchProductId: r.batch_product_id,
         productId: r.product_id,
         productName: r.products?.name || '',
@@ -3474,6 +3605,7 @@ export class DatabaseService extends SupabaseDataAccessService {
           const received = Number(r.received_qty ?? 0);
           return {
             id: r.id,
+            batchId: r.batch_id,
             batchProductId: r.batch_product_id,
             productId: r.product_id,
             productName: r.products?.name || '',
@@ -3643,6 +3775,7 @@ export class DatabaseService extends SupabaseDataAccessService {
             const received = Number(r.received_qty ?? 0);
             return {
               id: r.id,
+              batchId: r.batch_id,
               batchProductId: r.batch_product_id,
               productId: r.product_id,
               productName: r.products?.name || '',
@@ -3700,6 +3833,7 @@ export class DatabaseService extends SupabaseDataAccessService {
           const received = Number(r.received_qty ?? 0);
           return {
             id: r.id,
+            batchId: r.batch_id,
             batchProductId: r.batch_product_id,
             productId: r.product_id,
             productName: r.products?.name || '',
@@ -3994,9 +4128,17 @@ export class DatabaseService extends SupabaseDataAccessService {
     return from(this.doCreateArrivalForBuyingItem(itemId));
   }
 
+  reverseArrivalForBuyingItem(itemId: number): Observable<boolean> {
+    return from(this.doReverseArrivalForBuyingItem(itemId));
+  }
+
+  reverseArrivalToBuyingList(arrivalItemId: number): Observable<boolean> {
+    return from(this.doReverseArrivalToBuyingList(arrivalItemId));
+  }
+
   private async doCreateArrivalForBuyingItem(itemId: number): Promise<boolean> {
     const { data: items, error } = await this.scopeShopQuery(this.sb.from('buying_list')
-      .select('batch_id, batch_product_id, product_id, ordered_qty, requested_qty')
+      .select('batch_id, batch_product_id, product_id, ordered_qty, requested_qty, moved_to_arrivals')
       .eq('id', itemId)
       .limit(1)
       .single());
@@ -4006,6 +4148,10 @@ export class DatabaseService extends SupabaseDataAccessService {
     const batchProductId = (items as any).batch_product_id;
     const productId = (items as any).product_id;
     if (!batchId || !batchProductId || !productId) return false;
+    if ((items as any).moved_to_arrivals) return true;
+
+    const batch = await this.getBatchWorkflowSnapshotById(batchId);
+    if (!batch || !this.canRunBatchWorkflowTransition(batch, 'buying_to_arrivals')) return false;
 
     const requested = (items as any).ordered_qty ?? (items as any).requested_qty ?? 0;
     const ai = {
@@ -4030,14 +4176,109 @@ export class DatabaseService extends SupabaseDataAccessService {
     return true;
   }
 
+  private async doReverseArrivalForBuyingItem(itemId: number): Promise<boolean> {
+    if (!this.activeShopId || !itemId) return false;
+
+    const { data: buyingItem, error: buyingErr } = await this.scopeShopQuery(
+      this.sb.from('buying_list')
+        .select('id, batch_id, batch_product_id, moved_to_arrivals')
+    )
+      .eq('id', itemId)
+      .maybeSingle();
+
+    if (buyingErr || !buyingItem) return false;
+    if (!(buyingItem as any).moved_to_arrivals) return true;
+
+    const batchId = Number((buyingItem as any).batch_id || 0);
+    const batchProductId = Number((buyingItem as any).batch_product_id || 0);
+    if (!batchId || !batchProductId) return false;
+
+    return this.reverseUnconfirmedArrival(batchId, batchProductId);
+  }
+
+  private async doReverseArrivalToBuyingList(arrivalItemId: number): Promise<boolean> {
+    if (!this.activeShopId || !arrivalItemId) return false;
+
+    const { data: arrival, error } = await this.scopeShopQuery(
+      this.sb.from('arrival_items')
+        .select('batch_id, batch_product_id')
+    )
+      .eq('id', arrivalItemId)
+      .maybeSingle();
+
+    if (error || !arrival) return false;
+
+    const batchId = Number((arrival as any).batch_id || 0);
+    const batchProductId = Number((arrival as any).batch_product_id || 0);
+    if (!batchId || !batchProductId) return false;
+
+    return this.reverseUnconfirmedArrival(batchId, batchProductId);
+  }
+
+  private async reverseUnconfirmedArrival(batchId: number, batchProductId: number): Promise<boolean> {
+    const { data: arrival, error } = await this.scopeShopQuery(
+      this.sb.from('arrival_items')
+        .select('id, received_qty, confirmed_qty, status')
+    )
+      .eq('batch_id', batchId)
+      .eq('batch_product_id', batchProductId)
+      .maybeSingle();
+
+    if (error) return false;
+    if (!arrival) {
+      await this.scopeShopQuery(
+        this.sb.from('buying_list').update({ moved_to_arrivals: false })
+      )
+        .eq('batch_id', batchId)
+        .eq('batch_product_id', batchProductId);
+      return this.refreshBatchArrivalsSentFlag(batchId);
+    }
+
+    const status = String((arrival as any).status || 'pending');
+    const receivedQty = Number((arrival as any).received_qty || 0);
+    const confirmedQty = Number((arrival as any).confirmed_qty || 0);
+    if (status !== 'pending' || receivedQty > 0 || confirmedQty > 0) {
+      return false;
+    }
+
+    const { error: deleteErr } = await this.scopeShopQuery(
+      this.sb.from('arrival_items').delete()
+    ).eq('id', (arrival as any).id);
+    if (deleteErr) return false;
+
+    const { error: updateErr } = await this.scopeShopQuery(
+      this.sb.from('buying_list').update({ moved_to_arrivals: false })
+    )
+      .eq('batch_id', batchId)
+      .eq('batch_product_id', batchProductId);
+    if (updateErr) return false;
+
+    return this.refreshBatchArrivalsSentFlag(batchId);
+  }
+
+  private async refreshBatchArrivalsSentFlag(batchId: number): Promise<boolean> {
+    const hasArrivals = await this.hasBatchRows('arrival_items', batchId);
+    if (hasArrivals) return true;
+
+    const { error } = await this.scopeShopQuery(
+      this.sb.from('batches').update({ arrivals_sent: false })
+    ).eq('id', batchId);
+    return !error;
+  }
+
   private async doCreateArrivalsForBatch(batchId: number, _batchName: string): Promise<boolean> {
+    const batch = await this.getBatchWorkflowSnapshotById(batchId);
+    if (!batch) return false;
+    if (batch.arrivalsSent && await this.hasBatchRows('arrival_items', batchId)) return true;
+    if (!this.canRunBatchWorkflowTransition(batch, 'buying_to_arrivals')) return false;
+
     const { data: items, error } = await this.scopeShopQuery(this.sb.from('buying_list')
       .select('batch_product_id, product_id, requested_qty, ordered_qty')
       .eq('batch_id', batchId));
     if (error) return false;
 
     const rows = (items || []);
-    if (!rows || rows.length === 0) return true;
+    if (!rows || rows.length === 0) return false;
 
     // Create arrival_items for each buying_list row
     const aiRows = rows.map((i: any) => ({
@@ -4947,12 +5188,9 @@ export class DatabaseService extends SupabaseDataAccessService {
 
   private async doSendArrivalsToDeliveries(batchName: string): Promise<boolean> {
     if (!this.activeShopId) return false;
-    const { data: batch } = await this.scopeShopQuery(this.sb.from('batches'))
-      .select('id')
-      .eq('name', batchName)
-      .maybeSingle();
-    if (!batch) return false;
-    return this.doSendBatchToDeliveries(batch.id, batchName);
+    const batch = await this.getBatchWorkflowSnapshotByName(batchName);
+    if (!batch || !this.canRunBatchWorkflowTransition(batch, 'shipping_to_deliveries')) return false;
+    return this.doSendBatchToDeliveries(batch.id, batch.name || batchName);
   }
 
   // Create a delivery row from a single confirmed arrival item and remove the arrival
@@ -4963,29 +5201,32 @@ export class DatabaseService extends SupabaseDataAccessService {
   private async doCreateDeliveryForArrivalItem(arrivalItemId: number): Promise<boolean> {
     if (!this.activeShopId) return false;
     const { data: ai } = await this.scopeShopQuery(this.sb.from('arrival_items'))
-      .select('id, batch_id, product_id, requested_qty, received_qty, products(name), batches(name)')
+      .select('id, batch_id, product_id, requested_qty, received_qty, status, products(name), batches(name)')
       .eq('id', arrivalItemId)
       .maybeSingle();
     if (!ai) return false;
+    if ((ai as any).status !== 'confirmed') return false;
 
     const productName = (ai as any).products?.name || (ai as any).products?.[0]?.name || 'Item';
     const receivedQty = Number((ai as any).received_qty || (ai as any).requested_qty || 0);
     const batchName = (ai as any).batches?.name || null;
+    const batchId = (ai as any).batch_id ?? null;
+    if (!batchId || !batchName) return false;
+
+    const batch = await this.getBatchWorkflowSnapshotById(batchId);
+    if (!batch || !this.canRunBatchWorkflowTransition(batch, 'shipping_to_deliveries')) return false;
 
     // try to determine a client for this product within the batch
     let clientId: number | null = null;
-    const batchId = (ai as any).batch_id ?? null;
-    if (batchId) {
-      const { data: orders } = await this.scopeShopQuery(this.sb.from('orders').select('id, customer_id')).eq('batch_id', batchId);
-      if (orders && orders.length > 0) {
-        const orderIds = orders.map((o: any) => o.id);
-        const { data: oi } = await this.scopeShopQuery(this.sb.from('order_items').select('order_id')).eq('product_id', ai.product_id).in('order_id', orderIds).limit(1);
-        if (oi && oi.length > 0) {
-          const orderMatch = orders.find((o: any) => o.id === oi[0].order_id);
-          clientId = orderMatch?.customer_id ?? orders[0].customer_id;
-        } else {
-          clientId = orders[0].customer_id;
-        }
+    const { data: orders } = await this.scopeShopQuery(this.sb.from('orders').select('id, customer_id')).eq('batch_id', batchId);
+    if (orders && orders.length > 0) {
+      const orderIds = orders.map((o: any) => o.id);
+      const { data: oi } = await this.scopeShopQuery(this.sb.from('order_items').select('order_id')).eq('product_id', ai.product_id).in('order_id', orderIds).limit(1);
+      if (oi && oi.length > 0) {
+        const orderMatch = orders.find((o: any) => o.id === oi[0].order_id);
+        clientId = orderMatch?.customer_id ?? orders[0].customer_id;
+      } else {
+        clientId = orders[0].customer_id;
       }
     }
 
@@ -4995,20 +5236,33 @@ export class DatabaseService extends SupabaseDataAccessService {
       clientId = (anyClient && (anyClient as any).id) || null;
     }
 
-    const rows = [{
-      shop_id: this.activeShopId,
-      batch_id: batchId,
-      batch_name: batchName,
-      customer_id: clientId,
-      delivery_fee: 0,
-      delivery_date: null,
-      status: 'pending',
-      delivery_item_status: 'pending',
-      notes: 'Created from arrival item'
-    }];
+    if (!clientId) return false;
 
-    const { error: insertError } = await this.scopeShopQuery(this.sb.from('deliveries').insert(rows));
-    if (insertError) return false;
+    const { data: existingDelivery, error: existingDeliveryErr } = await this.scopeShopQuery(
+      this.sb.from('deliveries').select('id')
+    )
+      .eq('batch_id', batchId)
+      .eq('batch_name', batchName)
+      .eq('customer_id', clientId)
+      .maybeSingle();
+    if (existingDeliveryErr) return false;
+
+    if (!existingDelivery?.id) {
+      const rows = [{
+        shop_id: this.activeShopId,
+        batch_id: batchId,
+        batch_name: batchName,
+        customer_id: clientId,
+        delivery_fee: 0,
+        delivery_date: null,
+        status: 'pending',
+        delivery_item_status: 'pending',
+        notes: 'Created from arrival item'
+      }];
+
+      const { error: insertError } = await this.scopeShopQuery(this.sb.from('deliveries').insert(rows));
+      if (insertError) return false;
+    }
 
     // remove the arrival_items row so it no longer appears
     await this.scopeShopQuery(this.sb.from('arrival_items').delete()).eq('id', arrivalItemId);
@@ -5022,10 +5276,9 @@ export class DatabaseService extends SupabaseDataAccessService {
 
   private async doCreateDeliveriesForBatch(batchName: string): Promise<boolean> {
     if (!this.activeShopId) return false;
-    // Resolve batch id by name
-    const { data: batchRows } = await this.scopeShopQuery(this.sb.from('batches').select('id')).eq('name', batchName).limit(1).maybeSingle();
-    if (!batchRows || !batchRows.id) return true;
-    const batchId = batchRows.id as number;
+    const batch = await this.getBatchWorkflowSnapshotByName(batchName);
+    if (!batch || !this.canRunBatchWorkflowTransition(batch, 'shipping_to_deliveries')) return false;
+    const batchId = batch.id;
 
     // Find confirmed arrival_items under this batch
     const { data: items } = await this.scopeShopQuery(this.sb.from('arrival_items'))
@@ -5162,7 +5415,13 @@ export class DatabaseService extends SupabaseDataAccessService {
   }
 
   createExpense(expense: Expense): Observable<number> {
+    const shopId = this.activeShopId;
+    if (!shopId) {
+      throw new Error('Active shop context is required to create an expense.');
+    }
+
     const row = {
+      shop_id: shopId,
       category: expense.category,
       description: expense.description,
       amount: expense.amount,
@@ -5190,13 +5449,13 @@ export class DatabaseService extends SupabaseDataAccessService {
       notes: expense.notes || ''
     };
     return from(
-      this.sb.from('expenses').update(row).eq('id', expense.id)
+      this.scopeShopQuery(this.sb.from('expenses').update(row)).eq('id', expense.id)
     ).pipe(map(({ error }) => !error));
   }
 
   deleteExpense(id: number): Observable<boolean> {
     return from(
-      this.sb.from('expenses').delete().eq('id', id)
+      this.scopeShopQuery(this.sb.from('expenses').delete()).eq('id', id)
     ).pipe(map(({ error }) => !error));
   }
 

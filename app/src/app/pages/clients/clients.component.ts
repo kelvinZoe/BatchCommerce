@@ -153,11 +153,6 @@ import { TableComponent, TableColumn, TableMetadata, ActionOption } from '../../
 
     .cl-card { background: #fff; border: 1px solid #ccc; border-radius: 14px; padding: 20px; overflow: hidden; }
 
-    .cl-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-    .cl-search-wrap { display: flex; align-items: center; gap: 8px; border: 1px solid #ccc; border-radius: 9px; padding: 0 12px; background: #f8fafc; flex: 1; min-width: 200px; }
-    .cl-search-wrap i { font-size: 16px; color: #94a3b8; }
-    .cl-search { border: none; background: transparent; font-size: 13px; color: #334155; outline: none; width: 100%; padding: 9px 0; }
-
     .cl-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: background 0.15s; }
     .cl-btn i { font-size: 17px; }
     .cl-btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
@@ -165,9 +160,6 @@ import { TableComponent, TableColumn, TableMetadata, ActionOption } from '../../
     .cl-btn-primary:hover:not(:disabled) { background: var(--primary-dark, #4f46e5); }
     .cl-btn-danger { background: #ef4444; color: #fff; }
     .cl-btn-danger:hover:not(:disabled) { background: #dc2626; }
-    .cl-btn-ghost { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
-    .cl-btn-ghost:hover:not(:disabled) { background: #e2e8f0; }
-
     .cl-form-group { display: flex; flex-direction: column; gap: 5px; }
     .cl-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .cl-label { font-size: 12px; font-weight: 600; color: #475569; }

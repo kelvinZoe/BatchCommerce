@@ -1,13 +1,15 @@
 Here’s the TODO list I’d use, in the order we should tackle it:
 
 **Phase 1: Safety And Repo Hygiene**
-- Remove the hardcoded Supabase service-role key from `app/scripts/fix_order_items_updated_at.js`.
-- Rotate that exposed service-role key in Supabase.
+- [done] Remove the hardcoded Supabase service-role key from `app/scripts/fix_order_items_updated_at.js`.
+- [manual] Rotate any previously exposed Supabase service-role keys, admin passwords, and pasted user/session tokens in Supabase.
 - Add `.angular/cache/` to `.gitignore`.
 - Stop tracking generated Angular cache files.
 - Review tracked build/release artifacts and decide whether they should stay in git.
 - Remove or quarantine broken helper scripts like `app/fix.js`.
-- Make sure all secrets only live in env files or deployment dashboards.
+- [done for current scripts/server] Make sure all secrets only live in env files or deployment dashboards.
+- [done] Remove the browser-side `shakhis_admin_api_secret` override path.
+- [done] Remove default/hardcoded bootstrap user passwords from admin/user creation paths.
 
 **Phase 2: Canonical Architecture Cleanup**
 - [done] Update docs so they describe the current Supabase multi-shop app, not the old SQLite/Electron-first version.
@@ -53,17 +55,29 @@ Here’s the TODO list I’d use, in the order we should tackle it:
 - [done for roles-list pages] Standardize permission checks across Products, Orders, Buying List, Arrivals, Shipping, Shipping Ledger, Stock Sales, Manage Batches, and Roles.
 - [done] Add method-level guards for Phase 5 destructive/state-changing actions in Products, Orders, Buying List, Arrivals, Shipping, Shipping Ledger, Stock Sales, and Manage Batches.
 - [done for routed pages] Route-level view permissions are enforced through the route guards.
+- [done] Stop restoring trusted users/permissions from `localStorage`; hydrate from the live Supabase session and shop membership.
+- [done] Add a Supabase security migration that removes JWT `user_metadata.shop_id` trust and enforces role permissions in RLS.
+- [done] Add shop-admin checks to service-role admin API routes.
+- [manual] Run `supabase/migrations/20260613120000_enforce_role_permissions.sql` against the live project.
 - [backlog] Continue replacing any future admin-only or hardcoded action gates with explicit RBAC operation checks.
 
 **Phase 6: Workflow State Cleanup**
-- Define the batch lifecycle as a state machine.
-- Prevent invalid states like arrivals sent before buying list exists.
-- Replace scattered flags with clearer transitions where possible.
-- Normalize movement between stages: orders to buying list, buying list to arrivals, arrivals to shipping, shipping ledger to deliveries.
-- Make stock changes idempotent so double-clicks or retries don’t double-adjust inventory.
+- [done] Define the app-level batch lifecycle as a canonical workflow map.
+- [done] Add service-level transition guards for orders -> buying list, buying list -> arrivals, arrivals -> shipping, and shipping -> deliveries.
+- [done] Prevent invalid arrivals creation before a buying list exists.
+- [done] Make batch close respect failed workflow transitions instead of marking the UI closed anyway.
+- [done] Make legacy delivery creation idempotent by reusing existing batch/client delivery rows.
+- [done] Normalize app-service movement between stages: orders to buying list, buying list to arrivals, arrivals to shipping, shipping ledger to deliveries.
+- [done] Make stock, shipping-queue, and delivery side effects idempotent against common double-clicks or retries.
+- [done] Audit persisted workflow flags; keep current flags as compatibility/status markers behind the canonical workflow map.
+- [pending] Consider database-level constraints or RPCs for workflow transitions once the app-level state machine settles.
 
 **Phase 7: UI Structure Cleanup**
-- Continue moving pages to shared `app-table`, `app-modal-shell`, `app-batch-list-section`, and `app-stat-cards`.
+- [done] Add a reusable responsive app shell with mobile top bar, sidebar drawer, and smaller content padding.
+- [done] Keep `app-table` tabular on mobile and enable horizontal scrolling for dense data.
+- [done] Add reusable mobile bottom-sheet behavior to `app-modal-shell`.
+- [done] Improve `app-batch-list-section` mobile toolbar/grid behavior.
+- [in-progress] Continue moving pages to shared `app-table`, `app-modal-shell`, `app-batch-list-section`, and `app-stat-cards`.
 - Remove legacy modal/table patterns after migration.
 - Standardize loading, empty states, status pills, filters, pagination, and action buttons.
 - Improve mobile responsiveness for the main shell/sidebar and table-heavy pages.

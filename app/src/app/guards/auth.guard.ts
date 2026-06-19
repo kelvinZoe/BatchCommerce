@@ -22,7 +22,7 @@ export const setupGuard: CanActivateFn = () => {
  * Checks that the user is logged in.
  * Use on all routes except /login and /setup.
  */
-export const authGuard: CanActivateFn = () => {
+export const authGuard: CanActivateFn = async () => {
   const auth = inject(AuthService);
   const router = inject(Router);
   const config = inject(ShopConfigService);
@@ -31,6 +31,8 @@ export const authGuard: CanActivateFn = () => {
     router.navigate(['/setup']);
     return false;
   }
+
+  await auth.ensureSessionLoaded();
 
   if (auth.isLoggedIn) {
     return true;
@@ -46,9 +48,11 @@ export const authGuard: CanActivateFn = () => {
  *   canActivate: [authGuard, permissionGuard('products')]
  */
 export function permissionGuard(resource: AppResource): CanActivateFn {
-  return () => {
+  return async () => {
     const auth = inject(AuthService);
     const router = inject(Router);
+
+    await auth.ensureSessionLoaded();
 
     if (!auth.isLoggedIn) {
       router.navigate(['/login']);

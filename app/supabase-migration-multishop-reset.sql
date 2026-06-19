@@ -61,13 +61,8 @@ AS $$
 DECLARE
   v_shop_id TEXT;
 BEGIN
-  -- 1. Try to read from JWT user_metadata
-  v_shop_id := auth.jwt() -> 'user_metadata' ->> 'shop_id';
-  IF v_shop_id IS NOT NULL AND v_shop_id <> '' THEN
-    RETURN v_shop_id::UUID;
-  END IF;
-
-  -- 2. Try to read from JWT app_metadata
+  -- Service-controlled app_metadata may carry a shop hint, but user_metadata
+  -- must not be trusted for authorization decisions.
   v_shop_id := auth.jwt() -> 'app_metadata' ->> 'shop_id';
   IF v_shop_id IS NOT NULL AND v_shop_id <> '' THEN
     RETURN v_shop_id::UUID;
@@ -1121,16 +1116,13 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, auth
 AS $$
-  SELECT (
-    (auth.jwt() -> 'user_metadata' ->> 'shop_id') = p_shop_id::text
-    OR
-    EXISTS (
-      SELECT 1
-      FROM public.shop_memberships sm
-      WHERE sm.shop_id = p_shop_id
-        AND sm.auth_user_id = auth.uid()
-        AND sm.is_active = TRUE
-    )
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.shop_memberships sm
+    WHERE sm.shop_id = p_shop_id
+      AND sm.auth_user_id = auth.uid()
+      AND sm.is_active = TRUE
+      AND COALESCE(sm.membership_status, 'active') = 'active'
   );
 $$;
 
