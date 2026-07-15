@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DateFilterComponent } from '../../components/date-filter/date-filter.component';
+import { ModalShellComponent } from '../../components/modal-shell/modal-shell.component';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
 import { Expense, ExpenseCategory, PaymentMethod } from '../../models';
@@ -9,7 +10,7 @@ import { Expense, ExpenseCategory, PaymentMethod } from '../../models';
 @Component({
   selector: 'app-expenses',
   standalone: true,
-  imports: [CommonModule, FormsModule, DateFilterComponent],
+  imports: [CommonModule, FormsModule, DateFilterComponent, ModalShellComponent],
   template: `
     <div class="expenses-page">
       <div class="page-header">
@@ -174,73 +175,73 @@ import { Expense, ExpenseCategory, PaymentMethod } from '../../models';
       </ng-container>
 
       <!-- Modal -->
-      <div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
-        <div class="modal" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ editingExpense ? 'Edit Expense' : 'Add Expense' }}</h3>
-            <button class="close-btn" (click)="closeModal()">&times;</button>
-          </div>
-          <div class="modal-body">
-            <div class="form-row">
-              <div class="form-group">
-                <label>Category *</label>
-                <select [(ngModel)]="formData.category" (change)="onCategoryChange()">
-                  <option *ngFor="let cat of categories" [value]="cat.value">{{ cat.label }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Date *</label>
-                <input type="date" [(ngModel)]="formData.expenseDate" />
-              </div>
-            </div>
-
+      <app-modal-shell
+        *ngIf="showModal"
+        size="lg"
+        [title]="editingExpense ? 'Edit Expense' : 'Add Expense'"
+        [subtitle]="editingExpense ? 'Update the expense record' : 'Track a new business expense or salary'"
+        [icon]="editingExpense ? 'edit_note' : 'receipt_long'"
+        (closeRequested)="closeModal()">
+        <div modal-body>
+          <div class="form-row">
             <div class="form-group">
-              <label>Description *</label>
-              <input type="text" [(ngModel)]="formData.description"
-                     [placeholder]="formData.category === 'salary' ? 'e.g., January 2026 Salary' : 'What was this expense for?'" />
+              <label>Category *</label>
+              <select [(ngModel)]="formData.category" (change)="onCategoryChange()">
+                <option *ngFor="let cat of categories" [value]="cat.value">{{ cat.label }}</option>
+              </select>
             </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>Amount (GHS) *</label>
-                <input type="number" [(ngModel)]="formData.amount" placeholder="0.00" min="0" step="0.01" />
-              </div>
-              <div class="form-group">
-                <label>{{ formData.category === 'salary' ? 'Employee Name' : 'Recipient / Vendor' }}</label>
-                <input type="text" [(ngModel)]="formData.recipient"
-                       [placeholder]="formData.category === 'salary' ? 'e.g., Kwame Asante' : 'Who received the payment?'" />
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>Payment Method</label>
-                <select [(ngModel)]="formData.paymentMethod">
-                  <option value="cash">Cash</option>
-                  <option value="mobile_money">Mobile Money</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Reference / Receipt #</label>
-                <input type="text" [(ngModel)]="formData.reference"
-                       placeholder="Transaction ID or receipt number" />
-              </div>
-            </div>
-
             <div class="form-group">
-              <label>Notes</label>
-              <textarea [(ngModel)]="formData.notes" placeholder="Additional notes..."></textarea>
+              <label>Date *</label>
+              <input type="date" [(ngModel)]="formData.expenseDate" />
             </div>
           </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" (click)="closeModal()">Cancel</button>
-            <button class="btn btn-primary" (click)="saveExpense()">
-              {{ editingExpense ? 'Update' : 'Add' }} Expense
-            </button>
+
+          <div class="form-group">
+            <label>Description *</label>
+            <input type="text" [(ngModel)]="formData.description"
+                   [placeholder]="formData.category === 'salary' ? 'e.g., January 2026 Salary' : 'What was this expense for?'" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Amount (GHS) *</label>
+              <input type="number" [(ngModel)]="formData.amount" placeholder="0.00" min="0" step="0.01" />
+            </div>
+            <div class="form-group">
+              <label>{{ formData.category === 'salary' ? 'Employee Name' : 'Recipient / Vendor' }}</label>
+              <input type="text" [(ngModel)]="formData.recipient"
+                     [placeholder]="formData.category === 'salary' ? 'e.g., Kwame Asante' : 'Who received the payment?'" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Payment Method</label>
+              <select [(ngModel)]="formData.paymentMethod">
+                <option value="cash">Cash</option>
+                <option value="mobile_money">Mobile Money</option>
+                <option value="bank_transfer">Bank Transfer</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Reference / Receipt #</label>
+              <input type="text" [(ngModel)]="formData.reference"
+                     placeholder="Transaction ID or receipt number" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea [(ngModel)]="formData.notes" placeholder="Additional notes..."></textarea>
           </div>
         </div>
-      </div>
+        <div modal-footer>
+          <button class="btn btn-secondary" (click)="closeModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveExpense()">
+            {{ editingExpense ? 'Update' : 'Add' }} Expense
+          </button>
+        </div>
+      </app-modal-shell>
     </div>
   `,
   styles: [`

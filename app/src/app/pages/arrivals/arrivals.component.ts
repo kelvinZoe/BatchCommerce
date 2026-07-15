@@ -413,8 +413,8 @@ interface DamageAllocationClient {
     .arr-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
     .arr-search-wrap { position: relative; flex: 1; min-width: 200px; max-width: 340px; }
     .arr-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 18px; pointer-events: none; }
-    .arr-search-input { width: 100%; padding: 9px 12px 9px 36px; border: 1px solid #ccc; border-radius: 9px; font-size: 13px; background: #f8fafc; color: #1e293b; box-sizing: border-box; transition: border-color 0.13s, box-shadow 0.13s; }
-    .arr-search-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99,102,241), 0.12); background: #fff; }
+    .arr-search-input { width: 100%; padding: 9px 12px 9px 36px; border: 1px solid #ccc; border-radius: 9px; font-size: 13px; background: #f8fafc; color: #1e293b; box-sizing: border-box; transition: border-color 0.13s; }
+    .arr-search-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); background: #fff; }
 
     /* ── Two column layout ── */
     .arr-cols { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; align-items: start; }
@@ -470,7 +470,7 @@ interface DamageAllocationClient {
 
     /* ── Modal ── */
     .arr-modal-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
-    .arr-modal { background: #fff; border-radius: 16px; width: 100%; max-width: 480px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.2); overflow: hidden; }
+    .arr-modal { background: #fff; border-radius: 16px; width: 100%; max-width: 480px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
     .arr-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid #ccc; gap: 8px; }
     .arr-modal-title { font-size: 16px; font-weight: 700; color: #0f172a; margin: 0; }
     .arr-modal-sub { font-size: 13px; font-weight: 400; color: #64748b; }
@@ -501,7 +501,7 @@ interface DamageAllocationClient {
     .arr-alloc-table-wrap .arr-table tr:hover td { background: #fafbff; }
     .arr-alloc-table-wrap .arr-table tr:last-child td { border-bottom: none; }
     .arr-alloc-table-wrap .arr-qty-input { width: 72px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; text-align: center; }
-    .arr-alloc-table-wrap .arr-qty-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99, 102, 241), 0.12); }
+    .arr-alloc-table-wrap .arr-qty-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); }
     .arr-alloc-warning { display: flex; align-items: center; gap: 8px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #9a3412; margin-top: 8px; }
     .arr-alloc-warning .material-icons { font-size: 18px; flex-shrink: 0; }
 
@@ -517,7 +517,6 @@ interface DamageAllocationClient {
       padding: 12px 16px;
       border-radius: 12px;
       border: 1px solid transparent;
-      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
       font-size: 13px;
       font-weight: 700;
       animation: arr-toast-in 0.18s ease-out;

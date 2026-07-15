@@ -443,11 +443,10 @@ import {
       border-radius: 14px;
       padding: 20px;
       cursor: pointer;
-      transition: border-color 0.18s, box-shadow 0.18s, transform 0.18s;
+      transition: border-color 0.18s, transform 0.18s;
     }
     .dv-batch-card:hover {
       border-color: var(--primary-color, #6366f1);
-      box-shadow: 0 4px 18px rgba(99,102,241,0.12);
       transform: translateY(-2px);
     }
     .dv-batch-completed { opacity: 0.7; }
@@ -661,7 +660,7 @@ import {
       background: #fff;
       box-sizing: border-box;
     }
-    .dv-search:focus { outline: none; border-color: var(--primary-color, #6366f1); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+    .dv-search:focus { outline: none; border-color: var(--primary-color, #6366f1); }
     .dv-dd-list { list-style: none; margin: 0; padding: 0; }
     .dv-dd-item {
       display: flex; align-items: center; gap: 8px;

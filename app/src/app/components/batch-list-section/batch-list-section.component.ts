@@ -188,13 +188,12 @@ export class BatchSectionFooterDirective {
       background: #f8fafc;
       color: #1e293b;
       box-sizing: border-box;
-      transition: border-color 0.13s, box-shadow 0.13s, background 0.13s;
+      transition: border-color 0.13s, background 0.13s;
     }
 
     .bls-search-input:focus {
       outline: none;
       border-color: var(--primary-light, #a5b4fc);
-      box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99,102,241), 0.12);
       background: #fff;
     }
 

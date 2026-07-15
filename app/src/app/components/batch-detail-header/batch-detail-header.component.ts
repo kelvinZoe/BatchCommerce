@@ -63,12 +63,11 @@ export interface BatchDetailHeaderTagConfig {
       font-size: 14px;
       font-weight: 700;
       cursor: pointer;
-      transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+      transition: border-color 0.15s, transform 0.15s;
     }
 
     .bdh-back-btn:hover {
       border-color: var(--primary-light, #c4b5fd);
-      box-shadow: 0 6px 18px rgba(var(--primary-rgb, 99,102,241), 0.08);
       transform: translateY(-1px);
     }
 

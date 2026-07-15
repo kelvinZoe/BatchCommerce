@@ -64,7 +64,7 @@ export interface BatchCardTagConfig {
       border: 1px solid var(--border-color, #e2e8f0);
       border-radius: 14px;
       background: var(--card-background, #fff);
-      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+      transition: border-color 0.15s, background 0.15s;
     }
 
     .bc-card-clickable {
@@ -73,12 +73,10 @@ export interface BatchCardTagConfig {
 
     .bc-card-clickable:hover {
       border-color: var(--primary-light, #a5b4fc);
-      box-shadow: 0 4px 16px rgba(var(--primary-rgb, 99,102,241), 0.1);
     }
 
     .bc-card-active {
       border-color: var(--primary-color, #6366f1) !important;
-      box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99,102,241), 0.15);
     }
 
     .bc-card-muted {
@@ -131,7 +129,6 @@ export interface BatchCardTagConfig {
       justify-content: center;
       flex-shrink: 0;
       border: 1px solid rgba(var(--primary-rgb, 99,102,241), 0.15);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.45);
     }
 
     .bc-card-icon .material-icons {
@@ -142,7 +139,6 @@ export interface BatchCardTagConfig {
       background: #f1f5f9;
       color: #94a3b8;
       border-color: #e2e8f0;
-      box-shadow: none;
     }
 
     .bc-card-title {

@@ -51,7 +51,7 @@ import { DropdownComponent } from '../dropdown/dropdown.component';
       font-size: 12px; color: #334155; background: #f8fafc;
       transition: border-color 0.13s; cursor: pointer;
     }
-    .df-inline-input input[type="date"]:focus { outline: none; border-color: var(--primary-light, #a5b4fc); box-shadow: 0 0 0 3px rgba(var(--primary-rgb,99,102,241),0.12); }
+    .df-inline-input input[type="date"]:focus { outline: none; border-color: var(--primary-light, #a5b4fc); }
   `]
 })
 export class DateFilterComponent {

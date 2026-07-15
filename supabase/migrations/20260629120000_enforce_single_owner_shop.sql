@@ -1,13 +1,83 @@
--- ============================================================
--- Shakhis Commerce - Workspace Bootstrap Helpers
--- Adds a self-serve onboarding RPC for account + shop creation.
--- Run this after the reset schema on the new Supabase project.
--- ============================================================
+-- Enforce one owned shop per auth account and add a soft device guard.
+-- Staff/team memberships can still exist, but an account cannot bootstrap
+-- multiple owner workspaces to reset promos or bypass plan limits.
 
-ALTER TABLE shops
+ALTER TABLE public.shops
   ADD COLUMN IF NOT EXISTS owner_device_id TEXT;
 
-CREATE OR REPLACE FUNCTION bootstrap_shop_workspace(
+CREATE OR REPLACE FUNCTION public.prevent_multiple_owned_shops()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_owner_device_id TEXT;
+BEGIN
+  IF NEW.auth_user_id IS NULL OR COALESCE(NEW.is_owner, FALSE) IS FALSE THEN
+    RETURN NEW;
+  END IF;
+
+  IF COALESCE(NEW.is_active, TRUE) IS FALSE
+     OR COALESCE(NEW.membership_status, 'active') = 'removed' THEN
+    RETURN NEW;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.shop_memberships existing
+    WHERE existing.auth_user_id = NEW.auth_user_id
+      AND existing.is_owner = TRUE
+      AND existing.is_active = TRUE
+      AND COALESCE(existing.membership_status, 'active') <> 'removed'
+      AND existing.id IS DISTINCT FROM NEW.id
+  ) THEN
+    RAISE EXCEPTION 'This account already owns a shop. Each account can create only one shop.'
+      USING ERRCODE = '23505';
+  END IF;
+
+  SELECT NULLIF(btrim(s.owner_device_id), '')
+    INTO v_owner_device_id
+  FROM public.shops s
+  WHERE s.id = NEW.shop_id;
+
+  IF v_owner_device_id IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM public.shop_memberships existing
+    JOIN public.shops existing_shop ON existing_shop.id = existing.shop_id
+    WHERE NULLIF(btrim(existing_shop.owner_device_id), '') = v_owner_device_id
+      AND existing.is_owner = TRUE
+      AND existing.is_active = TRUE
+      AND COALESCE(existing.membership_status, 'active') <> 'removed'
+      AND existing.id IS DISTINCT FROM NEW.id
+  ) THEN
+    RAISE EXCEPTION 'This device has already created a shop. Each device can start only one owner shop promo.'
+      USING ERRCODE = '23505';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_prevent_multiple_owned_shops ON public.shop_memberships;
+
+CREATE TRIGGER trg_prevent_multiple_owned_shops
+  BEFORE INSERT OR UPDATE OF auth_user_id, is_owner, is_active, membership_status
+  ON public.shop_memberships
+  FOR EACH ROW
+  EXECUTE FUNCTION public.prevent_multiple_owned_shops();
+
+CREATE INDEX IF NOT EXISTS idx_shop_memberships_owner_guard
+  ON public.shop_memberships(auth_user_id)
+  WHERE is_owner = TRUE
+    AND is_active = TRUE
+    AND COALESCE(membership_status, 'active') <> 'removed';
+
+CREATE INDEX IF NOT EXISTS idx_shops_owner_device_id
+  ON public.shops(owner_device_id)
+  WHERE owner_device_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.bootstrap_shop_workspace(
   p_shop_name TEXT,
   p_full_name TEXT,
   p_email TEXT,
@@ -53,7 +123,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1
-    FROM shop_memberships
+    FROM public.shop_memberships
     WHERE auth_user_id = v_auth_user_id
       AND is_owner = TRUE
       AND is_active = TRUE
@@ -64,8 +134,8 @@ BEGIN
 
   IF v_owner_device_id IS NOT NULL AND EXISTS (
     SELECT 1
-    FROM shop_memberships sm
-    JOIN shops s ON s.id = sm.shop_id
+    FROM public.shop_memberships sm
+    JOIN public.shops s ON s.id = sm.shop_id
     WHERE NULLIF(btrim(s.owner_device_id), '') = v_owner_device_id
       AND sm.is_owner = TRUE
       AND sm.is_active = TRUE
@@ -76,7 +146,7 @@ BEGIN
 
   SELECT id
     INTO v_app_user_id
-  FROM app_users
+  FROM public.app_users
   WHERE auth_id = v_auth_user_id;
 
   IF v_app_user_id IS NULL THEN
@@ -91,13 +161,13 @@ BEGIN
 
     WHILE EXISTS (
       SELECT 1
-      FROM app_users
+      FROM public.app_users
       WHERE username = v_username
     ) LOOP
       v_username := v_username || '-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 6);
     END LOOP;
 
-    INSERT INTO app_users (
+    INSERT INTO public.app_users (
       auth_id,
       username,
       full_name,
@@ -114,7 +184,7 @@ BEGIN
     )
     RETURNING id INTO v_app_user_id;
   ELSE
-    UPDATE app_users
+    UPDATE public.app_users
       SET full_name = v_full_name,
           phone = COALESCE(NULLIF(v_phone, ''), phone),
           email = v_email,
@@ -134,13 +204,13 @@ BEGIN
   v_shop_slug := v_base_slug;
   WHILE EXISTS (
     SELECT 1
-    FROM shops
+    FROM public.shops
     WHERE slug = v_shop_slug
   ) LOOP
     v_shop_slug := v_base_slug || '-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 6);
   END LOOP;
 
-  INSERT INTO shops (
+  INSERT INTO public.shops (
     name,
     slug,
     owner_device_id,
@@ -153,7 +223,7 @@ BEGIN
   )
   RETURNING id INTO v_shop_id;
 
-  INSERT INTO roles (
+  INSERT INTO public.roles (
     shop_id,
     name,
     description,
@@ -170,7 +240,7 @@ BEGIN
   )
   RETURNING id INTO v_role_id;
 
-  INSERT INTO role_permissions (
+  INSERT INTO public.role_permissions (
     shop_id,
     role_id,
     resource,
@@ -213,7 +283,7 @@ BEGIN
       ('expenses')
   ) AS permissions(resource);
 
-  INSERT INTO shop_memberships (
+  INSERT INTO public.shop_memberships (
     shop_id,
     auth_user_id,
     app_user_id,
@@ -250,4 +320,4 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION bootstrap_shop_workspace(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.bootstrap_shop_workspace(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO authenticated;

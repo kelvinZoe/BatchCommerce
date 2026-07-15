@@ -24,7 +24,8 @@ Shipping ledger : {
 
 Stock Sales : {
     roles: [deleting a sale, editing a sale, adding a new sale, closing a sale]
-}   
+} 
+  
 Manage Bacthes page: {
     roles: [deleting a batch, renaming a batch]
 }

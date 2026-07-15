@@ -84,12 +84,11 @@ import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/f
       cursor: pointer;
       font-size: 13px;
       color: #1e293b;
-      transition: border-color 0.13s, box-shadow 0.13s;
+      transition: border-color 0.13s;
       text-align: left;
     }
     .ss-root.ss-open .ss-trigger {
       border-color: var(--primary-light,#a5b4fc);
-      box-shadow: 0 0 0 3px rgba(var(--primary-rgb,99,102,241), 0.15);
     }
     .ss-trigger:hover:not(:disabled) {
       border-color: var(--primary-light,#a5b4fc);
@@ -111,7 +110,6 @@ import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/f
       background: #fff;
       border: 1px solid #e2e8f0;
       border-radius: 12px;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
       z-index: 99999;
       overflow: hidden;
     }

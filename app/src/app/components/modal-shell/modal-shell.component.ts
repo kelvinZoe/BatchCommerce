@@ -108,7 +108,6 @@ export interface ModalButtonConfig {
       background: #fff;
       border-radius: 16px;
       border: 1px solid #e2e8f0;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
       display: flex;
       flex-direction: column;
       max-height: 90vh;
@@ -281,7 +280,7 @@ export interface ModalButtonConfig {
       font-size: 13px;
       font-weight: 700;
       cursor: pointer;
-      transition: transform 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+      transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -306,7 +305,6 @@ export interface ModalButtonConfig {
     .pp-shell-btn-base {
       background: var(--primary-color, #6366f1);
       color: #fff;
-      box-shadow: 0 10px 22px rgba(var(--primary-rgb, 99,102,241), 0.24);
     }
 
     .pp-shell-btn-danger {
@@ -349,7 +347,6 @@ export interface ModalButtonConfig {
         max-width: none;
         max-height: min(92dvh, 760px);
         border-radius: 22px 22px 16px 16px;
-        box-shadow: 0 -18px 50px rgba(15, 23, 42, 0.22);
       }
 
       .pp-modal-header {

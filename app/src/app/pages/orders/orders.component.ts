@@ -665,7 +665,7 @@ import {
     .ord-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
     /* ── Buttons ── */
-    .ord-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 9px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.13s, box-shadow 0.13s, opacity 0.13s; }
+    .ord-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 9px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.13s, opacity 0.13s; }
     .ord-btn .material-icons { font-size: 18px; }
     .ord-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .ord-btn-primary { background: var(--primary-color, #6366f1); color: #fff; }
@@ -724,7 +724,7 @@ import {
 
     /* ── Modal ── */
     .ord-modal-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
-    .ord-modal { background: #fff; border-radius: 16px; display: flex; flex-direction: column; max-height: 90vh; box-shadow: 0 20px 60px rgba(0,0,0,0.2); overflow: hidden; }
+    .ord-modal { background: #fff; border-radius: 16px; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; }
     .ord-modal-sm { width: 440px; }
     .ord-modal-lg { width: 760px; max-width: 100%; }
     .ord-modal-header { display: flex; align-items: center; gap: 12px; padding: 18px 20px 14px; border-bottom: 1px solid #ccc; background: linear-gradient(135deg, #f8faff, #fff); flex-shrink: 0; }
@@ -743,15 +743,15 @@ import {
     .ord-label { display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 5px; }
     .ord-required { color: #ef4444; margin-left: 2px; }
     .ord-optional { color: #94a3b8; font-weight: 400; }
-    .ord-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 9px; font-size: 13px; background: #fff; color: #1e293b; transition: border-color 0.13s, box-shadow 0.13s; box-sizing: border-box; }
-    .ord-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99,102,241), 0.15); }
+    .ord-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 9px; font-size: 13px; background: #fff; color: #1e293b; transition: border-color 0.13s; box-sizing: border-box; }
+    .ord-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); }
     .ord-textarea { resize: vertical; }
     .ord-readonly { padding: 9px 12px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 9px; background: #f8fafc; font-size: 13px; color: #64748b; }
     .ord-input-prefix { display: flex; align-items: center; border: 1px solid var(--border-color, #e2e8f0); border-radius: 9px; overflow: hidden; background: #fff; transition: border-color 0.13s; }
-    .ord-input-prefix:focus-within { border-color: var(--primary-light, #a5b4fc); box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99,102,241), 0.15); }
+    .ord-input-prefix:focus-within { border-color: var(--primary-light, #a5b4fc); }
     .ord-input-prefix:has(input:disabled) { background: #f8fafc; border-color: #e2e8f0; }
     .ord-input-prefix span:not(.ord-disc-icon) { padding: 0 10px; font-size: 11px; font-weight: 700; color: #94a3b8; background: #f8fafc; border-right: 1px solid var(--border-color, #e2e8f0); white-space: nowrap; align-self: stretch; display: flex; align-items: center; }
-    .ord-input-prefixed { border: none !important; box-shadow: none !important; border-radius: 0 !important; flex: 1; }
+    .ord-input-prefixed { border: none !important; border-radius: 0 !important; flex: 1; }
     .ord-input-prefixed:disabled { background: #f8fafc; color: #94a3b8; cursor: not-allowed; }
     .ord-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
@@ -1556,24 +1556,30 @@ export class OrdersComponent implements OnInit {
             subtotal: i.subtotal
           }))
         };
-        this.dbService.createOrder(order).subscribe(orderId => {
-          if (!orderId) { this.savingOrder = false; return; }
-          const itemSaves = order.items.map(item =>
-            this.dbService.addOrderItem({ ...item, orderId }).toPromise()
-          );
-          Promise.all(itemSaves).then(() => {
+        this.dbService.createOrder(order).subscribe({
+          next: orderId => {
+            if (!orderId) { this.savingOrder = false; return; }
+            const itemSaves = order.items.map(item =>
+              this.dbService.addOrderItem({ ...item, orderId }).toPromise()
+            );
+            Promise.all(itemSaves).then(() => {
+              this.savingOrder = false;
+              this.savedOrderReceipt = {
+                orderId,
+                clientName: savedClient?.name || 'Customer',
+                clientPhone: savedClient?.phone || (savedClient as any)?.whatsappNumber || '',
+                batchName: this.selectedBatch?.name || '',
+                items: savedItems,
+                total: order.totalAmount || 0,
+                addedToExisting: false
+              };
+              this.loadOrders();
+            });
+          },
+          error: (err: any) => {
             this.savingOrder = false;
-            this.savedOrderReceipt = {
-              orderId,
-              clientName: savedClient?.name || 'Customer',
-              clientPhone: savedClient?.phone || (savedClient as any)?.whatsappNumber || '',
-              batchName: this.selectedBatch?.name || '',
-              items: savedItems,
-              total: order.totalAmount || 0,
-              addedToExisting: false
-            };
-            this.loadOrders();
-          });
+            alert(err?.message || 'Failed to create order. Please try again.');
+          }
         });
       }
     });

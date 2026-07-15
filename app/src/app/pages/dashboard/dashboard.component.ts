@@ -1,122 +1,115 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
 import { SupabaseService } from '../../services/supabase.service';
+import { ShopConfigService } from '../../services/shop-config.service';
 import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardComponentConfig } from '../../models';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule],
   template: `
     <div class="dashboard">
-      <div class="page-header">
-        <h1>Dashboard</h1>
-        <p class="subtitle">Welcome to Shakhis Ventures Commerce</p>
-      </div>
+      <section class="dash-hero">
+        <div class="dash-hero-copy">
+          <span class="dash-kicker">Command room</span>
+          <h1>Dashboard</h1>
+          <p>{{ dashboardGreeting }}</p>
+        </div>
+        <div class="dash-hero-actions">
+          <div class="dash-date-chip">
+            <span class="material-icons">calendar_today</span>
+            {{ todayStr | date:'mediumDate' }}
+          </div>
+          <button class="dash-refresh" type="button" (click)="loadData()" [disabled]="loading">
+            <span class="material-icons" [class.spin]="loading">sync</span>
+            Refresh
+          </button>
+        </div>
+      </section>
 
       <ng-container *ngIf="loading">
-        <div class="stats-grid">
+        <div class="stats-grid dash-loading-stats">
           <div class="skeleton-stat-card" *ngFor="let i of [1,2,3,4]">
             <div class="skeleton-icon"></div>
-            <div class="skeleton-line h-28 w-40" style="margin-bottom:8px"></div>
+            <div class="skeleton-line h-28 w-40 skeleton-spaced"></div>
             <div class="skeleton-line h-12 w-60"></div>
           </div>
         </div>
-        <div class="skeleton-card full-width" style="margin-top:20px">
-          <div class="skeleton-line h-20 w-40" style="margin-bottom:16px"></div>
-          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px">
-            <div class="skeleton-line" style="height:80px" *ngFor="let i of [1,2,3,4,5]"></div>
+        <div class="skeleton-card dash-loading-panel full-width">
+          <div class="skeleton-line h-20 w-40 skeleton-title-line"></div>
+          <div class="dash-loading-grid">
+            <div class="skeleton-line dash-loading-block" *ngFor="let i of [1,2,3,4,5]"></div>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+        <div class="dash-loading-columns">
           <div class="skeleton-card" *ngFor="let i of [1,2]">
-            <div class="skeleton-line h-20 w-50" style="margin-bottom:16px"></div>
-            <div class="skeleton-line" style="height:200px"></div>
+            <div class="skeleton-line h-20 w-50 skeleton-title-line"></div>
+            <div class="skeleton-line dash-loading-chart"></div>
           </div>
         </div>
       </ng-container>
 
       <ng-container *ngIf="!loading">
-        <div class="stats-grid skeleton-fade-in" *ngIf="can('stats')">
-          <div class="stat-card">
-            <div class="stat-icon blue"><span class="material-icons">inventory_2</span></div>
-            <div class="stat-value">{{ totalProducts }}</div>
-            <div class="stat-label">Total Products</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon green"><span class="material-icons">people</span></div>
-            <div class="stat-value">{{ totalClients }}</div>
-            <div class="stat-label">Total Clients</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon yellow"><span class="material-icons">shopping_cart</span></div>
-            <div class="stat-value">{{ todayOrders }}</div>
-            <div class="stat-label">Orders Today</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon purple"><span class="material-icons">local_shipping</span></div>
-            <div class="stat-value">{{ pendingDeliveries }}</div>
-            <div class="stat-label">Pending Deliveries</div>
-          </div>
-        </div>
-
         <ng-container *ngIf="can('finance')">
         <div class="section-header skeleton-fade-in">
           <div class="section-title">
-            <span class="material-icons">account_balance</span>
-            <h2>Finance Overview</h2>
+            <span class="material-icons">monitoring</span>
+            <h2>Latest Batch Health</h2>
           </div>
-          <span class="period-badge">This Batch vs Last Batch</span>
+          <span class="period-badge">{{ currentBatchName }} vs {{ previousBatchName }}</span>
         </div>
-        <div class="finance-grid skeleton-fade-in">
-          <div class="finance-card">
-            <div class="finance-icon green-bg"><span class="material-icons">trending_up</span></div>
-            <div class="finance-details">
-              <span class="finance-label">Revenue</span>
-              <span class="finance-value">GHS {{ revenueThisMonth | number:'1.2-2' }}</span>
-              <span class="finance-change" [class.positive]="revenueChange >= 0" [class.negative]="revenueChange < 0">
-                {{ revenueChange >= 0 ? '\u25b2' : '\u25bc' }} {{ revenueChange >= 0 ? revenueChange : revenueChange * -1 }}% vs last batch
-              </span>
+        <div class="stats-grid batch-health-grid skeleton-fade-in">
+          <div class="stat-card">
+            <div class="stat-icon yellow"><span class="material-icons">shopping_cart</span></div>
+            <div class="stat-value">{{ ordersThisBatch }}</div>
+            <div class="stat-label">Batch Orders</div>
+            <div class="stat-sub" [class.positive]="ordersChange >= 0" [class.negative]="ordersChange < 0">
+              {{ ordersChange >= 0 ? '\u25b2' : '\u25bc' }} {{ ordersChange >= 0 ? ordersChange : ordersChange * -1 }}% vs last batch
             </div>
           </div>
-          <div class="finance-card">
-            <div class="finance-icon red-bg"><span class="material-icons">money_off</span></div>
-            <div class="finance-details">
-              <span class="finance-label">Expenses</span>
-              <span class="finance-value">GHS {{ expensesThisMonth | number:'1.2-2' }}</span>
-              <span class="finance-change" [class.positive]="expenseChange <= 0" [class.negative]="expenseChange > 0">
-                {{ expenseChange >= 0 ? '\u25b2' : '\u25bc' }} {{ expenseChange >= 0 ? expenseChange : expenseChange * -1 }}% vs last month
-              </span>
+          <div class="stat-card">
+            <div class="stat-icon green"><span class="material-icons">payments</span></div>
+            <div class="stat-value">GHS {{ batchOrderValue | number:'1.0-0' }}</div>
+            <div class="stat-label">Batch Order Value</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon blue"><span class="material-icons">paid</span></div>
+            <div class="stat-value">GHS {{ revenueThisMonth | number:'1.0-0' }}</div>
+            <div class="stat-label">Paid Revenue</div>
+            <div class="stat-sub" [class.positive]="revenueChange >= 0" [class.negative]="revenueChange < 0">
+              {{ revenueChange >= 0 ? '\u25b2' : '\u25bc' }} {{ revenueChange >= 0 ? revenueChange : revenueChange * -1 }}% vs last batch
             </div>
           </div>
-          <div class="finance-card">
-            <div class="finance-icon blue-bg"><span class="material-icons">local_shipping</span></div>
-            <div class="finance-details">
-              <span class="finance-label">Shipping Fees</span>
-              <span class="finance-value">GHS {{ shippingThisMonth | number:'1.2-2' }}</span>
-              <span class="finance-change" [class.positive]="shippingChange >= 0" [class.negative]="shippingChange < 0">
-                {{ shippingChange >= 0 ? '\u25b2' : '\u25bc' }} {{ shippingChange >= 0 ? shippingChange : shippingChange * -1 }}% vs last batch
-              </span>
-            </div>
+          <div class="stat-card">
+            <div class="stat-icon purple"><span class="material-icons">pending_actions</span></div>
+            <div class="stat-value">GHS {{ batchOpenPaymentValue | number:'1.0-0' }}</div>
+            <div class="stat-label">Unpaid / Partial Value</div>
+            <div class="stat-sub">{{ unpaidOrPartialOrdersThisBatch }} unpaid / partial orders</div>
           </div>
-          <!-- Net Profit removed per request -->
-          <div class="finance-card">
-            <div class="finance-icon purple-bg"><span class="material-icons">receipt_long</span></div>
-            <div class="finance-details">
-              <span class="finance-label">Paid Orders</span>
-              <span class="finance-value">{{ paidOrdersThisMonth }}</span>
-              <span class="finance-sub">This month</span>
+          <div class="stat-card">
+            <div class="stat-icon green"><span class="material-icons">task_alt</span></div>
+            <div class="stat-value">{{ batchPaidOrderRate }}%</div>
+            <div class="stat-label">Paid Order Rate</div>
+            <div class="stat-sub">{{ paidOrdersThisMonth }} of {{ ordersThisBatch }} orders paid</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon blue"><span class="material-icons">local_shipping</span></div>
+            <div class="stat-value">GHS {{ shippingThisMonth | number:'1.0-0' }}</div>
+            <div class="stat-label">Shipping Fees</div>
+            <div class="stat-sub" [class.positive]="shippingChange >= 0" [class.negative]="shippingChange < 0">
+              {{ shippingChange >= 0 ? '\u25b2' : '\u25bc' }} {{ shippingChange >= 0 ? shippingChange : shippingChange * -1 }}% vs last batch
             </div>
           </div>
         </div>
         </ng-container>
 
-        <div class="card full-width skeleton-fade-in" style="margin-top:20px" *ngIf="can('revenueTrend')">
-          <div class="card-header"><h2>Revenue Trend (Last 6 Months)</h2></div>          <div class="bar-chart">
+        <div class="card full-width trend-card skeleton-fade-in" *ngIf="can('revenueTrend')">
+          <div class="card-header"><h2>Revenue Trend (Last 6 Months)</h2></div>
+          <div class="bar-chart">
             <div class="bar-item" *ngFor="let m of monthlyRevenueTrend">
               <div class="bar-wrapper">
                 <div class="bar" [style.height.%]="m.heightPercent"></div>
@@ -132,7 +125,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
             <div class="card-header">
               <h2>Top 10 Products</h2>
               <div class="period-tabs">
-                <button [class.active]="topProductsPeriod === 'month'" (click)="onTopProductsPeriodChange('month')">Month</button>
+                <button [class.active]="topProductsPeriod === 'batch'" (click)="onTopProductsPeriodChange('batch')">Batch</button>
                 <button [class.active]="topProductsPeriod === 'quarter'" (click)="onTopProductsPeriodChange('quarter')">Quarter</button>
                 <button [class.active]="topProductsPeriod === 'year'" (click)="onTopProductsPeriodChange('year')">Year</button>
               </div>
@@ -159,7 +152,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
             <div class="card-header">
               <h2>Delivery Overview</h2>
               <div class="period-tabs">
-                <button [class.active]="deliveryPeriod === 'month'" (click)="onDeliveryPeriodChange('month')">Month</button>
+                <button [class.active]="deliveryPeriod === 'batch'" (click)="onDeliveryPeriodChange('batch')">Batch</button>
                 <button [class.active]="deliveryPeriod === 'quarter'" (click)="onDeliveryPeriodChange('quarter')">Quarter</button>
                 <button [class.active]="deliveryPeriod === 'year'" (click)="onDeliveryPeriodChange('year')">Year</button>
               </div>
@@ -189,40 +182,63 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
         </div>
 
         <div class="dashboard-grid skeleton-fade-in" *ngIf="can('batchPipeline') || can('recentOrders')">
-          <div class="card" *ngIf="can('batchPipeline')">
-            <div class="card-header"><h2>Batch Pipeline</h2></div>
+          <div class="card ops-card pipeline-card" *ngIf="can('batchPipeline')">
+            <div class="card-header ops-card-header">
+              <div>
+                <span class="dash-kicker">Batch flow</span>
+                <h2>Batch Pipeline</h2>
+              </div>
+              <span class="ops-total">{{ batchPipeline.open + batchPipeline.buying + batchPipeline.delivering + batchPipeline.completed }} active</span>
+            </div>
             <div class="pipeline">
               <div class="pipeline-stage open">
-                <div class="stage-count">{{ batchPipeline.open }}</div>
-                <div class="stage-label">Open</div>
+                <div class="stage-marker"><span class="material-icons">inventory_2</span></div>
+                <div class="stage-copy">
+                  <div class="stage-label">Open</div>
+                  <div class="stage-count">{{ batchPipeline.open }}</div>
+                </div>
               </div>
-              <span class="material-icons arrow">arrow_forward</span>
               <div class="pipeline-stage buying">
-                <div class="stage-count">{{ batchPipeline.buying }}</div>
-                <div class="stage-label">Buying</div>
+                <div class="stage-marker"><span class="material-icons">shopping_bag</span></div>
+                <div class="stage-copy">
+                  <div class="stage-label">Buying</div>
+                  <div class="stage-count">{{ batchPipeline.buying }}</div>
+                </div>
               </div>
-              <span class="material-icons arrow">arrow_forward</span>
               <div class="pipeline-stage delivering">
-                <div class="stage-count">{{ batchPipeline.delivering }}</div>
-                <div class="stage-label">Delivering</div>
+                <div class="stage-marker"><span class="material-icons">local_shipping</span></div>
+                <div class="stage-copy">
+                  <div class="stage-label">Delivering</div>
+                  <div class="stage-count">{{ batchPipeline.delivering }}</div>
+                </div>
               </div>
-              <span class="material-icons arrow">arrow_forward</span>
               <div class="pipeline-stage completed">
-                <div class="stage-count">{{ batchPipeline.completed }}</div>
-                <div class="stage-label">Completed</div>
+                <div class="stage-marker"><span class="material-icons">task_alt</span></div>
+                <div class="stage-copy">
+                  <div class="stage-label">Completed</div>
+                  <div class="stage-count">{{ batchPipeline.completed }}</div>
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="card" *ngIf="can('recentOrders')">
-            <div class="card-header"><h2>Recent Orders</h2></div>
+          <div class="card ops-card orders-card" *ngIf="can('recentOrders')">
+            <div class="card-header ops-card-header">
+              <div>
+                <span class="dash-kicker">Latest activity</span>
+                <h2>Recent Orders</h2>
+              </div>
+              <span class="ops-total">{{ recentOrders.length }} shown</span>
+            </div>
             <div class="recent-orders">
-              <div class="recent-order" *ngFor="let o of recentOrders">
+              <div class="recent-order" *ngFor="let o of recentOrders; let i = index">
+                <span class="ro-rank">{{ i + 1 }}</span>
                 <div class="ro-info">
                   <strong>{{ o.clientName }}</strong>
-                  <small>#{{ o.id }} &middot; {{ o.items.length || 0 }} items</small>
+                  <small>#{{ o.id }} &middot; {{ o.items.length || 0 }} item{{ (o.items.length || 0) === 1 ? '' : 's' }}</small>
                 </div>
-                <span class="ro-amount">GHS {{ o.totalAmount | number:'1.2-2' }}</span>
+                <span class="ro-status-pill" [ngClass]="'status-' + o.paymentStatus">{{ o.paymentStatus }}</span>
+                <div class="ro-amount">GHS {{ o.totalAmount | number:'1.2-2' }}</div>
               </div>
               <div class="empty-list" *ngIf="recentOrders.length === 0">
                 <p>No orders yet</p>
@@ -231,8 +247,8 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
           </div>
         </div>
 
-        <div class="card full-width skeleton-fade-in" style="margin-top:20px" *ngIf="can('expenses')">
-          <div class="card-header"><h2>Expense Trends (Last 6 Months)</h2></div>
+        <div class="card full-width trend-card skeleton-fade-in" *ngIf="can('expenses')">
+          <div class="card-header"><h2>Monthly Expense Trends (Last 6 Months)</h2></div>
           <div class="bar-chart">
             <div class="bar-item" *ngFor="let m of monthlyExpenseTrend">
               <div class="bar-wrapper">
@@ -246,7 +262,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
 
         <div class="dashboard-grid skeleton-fade-in" *ngIf="can('expenses') || can('stockSales')">
           <div class="card" *ngIf="can('expenses')">
-            <div class="card-header"><h2>Expense Breakdown by Category</h2></div>
+            <div class="card-header"><h2>Monthly Expense Breakdown by Category</h2></div>
             <div class="delivery-chart">
               <div class="pie-chart" [style.background]="expensePieGradient">
                 <div class="pie-center">
@@ -314,7 +330,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
                 </div>
               </div>
             </div>
-            <div class="top-damaged-products" style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:12px;">
+            <div class="top-damaged-products">
               <div class="damaged-product" *ngFor="let p of topDamagedProducts | slice:0:5">
                 <span class="damage-count">{{ p.count }}</span>
                 <div class="product-info">
@@ -350,7 +366,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
                 </div>
               </div>
             </div>
-            <div class="recent-arrivals" style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:12px;">
+            <div class="recent-arrivals">
               <div class="arrival-item" *ngFor="let a of recentArrivals | slice:0:5">
                 <div class="arrival-info">
                   <strong>{{ a.productName }}</strong>
@@ -365,153 +381,1000 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
     </div>
   `,
   styles: [`
-    .dashboard { max-width: 1400px; }
-    .page-header { margin-bottom: 24px; }
-    .page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
-    .page-header .subtitle { color: var(--text-secondary); font-size: 14px; }
+    .dashboard {
+      --dash-ink: #172033;
+      --dash-muted: #64748b;
+      --dash-line: #dbe3ef;
+      --dash-paper: rgba(255, 255, 255, 0.82);
+      --dash-soft: #f8fafc;
+      max-width: 1420px;
+      margin: 0 auto;
+      color: var(--dash-ink);
+    }
 
-    .section-header { display: flex; align-items: center; justify-content: space-between; margin: 28px 0 16px; }
-    .section-title { display: flex; align-items: center; gap: 10px; }
-    .section-title h2 { font-size: 18px; font-weight: 600; margin: 0; }
-    .section-title .material-icons { color: var(--primary-color); font-size: 24px; }
-    .period-badge { padding: 4px 14px; border-radius: 20px; background: #f1f5f9; color: #64748b; font-size: 12px; font-weight: 500; }
+    .dash-hero {
+      position: relative;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 24px 26px;
+      border: 1px solid rgba(23, 32, 51, 0.12);
+      border-radius: 28px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 8% 0%, rgba(var(--primary-rgb, 99,102,241), 0.16), transparent 34%),
+        radial-gradient(circle at 100% 18%, rgba(15, 118, 110, 0.12), transparent 34%),
+        linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,253,247,0.72));
+    }
 
-    .finance-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 4px; }
-    .finance-card { display: flex; align-items: center; gap: 14px; padding: 20px; background: var(--card-background); border-radius: var(--radius-md); border: 1px solid var(--border-color); }
-    .finance-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .finance-icon .material-icons { font-size: 22px; color: white; }
-    .green-bg { background: #10b981; }
-    .red-bg { background: #ef4444; }
-    .blue-bg { background: #3b82f6; }
-    .purple-bg { background: #8b5cf6; }
-    .finance-details { display: flex; flex-direction: column; min-width: 0; }
-    .finance-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
-    .finance-value { font-size: 18px; font-weight: 700; white-space: nowrap; }
-    .finance-change { font-size: 11px; font-weight: 500; }
-    .finance-change.positive { color: #10b981; }
-    .finance-change.negative { color: #ef4444; }
-    .finance-sub { font-size: 11px; color: var(--text-secondary); }
-    .text-danger { color: #ef4444 !important; }
+    .dash-hero::after {
+      content: '';
+      position: absolute;
+      right: -64px;
+      bottom: -108px;
+      width: 260px;
+      height: 260px;
+      border: 1px solid rgba(23, 32, 51, 0.12);
+      border-radius: 50%;
+      background: rgba(199, 121, 19, 0.07);
+      pointer-events: none;
+    }
 
-    .dashboard-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 20px; }
-    .full-width { grid-column: span 2; }
+    .dash-hero-copy,
+    .dash-hero-actions {
+      position: relative;
+      z-index: 1;
+    }
 
-    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-    .card-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
+    .dash-kicker {
+      display: inline-flex;
+      color: #0f766e;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
 
-    .period-tabs { display: flex; gap: 4px; background: var(--background-color); border-radius: 8px; padding: 3px; }
-    .period-tabs button { padding: 4px 12px; border-radius: 6px; border: none; background: transparent; font-size: 12px; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all 0.15s ease; }
-    .period-tabs button.active { background: var(--primary-color); color: white; }
-    .period-tabs button:hover:not(.active) { background: var(--border-color); }
+    .dash-hero h1 {
+      margin: 5px 0 6px;
+      font-size: clamp(30px, 4vw, 46px);
+      line-height: 0.98;
+      letter-spacing: -0.055em;
+      color: #0f172a;
+    }
 
-    .bar-chart { display: flex; align-items: flex-end; gap: 16px; padding: 16px 8px 0; height: 200px; }
-    .bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; }
-    .bar-wrapper { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
-    .bar { width: 60%; max-width: 60px; background: linear-gradient(180deg, var(--primary-color), #93c5fd); border-radius: 6px 6px 0 0; min-height: 4px; transition: height 0.5s ease; }
-    .bar-amount { font-size: 11px; font-weight: 600; color: var(--text-primary); margin-top: 8px; }
-    .bar-label { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+    .dash-hero p {
+      max-width: 620px;
+      margin: 0;
+      color: var(--dash-muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
 
-    .top-products-list { max-height: 420px; overflow-y: auto; }
-    .top-product { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
-    .top-product:last-child { border-bottom: none; }
-    .rank { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; background: #f1f5f9; color: #64748b; }
+    .dash-hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .dash-date-chip,
+    .dash-refresh {
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 13px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .dash-date-chip {
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      background: rgba(255, 255, 255, 0.72);
+      color: #334155;
+    }
+
+    .dash-refresh {
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      background: var(--dash-ink);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .dash-refresh:disabled {
+      opacity: 0.65;
+      cursor: default;
+    }
+
+    .dash-date-chip .material-icons,
+    .dash-refresh .material-icons {
+      font-size: 17px;
+    }
+
+    .spin {
+      animation: dash-spin 0.8s linear infinite;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .batch-health-grid {
+      margin-bottom: 18px;
+    }
+
+    .stat-card {
+      position: relative;
+      min-height: 126px;
+      display: grid;
+      align-content: space-between;
+      padding: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 22px;
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.96), rgba(248,250,252,0.84)),
+        radial-gradient(circle at 100% 0%, rgba(var(--primary-rgb, 99,102,241), 0.08), transparent 35%);
+    }
+
+    .stat-card::after {
+      content: '';
+      position: absolute;
+      right: -30px;
+      bottom: -42px;
+      width: 104px;
+      height: 104px;
+      border-radius: 50%;
+      background: rgba(15, 118, 110, 0.05);
+      pointer-events: none;
+    }
+
+    .stat-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.74);
+    }
+
+    .stat-icon .material-icons {
+      font-size: 21px;
+      color: currentColor;
+    }
+
+    .stat-icon.blue {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .stat-icon.green {
+      background: #dcfce7;
+      color: #047857;
+    }
+
+    .stat-icon.yellow {
+      background: #fef3c7;
+      color: #b45309;
+    }
+
+    .stat-icon.purple {
+      background: #ede9fe;
+      color: #6d28d9;
+    }
+
+    .stat-value {
+      margin-top: 14px;
+      color: #0f172a;
+      font-size: 28px;
+      font-weight: 950;
+      letter-spacing: -0.045em;
+      line-height: 1;
+    }
+
+    .stat-value .material-icons {
+      font-size: inherit;
+    }
+
+    .stat-label {
+      margin-top: 5px;
+      color: var(--dash-muted);
+      font-size: 11px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .stat-sub {
+      position: relative;
+      z-index: 1;
+      margin-top: 8px;
+      color: var(--dash-muted);
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .stat-sub.positive {
+      color: #059669;
+    }
+
+    .stat-sub.negative {
+      color: #dc2626;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin: 22px 0 12px;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title h2,
+    .card-header h2 {
+      color: #0f172a;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      margin: 0;
+    }
+
+    .section-title .material-icons {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: rgba(var(--primary-rgb, 99,102,241), 0.1);
+      color: var(--primary-color, #6366f1);
+      font-size: 19px;
+    }
+
+    .period-badge {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      color: var(--dash-muted);
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .card {
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 22px;
+      background: var(--dash-paper);
+      backdrop-filter: blur(10px);
+    }
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .trend-card {
+      margin-top: 16px;
+    }
+
+    .full-width {
+      grid-column: span 2;
+    }
+
+    .card {
+      padding: 18px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 15px;
+    }
+
+    .ops-card {
+      min-height: 250px;
+    }
+
+    .ops-card-header {
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    }
+
+    .ops-card-header h2 {
+      margin-top: 3px;
+    }
+
+    .ops-total {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 999px;
+      color: #475569;
+      background: #f8fafc;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .period-tabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      border-radius: 999px;
+      background: #f8fafc;
+    }
+
+    .period-tabs button {
+      padding: 6px 11px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: var(--dash-muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 850;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .period-tabs button.active {
+      background: var(--primary-color, #6366f1);
+      color: white;
+    }
+
+    .period-tabs button:hover:not(.active) {
+      background: #fff;
+      color: #334155;
+    }
+
+    .bar-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+      height: 210px;
+      padding: 14px 8px 0;
+      border-radius: 18px;
+      background:
+        repeating-linear-gradient(0deg, rgba(148,163,184,0.13) 0 1px, transparent 1px 42px),
+        linear-gradient(180deg, rgba(248,250,252,0.85), rgba(255,255,255,0));
+    }
+
+    .bar-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      min-width: 0;
+    }
+
+    .bar-wrapper {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .bar {
+      width: 58%;
+      max-width: 54px;
+      min-height: 4px;
+      border-radius: 999px 999px 8px 8px;
+      background: linear-gradient(180deg, var(--primary-color, #6366f1), #0f766e);
+      transition: height 0.5s ease;
+    }
+
+    .bar-expense {
+      background: linear-gradient(180deg, #ef4444, #f59e0b);
+    }
+
+    .bar-amount {
+      margin-top: 8px;
+      color: #0f172a;
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .bar-label {
+      margin-top: 2px;
+      color: var(--dash-muted);
+      font-size: 10.5px;
+      font-weight: 750;
+    }
+
+    .top-products-list,
+    .stock-sales-list,
+    .recent-orders {
+      max-height: 360px;
+      overflow-y: auto;
+      padding-right: 2px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(100,116,139,0.28) transparent;
+    }
+
+    .top-product,
+    .stock-item,
+    .recent-order,
+    .arrival-item,
+    .damaged-product,
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .top-product:last-child,
+    .stock-item:last-child,
+    .recent-order:last-child,
+    .arrival-item:last-child,
+    .legend-item:last-child {
+      border-bottom: none;
+    }
+
+    .rank,
+    .damage-count {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      font-size: 11px;
+      font-weight: 900;
+      background: #f1f5f9;
+      color: #64748b;
+    }
+
     .rank-1 { background: #fef3c7; color: #92400e; }
     .rank-2 { background: #e5e7eb; color: #374151; }
-    .rank-3 { background: #fed7aa; color: #9a3412; }
-    .product-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .product-info strong { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .product-info small { font-size: 11px; color: var(--text-secondary); }
-    .product-bar-wrap { width: 80px; height: 6px; background: var(--border-color); border-radius: 3px; overflow: hidden; }
-    .product-bar { height: 100%; background: var(--primary-color); border-radius: 3px; transition: width 0.5s ease; }
-    .bar-expense { background: linear-gradient(180deg, #ef4444, #fca5a5); }
+    .rank-3 { background: #ffedd5; color: #9a3412; }
+    .damage-count { background: #fee2e2; color: #991b1b; }
 
-    .delivery-chart, .payment-chart { display: flex; align-items: center; gap: 24px; padding: 10px 0; }
-    .pie-chart { width: 160px; height: 160px; border-radius: 50%; position: relative; flex-shrink: 0; }
-    .pie-sm { width: 130px; height: 130px; }
-    .pie-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 65%; height: 65%; background: var(--card-background); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .pie-center strong { font-size: 20px; font-weight: 700; }
-    .pie-center small { font-size: 10px; color: var(--text-secondary); }
-    .pie-legend { flex: 1; }
-    .legend-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
-    .legend-item:last-child { border-bottom: none; }
-    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .legend-info { flex: 1; display: flex; flex-direction: column; }
-    .legend-label { font-size: 13px; font-weight: 500; }
-    .legend-detail { font-size: 11px; color: var(--text-secondary); }
-    .legend-pct { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+    .product-info,
+    .stock-info,
+    .ro-info,
+    .arrival-info,
+    .legend-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
 
-    .stock-sales-list { max-height: 350px; overflow-y: auto; }
-    .stock-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
-    .stock-item:last-child { border-bottom: none; }
-    .stock-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .stock-info strong { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .stock-info small { font-size: 11px; color: var(--text-secondary); }
-    .stock-amount { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .product-info strong,
+    .stock-info strong,
+    .ro-info strong,
+    .arrival-info strong,
+    .legend-label {
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 850;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
-    .damaged-items-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    .damage-stat { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--background-color); border-radius: var(--radius-md); }
-    .damage-icon { width: 40px; height: 40px; border-radius: 50%; background: #fef3c7; color: #ea580c; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .product-info small,
+    .stock-info small,
+    .ro-info small,
+    .arrival-info small,
+    .legend-detail {
+      margin-top: 2px;
+      color: var(--dash-muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .product-bar-wrap {
+      width: 82px;
+      height: 7px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #e2e8f0;
+    }
+
+    .product-bar {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--primary-color, #6366f1), #0f766e);
+      transition: width 0.5s ease;
+    }
+
+    .delivery-chart {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      padding: 8px 0 2px;
+    }
+
+    .pie-chart {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .pie-center {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 64%;
+      height: 64%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #fffdf8;
+      text-align: center;
+    }
+
+    .pie-center strong {
+      color: #0f172a;
+      font-size: 20px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .pie-center small {
+      margin-top: 3px;
+      color: var(--dash-muted);
+      font-size: 10px;
+      font-weight: 850;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .pie-legend {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .legend-pct,
+    .stock-amount,
+    .ro-amount,
+    .arrival-date {
+      color: #0f172a;
+      font-size: 12px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .stock-amount,
+    .ro-amount {
+      font-size: 13px;
+    }
+
+    .orders-card .recent-orders {
+      max-height: 310px;
+    }
+
+    .orders-card .recent-order {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) auto auto;
+      gap: 10px;
+      min-height: 56px;
+      padding: 10px 0;
+    }
+
+    .ro-rank {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 950;
+    }
+
+    .ro-status-pill {
+      justify-self: end;
+      align-self: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 72px;
+      min-height: 26px;
+      padding: 0 9px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .status-paid {
+      border-color: #bbf7d0;
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status-partial {
+      border-color: #fde68a;
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-unpaid {
+      border-color: #fecaca;
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .status-refunded {
+      border-color: #ddd6fe;
+      background: #ede9fe;
+      color: #5b21b6;
+    }
+
+    .damaged-items-grid,
+    .inventory-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .damage-stat,
+    .inventory-stat {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 16px;
+      background: #f8fafc;
+    }
+
+    .damage-icon,
+    .inv-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 13px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .damage-icon { background: #fef3c7; color: #ea580c; }
     .damage-icon.danger { background: #fee2e2; color: #991b1b; }
     .damage-icon.warning { background: #dbeafe; color: #1e3a8a; }
-    .damage-info { display: flex; flex-direction: column; }
-    .damage-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
-    .damage-value { font-size: 18px; font-weight: 700; }
-
-    .damaged-product { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
-    .damage-count { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: #fee2e2; color: #991b1b; flex-shrink: 0; }
-    .product-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .product-info strong { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .product-info small { font-size: 11px; color: var(--text-secondary); }
-
-    .inventory-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    .inventory-stat { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--background-color); border-radius: var(--radius-md); }
-    .inv-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .inv-icon.arriving { background: #dbeafe; color: #1e40af; }
     .inv-icon.received { background: #d1fae5; color: #065f46; }
     .inv-icon.pending { background: #fef3c7; color: #92400e; }
-    .inv-info { display: flex; flex-direction: column; }
-    .inv-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
-    .inv-value { font-size: 18px; font-weight: 700; }
 
-    .arrival-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
-    .arrival-item:last-child { border-bottom: none; }
-    .arrival-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .arrival-info strong { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .arrival-info small { font-size: 11px; color: var(--text-secondary); }
-    .arrival-date { font-size: 11px; color: var(--text-secondary); white-space: nowrap; margin-left: 8px; }
+    .damage-icon .material-icons,
+    .inv-icon .material-icons {
+      font-size: 19px;
+    }
 
-    .pipeline { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px 10px; }
-    .pipeline-stage { text-align: center; padding: 16px 20px; border-radius: var(--radius-md); flex: 1; }
-    .stage-count { font-size: 28px; font-weight: 700; }
-    .stage-label { font-size: 12px; font-weight: 500; margin-top: 2px; }
-    .pipeline-stage.open { background: #dbeafe; color: #1e40af; }
-    .pipeline-stage.buying { background: #fef3c7; color: #92400e; }
-    .pipeline-stage.delivering { background: #e0e7ff; color: #3730a3; }
-    .pipeline-stage.completed { background: #d1fae5; color: #065f46; }
-    .arrow { color: var(--text-secondary); font-size: 20px; }
+    .damage-info,
+    .inv-info {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
 
-    .recent-orders { max-height: 330px; overflow-y: auto; }
-    .recent-order { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-color); }
-    .recent-order:last-child { border-bottom: none; }
-    .ro-info { flex: 1; display: flex; flex-direction: column; }
-    .ro-info strong { font-size: 13px; }
-    .ro-info small { font-size: 11px; color: var(--text-secondary); }
-    .ro-amount { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .ro-status { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
-    .status-paid { background: #d1fae5; color: #065f46; }
-    .status-partial { background: #fef3c7; color: #92400e; }
-    .status-unpaid { background: #fee2e2; color: #991b1b; }
-    .status-refunded { background: #e0e7ff; color: #3730a3; }
+    .damage-label,
+    .inv-label {
+      color: var(--dash-muted);
+      font-size: 10.5px;
+      font-weight: 850;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      line-height: 1.25;
+    }
 
-    .empty-list { text-align: center; padding: 30px 20px; color: var(--text-secondary); }
-    .empty-list .material-icons { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
-    .empty-list p { font-size: 13px; margin: 0; }
+    .damage-value,
+    .inv-value {
+      margin-top: 3px;
+      color: #0f172a;
+      font-size: 18px;
+      font-weight: 950;
+      line-height: 1;
+    }
 
-    @media (max-width: 1200px) { .finance-grid { grid-template-columns: repeat(3, 1fr); } }
+    .top-damaged-products,
+    .recent-arrivals {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(148, 163, 184, 0.22);
+    }
+
+    .pipeline {
+      display: grid;
+      gap: 10px;
+      padding: 2px 0 0;
+    }
+
+    .pipeline-stage {
+      position: relative;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      min-width: 0;
+      padding: 11px 12px;
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      border-radius: 17px;
+      background: #ffffff;
+    }
+
+    .pipeline-stage:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 32px;
+      bottom: -11px;
+      width: 2px;
+      height: 10px;
+      background: #cbd5e1;
+    }
+
+    .stage-marker {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 15px;
+      border: 1px solid currentColor;
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    .stage-marker .material-icons {
+      font-size: 20px;
+    }
+
+    .stage-copy {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .stage-count {
+      color: #0f172a;
+      font-size: 24px;
+      font-weight: 950;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+
+    .stage-label {
+      color: currentColor;
+      font-size: 11px;
+      font-weight: 950;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .pipeline-stage.open {
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    .pipeline-stage.buying {
+      background: #fffbeb;
+      color: #b45309;
+    }
+
+    .pipeline-stage.delivering {
+      background: #f5f3ff;
+      color: #6d28d9;
+    }
+
+    .pipeline-stage.completed {
+      background: #ecfdf5;
+      color: #047857;
+    }
+
+    .empty-list {
+      padding: 28px 18px;
+      color: var(--dash-muted);
+      text-align: center;
+    }
+
+    .empty-list .material-icons {
+      margin-bottom: 8px;
+      font-size: 30px;
+      opacity: 0.5;
+    }
+
+    .empty-list p {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .dash-loading-stats {
+      margin-top: 0;
+    }
+
+    .skeleton-stat-card,
+    .skeleton-card {
+      border-radius: 22px;
+      border-color: rgba(148, 163, 184, 0.24);
+      background: rgba(255,255,255,0.78);
+    }
+
+    .skeleton-spaced {
+      margin-bottom: 8px;
+    }
+
+    .skeleton-title-line {
+      margin-bottom: 16px;
+    }
+
+    .dash-loading-panel {
+      margin-top: 16px;
+    }
+
+    .dash-loading-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .dash-loading-block {
+      height: 80px;
+      border-radius: 16px;
+    }
+
+    .dash-loading-columns {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .dash-loading-chart {
+      height: 200px;
+      border-radius: 16px;
+    }
+
+    @keyframes dash-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 1220px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .full-width {
+        grid-column: span 1;
+      }
+    }
+
     @media (max-width: 900px) {
-      .finance-grid { grid-template-columns: repeat(2, 1fr); }
-      .dashboard-grid { grid-template-columns: 1fr; }
-      .delivery-chart, .payment-chart { flex-direction: column; }
+      .dash-hero {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .dash-hero-actions {
+        justify-content: flex-start;
+      }
+
+      .delivery-chart {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .pie-chart {
+        align-self: center;
+      }
+
+      .dash-loading-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .dash-loading-columns {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .dash-hero {
+        padding: 20px;
+        border-radius: 24px;
+      }
+
+      .dash-hero h1 {
+        font-size: 34px;
+      }
+
+      .dash-hero-actions,
+      .dash-date-chip,
+      .dash-refresh {
+        width: 100%;
+      }
+
+      .stats-grid,
+      .damaged-items-grid,
+      .inventory-grid,
+      .pipeline,
+      .dash-loading-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        padding: 16px;
+        border-radius: 20px;
+      }
+
+      .card-header {
+        flex-direction: column;
+      }
+
+      .period-tabs {
+        width: 100%;
+      }
+
+      .period-tabs button {
+        flex: 1;
+      }
+
+      .bar-chart {
+        gap: 8px;
+        height: 180px;
+      }
+
+      .product-bar-wrap {
+        display: none;
+      }
+
+      .orders-card .recent-order {
+        grid-template-columns: 32px minmax(0, 1fr);
+      }
+
+      .ro-status-pill,
+      .ro-amount {
+        grid-column: 2;
+        justify-self: start;
+      }
     }
   `]
 })
@@ -523,11 +1386,6 @@ export class DashboardComponent implements OnInit {
   deliveries: Delivery[] = [];
   batches: OrderBatch[] = [];
 
-  totalProducts = 0;
-  totalClients = 0;
-  todayOrders = 0;
-  pendingDeliveries = 0;
-
   revenueThisMonth = 0;
   revenueLastMonth = 0;
   expensesThisMonth = 0;
@@ -536,11 +1394,19 @@ export class DashboardComponent implements OnInit {
   shippingLastMonth = 0;
   netThisMonth = 0;
   paidOrdersThisMonth = 0;
+  ordersThisBatch = 0;
+  ordersLastBatch = 0;
+  batchOrderValue = 0;
+  batchOpenPaymentValue = 0;
+  unpaidOrPartialOrdersThisBatch = 0;
+  currentBatchName = 'No batch';
+  previousBatchName = 'Previous batch';
+  private currentBatchId: number | null = null;
 
-  topProductsPeriod: 'month' | 'quarter' | 'year' = 'month';
+  topProductsPeriod: 'batch' | 'quarter' | 'year' = 'batch';
   topProducts: { name: string; quantity: number; revenue: number }[] = [];
 
-  deliveryPeriod: 'month' | 'quarter' | 'year' = 'month';
+  deliveryPeriod: 'batch' | 'quarter' | 'year' = 'batch';
   deliveryBreakdown: { category: string; label: string; count: number; fees: number; color: string }[] = [];
 
   batchPipeline = { open: 0, buying: 0, delivering: 0, completed: 0 };
@@ -573,13 +1439,20 @@ export class DashboardComponent implements OnInit {
   private lastMonthEnd = '';
   private thisQuarterStart = '';
   private thisYearStart = '';
-  private todayStr = '';
+  todayStr = '';
 
   constructor(
     private dbService: DatabaseService,
     private authService: AuthService,
-    private supabaseService: SupabaseService
+    private supabaseService: SupabaseService,
+    private shopConfig: ShopConfigService
   ) {}
+
+  get dashboardGreeting(): string {
+    const name = this.authService.currentUser?.fullName?.split(' ')[0] || 'there';
+    const shopName = this.shopConfig.shopName || 'your shop';
+    return `Welcome back, ${name}. Here is the live operating picture for ${shopName}.`;
+  }
 
   private get sb() {
     return this.supabaseService.client;
@@ -620,28 +1493,34 @@ export class DashboardComponent implements OnInit {
 
   loadData() {
     this.loading = true;
-    forkJoin({
-      stats: this.dbService.getDashboardStats(),
-      orders: this.dbService.getOrders(),
-      expenses: this.dbService.getExpenses(),
-      deliveries: this.dbService.getDeliveries(),
-      batches: this.dbService.getOrderBatches(),
-      damagedItems: this.scopeShopQuery(this.sb.from('damaged_items').select('*')),
-      stockSales: this.scopeShopQuery(this.sb.from('stock_sales').select('*')),
-      stockItems: this.scopeShopQuery(this.sb.from('stock_sale_items').select('*')),
-      arrivalItems: this.scopeShopQuery(this.sb.from('arrival_items').select('*')),
-      products: this.scopeShopQuery(this.sb.from('products').select('*'))
-    }).subscribe(
+
+    let dashboardRequests;
+    try {
+      dashboardRequests = {
+        orders: this.dbService.getOrders(),
+        expenses: this.dbService.getExpenses(),
+        deliveries: this.dbService.getDeliveries(),
+        batches: this.dbService.getOrderBatches(),
+        damagedItems: this.scopeShopQuery(this.sb.from('damaged_items').select('*')),
+        stockSales: this.scopeShopQuery(this.sb.from('stock_sales').select('*')),
+        stockItems: this.scopeShopQuery(this.sb.from('stock_sale_items').select('*')),
+        arrivalItems: this.scopeShopQuery(this.sb.from('arrival_items').select('*')),
+        products: this.scopeShopQuery(this.sb.from('products').select('*'))
+      };
+    } catch (error) {
+      console.error('Error preparing dashboard data requests:', error);
+      this.loading = false;
+      return;
+    }
+
+    forkJoin(dashboardRequests).subscribe(
       data => {
         const dashboardData = data as any;
-        this.totalProducts = dashboardData.stats.totalProducts;
-        this.totalClients = dashboardData.stats.totalClients;
         this.orders = dashboardData.orders;
         this.expenses = dashboardData.expenses;
         this.deliveries = dashboardData.deliveries;
         this.batches = dashboardData.batches;
 
-        this.computeKeyStats();
         this.computeFinance();
         this.computeTopProducts();
         this.computeDeliveryBreakdown();
@@ -667,30 +1546,27 @@ export class DashboardComponent implements OnInit {
           return;
         }
 
-        this.scopeShopQuery(
-          this.sb.from('damage_order_allocations').select('*').in('batch_name', shopBatchNames)
-        ).subscribe(
-          ({ data: damageAllocations }: { data: any[] }) => finalize(damageAllocations || []),
-          (error: unknown) => {
+        Promise.resolve(
+          this.scopeShopQuery(
+            this.sb.from('damage_order_allocations').select('*').in('batch_name', shopBatchNames)
+          )
+        )
+          .then(({ data: damageAllocations, error }: any) => {
+            if (error) {
+              console.error('Error loading damage allocations:', error);
+            }
+            finalize(damageAllocations || []);
+          })
+          .catch((error: unknown) => {
             console.error('Error loading damage allocations:', error);
             finalize([]);
-          }
-        );
+          });
       },
       error => {
         console.error('Error loading dashboard data:', error);
         this.loading = false;
       }
     );
-  }
-
-  private computeKeyStats() {
-    this.todayOrders = this.orders.filter(o =>
-      (o.createdAt || '').substring(0, 10) === this.todayStr
-    ).length;
-    this.pendingDeliveries = this.deliveries.filter(d =>
-      d.status === 'pending' || d.status === 'in_transit'
-    ).length;
   }
 
   private computeFinance() {
@@ -701,6 +1577,9 @@ export class DashboardComponent implements OnInit {
     });
     const latestBatch = batchesSorted[0];
     const prevBatch = batchesSorted[1];
+    this.currentBatchId = latestBatch?.id ? Number(latestBatch.id) : null;
+    this.currentBatchName = latestBatch?.name || 'No batch';
+    this.previousBatchName = prevBatch?.name || 'Previous batch';
 
     const ordersForBatch = (batch?: OrderBatch) => {
       if (!batch || !batch.id) return [] as Order[];
@@ -709,6 +1588,17 @@ export class DashboardComponent implements OnInit {
 
     const latestOrders = ordersForBatch(latestBatch);
     const prevOrders = ordersForBatch(prevBatch);
+    this.ordersThisBatch = latestOrders.length;
+    this.ordersLastBatch = prevOrders.length;
+    this.batchOrderValue = latestOrders
+      .filter(o => o.paymentStatus !== 'refunded')
+      .reduce((s, o) => s + o.totalAmount, 0);
+    this.unpaidOrPartialOrdersThisBatch = latestOrders
+      .filter(o => o.paymentStatus === 'unpaid' || o.paymentStatus === 'partial')
+      .length;
+    this.batchOpenPaymentValue = latestOrders
+      .filter(o => o.paymentStatus === 'unpaid' || o.paymentStatus === 'partial')
+      .reduce((s, o) => s + o.totalAmount, 0);
 
     this.revenueThisMonth = latestOrders
       .filter(o => o.paymentStatus === 'paid')
@@ -749,6 +1639,10 @@ export class DashboardComponent implements OnInit {
   get revenueChange() { return this.pctChange(this.revenueThisMonth, this.revenueLastMonth); }
   get expenseChange() { return this.pctChange(this.expensesThisMonth, this.expensesLastMonth); }
   get shippingChange() { return this.pctChange(this.shippingThisMonth, this.shippingLastMonth); }
+  get ordersChange() { return this.pctChange(this.ordersThisBatch, this.ordersLastBatch); }
+  get batchPaidOrderRate() {
+    return this.ordersThisBatch > 0 ? Math.round((this.paidOrdersThisMonth / this.ordersThisBatch) * 100) : 0;
+  }
 
   private computeMonthlyTrend() {
     const now = new Date();
@@ -825,10 +1719,11 @@ export class DashboardComponent implements OnInit {
   }
 
   computeTopProducts() {
-    const startDate = this.getPeriodStart(this.topProductsPeriod);
-    const periodOrders = this.orders.filter(o =>
-      (o.createdAt || '').substring(0, 10) >= startDate
-    );
+    const periodOrders = this.topProductsPeriod === 'batch'
+      ? this.orders.filter(o => !!this.currentBatchId && o.batchId === this.currentBatchId)
+      : this.orders.filter(o =>
+        (o.createdAt || '').substring(0, 10) >= this.getPeriodStart(this.topProductsPeriod)
+      );
     const productMap: Record<number, { name: string; quantity: number; revenue: number }> = {};
     for (const order of periodOrders) {
       for (const item of (order.items || [])) {
@@ -843,16 +1738,17 @@ export class DashboardComponent implements OnInit {
     this.topProducts = Object.values(productMap).sort((a, b) => b.quantity - a.quantity).slice(0, 10);
   }
 
-  onTopProductsPeriodChange(period: 'month' | 'quarter' | 'year') {
+  onTopProductsPeriodChange(period: 'batch' | 'quarter' | 'year') {
     this.topProductsPeriod = period;
     this.computeTopProducts();
   }
 
   computeDeliveryBreakdown() {
-    const startDate = this.getPeriodStart(this.deliveryPeriod);
-    const periodDeliveries = this.deliveries.filter(d =>
-      (d.createdAt || '').substring(0, 10) >= startDate
-    );
+    const periodDeliveries = this.deliveryPeriod === 'batch'
+      ? this.deliveries.filter(d => !!this.currentBatchName && d.batchName === this.currentBatchName)
+      : this.deliveries.filter(d =>
+        (d.createdAt || '').substring(0, 10) >= this.getPeriodStart(this.deliveryPeriod)
+      );
     const colors: Record<string, string> = {
       station_car_delivery: '#3b82f6', riders: '#10b981', ghana_post: '#f59e0b', unknown: '#6366f1'
     };
@@ -874,7 +1770,7 @@ export class DashboardComponent implements OnInit {
     }).sort((a, b) => b.count - a.count);
   }
 
-  onDeliveryPeriodChange(period: 'month' | 'quarter' | 'year') {
+  onDeliveryPeriodChange(period: 'batch' | 'quarter' | 'year') {
     this.deliveryPeriod = period;
     this.computeDeliveryBreakdown();
   }
@@ -984,9 +1880,9 @@ export class DashboardComponent implements OnInit {
       }));
   }
 
-  private getPeriodStart(period: 'month' | 'quarter' | 'year'): string {
+  private getPeriodStart(period: 'batch' | 'quarter' | 'year'): string {
     switch (period) {
-      case 'month': return this.thisMonthStart;
+      case 'batch': return this.thisMonthStart;
       case 'quarter': return this.thisQuarterStart;
       case 'year': return this.thisYearStart;
     }

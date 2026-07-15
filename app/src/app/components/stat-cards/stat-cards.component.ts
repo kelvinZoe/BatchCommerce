@@ -41,7 +41,6 @@ export interface StatCardConfig {
       border-radius: 14px;
       border: 1px solid #dbe3ee;
       background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
       display: flex;
       align-items: flex-start;
       gap: 10px;

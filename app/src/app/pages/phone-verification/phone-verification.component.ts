@@ -117,7 +117,6 @@ import { AuthService } from '../../services/auth.service';
       border-radius: 24px;
       overflow: hidden;
       background: rgba(255, 255, 255, 0.96);
-      box-shadow: 0 26px 80px rgba(2, 8, 23, 0.32);
       border: 1px solid rgba(255, 255, 255, 0.24);
       backdrop-filter: blur(16px);
     }
@@ -154,7 +153,6 @@ import { AuthService } from '../../services/auth.service';
       justify-content: center;
       background: linear-gradient(135deg, #155eef, #0f4bcc);
       color: #fff;
-      box-shadow: 0 12px 32px rgba(21, 94, 239, 0.3);
     }
 
     .pv-mark .material-icons {
@@ -232,13 +230,12 @@ import { AuthService } from '../../services/auth.service';
       color: var(--pv-ink);
       padding: 14px 15px;
       font-size: 14px;
-      transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+      transition: border-color 0.18s ease, background 0.18s ease;
     }
 
     .pv-field input:focus {
       outline: none;
       border-color: rgba(21, 94, 239, 0.45);
-      box-shadow: 0 0 0 4px rgba(21, 94, 239, 0.12);
       background: #fff;
     }
 
@@ -275,7 +272,7 @@ import { AuthService } from '../../services/auth.service';
       font-size: 14px;
       font-weight: 700;
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      transition: transform 0.15s ease, background 0.15s ease;
       min-width: 180px;
     }
 
@@ -283,13 +280,11 @@ import { AuthService } from '../../services/auth.service';
       opacity: 0.6;
       cursor: default;
       transform: none;
-      box-shadow: none;
     }
 
     .pv-btn-primary {
       background: linear-gradient(135deg, var(--pv-blue), var(--pv-blue-deep));
       color: #fff;
-      box-shadow: 0 14px 28px rgba(21, 94, 239, 0.22);
     }
 
     .pv-btn-primary:hover:not(:disabled) {

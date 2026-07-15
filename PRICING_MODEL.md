@@ -39,49 +39,100 @@ This document outlines the potential pricing strategies for the BatchCommerce pl
 
 ---
 
-## 🏆 Recommended Strategy: The Hybrid "Tiered Volume" Plan
+## 🏆 Recommended Strategy: Paid Tiers With A 2-Month New-User Promo
 
-To capture value from large operations, provide a risk-free onboarding path for beginners, and eliminate bypass risks, we recommend a **Flat-Fee Tiered Structure based on Monthly Order Volume**. 
+To capture value from serious merchants, avoid a permanent free-support burden, and still give new users enough time to trust the system, we recommend a **paid tiered subscription** with a **2-month free promotional period for new shop owners**.
 
-This aligns pricing with value delivered (administrative overhead saved) while retaining SaaS predictability.
+The pricing meter should be based on **monthly sales records**, not only preorder orders.
 
-### Proposed Tiers & Pricing Structure
+A monthly sales record includes:
+
+* A preorder/customer order created in `orders`.
+* A direct stock sale created in `stock_sales`.
+
+A monthly sales record does **not** include:
+
+* Order items or stock-sale line items.
+* Buying list rows.
+* Arrival rows.
+* Shipping, delivery, tracking, or ledger rows.
+* Products, clients, roles, or staff records.
+
+This matters because Stock Sales is part of the real merchant workflow. If only preorder orders count, merchants could use Stock Sales as an unintended pricing loophole.
+
+### Promo Rule
+
+New users get **2 months free** after signup or shop activation. After the promo expires, the shop must be on one of the paid tiers below.
+
+Recommended promo guardrails:
+
+* The promo should be one-time per shop owner/business identity.
+* Each owner account should be allowed to create only one shop, enforced in both the app bootstrap flow and the database.
+* A generated browser/device ID should be captured during shop creation as a secondary promo-abuse signal. This is useful for obvious repeat signups on the same device, but it should not be treated as the only guard because users can clear browser storage or use another device.
+* The promo should show clear expiry messaging inside the app before it ends.
+* During the promo, users can experience the full operational workflow, but the app should still track usage so the correct recommended tier is visible before billing starts.
+
+### Promo Codes
+
+Promo codes support targeted campaigns without changing the base pricing model. A code can:
+
+* Extend a shop's promo window by a configured number of days.
+* Record a discount percentage for the future billing/admin workflow.
+* Optionally move a shop to a specific plan band.
+* Enforce expiry dates, max redemptions, and one redemption per shop.
+
+For now, promo-code creation is intentionally database/admin-managed. A public in-app creation screen should wait until there is a secure platform-admin surface, because promo codes are global commercial controls rather than normal shop settings.
+
+### Proposed 3-Tier Paid Model
+
+Best for simplicity, clear positioning, and avoiding decision anxiety.
 
 ```mermaid
 graph TD
-    A[Free Plan: <30 orders] -->|Value validation| B[Growth: <250 orders]
-    B -->|Business scaling| C[Professional: <1000 orders]
-    C -->|High volume operations| D[Enterprise: Unlimited]
+    A["2-Month Promo: GHS 0"] --> B["Starter: up to 40 monthly sales records (GHS 150/mo)"]
+    B --> C["Growth: 41 - 120 monthly sales records (GHS 200/mo)"]
+    C --> D["Pro: 121+ monthly sales records (GHS 300/mo)"]
 ```
 
-#### 1. Starter (Free Tier)
-* **Limit:** Up to 30 orders/month.
-* **Price:** **$0** (Free Forever).
-* **Features:** Single shop setup, basic pre-order catalog, manual WhatsApp receipt tools.
-* **Goal:** Zero barrier to entry. Validates the software for small sellers.
-
-#### 2. Growth Tier
-* **Limit:** Up to 250 orders/month.
-* **Price:** **~$15 to $19 / month** (billed monthly or annually).
-* **Features:** Multi-shop switching, standard inventory alerts, full sales analytics.
-* **Goal:** Active merchants who run 1 to 2 pre-order batches monthly.
-
-#### 3. Professional Tier
-* **Limit:** Up to 1,000 orders/month.
-* **Price:** **~$39 to $49 / month**.
-* **Features:** Role-based access control (RBAC), staff account management, custom receipt templates, API hooks.
-* **Goal:** Established import sellers and boutique storefronts with auxiliary staff.
-
-#### 4. Enterprise / High-Volume Tier
-* **Limit:** Unlimited orders.
-* **Price:** **~$99+ / month**.
-* **Features:** Multi-tenant staff permissions, dedicated support, custom domain tracking pages.
-* **Goal:** High-volume wholesale importers.
+1. **Starter**
+   * **Band:** Up to 40 monthly sales records.
+   * **Price:** **GHS 150 / month**.
+   * **Best for:** Smaller sellers who need structure, receipts, inventory visibility, and customer history.
+   * **Features:** Core preorder, stock sales, products, clients, receipts, and basic reports.
+2. **Growth**
+   * **Band:** 41 - 120 monthly sales records.
+   * **Price:** **GHS 200 / month**.
+   * **Best for:** Active sellers running regular drops or combining preorder and in-stock selling.
+   * **Features:** Everything in Starter, plus stronger reporting, exports, and operational workflow tools.
+3. **Pro**
+   * **Band:** 121+ monthly sales records.
+   * **Price:** **GHS 300 / month**.
+   * **Best for:** High-volume sellers, importers, and teams with staff managing orders, stock, shipping, and deliveries.
+   * **Features:** Everything in Growth, plus staff/RBAC, advanced controls, custom receipt options, and priority support.
 
 ---
 
 ## 💡 Why This Hybrid Model Works Best
 
-1. **Eliminates Billing Bypass:** Because merchants pay a flat tier, they do not pay per transaction size. They have no incentive to falsify order prices or payments in the system.
-2. **Flexible with Seasonality:** Social commerce is highly seasonal. By structuring tiers based on monthly volume, merchants can upgrade during active batch drops and safely downgrade to the free tier during quiet inventory periods.
-3. **Features Upselling:** Beyond order limits, you can gate advanced system features (such as Role Management, Staff accounts, and multiple shop setups) to the paid tiers. Large organizations with staff are naturally pushed to the **Professional** tier.
+1. **Eliminates Billing Bypass:** Because merchants pay a flat tier, they do not pay a percentage of transaction value. They have less incentive to falsify order prices or payments in the system.
+2. **Includes The Full Sales Workflow:** Counting both preorder orders and stock sales makes the pricing model match how merchants actually use BatchCommerce.
+3. **Avoids Permanent Free-Tier Drag:** The 2-month promo lowers onboarding friction without creating a long-term pool of free users who still need support and infrastructure.
+4. **Flexible With Seasonality:** Social commerce is seasonal. Shops can move between Starter, Growth, and Pro as their monthly sales-record volume changes.
+5. **Feature Upselling:** Beyond volume limits, advanced features such as staff accounts, RBAC, custom receipts, exports, advanced reports, and operational controls can push serious operators naturally into higher tiers.
+
+---
+
+## Implementation Notes
+
+The first implementation should enforce plan usage before payment automation is added:
+
+* Store plan and promo state on `shops`.
+* Count monthly sales records from `orders` plus `stock_sales`.
+* Allow sales-record creation during the active 2-month promo.
+* After promo expiry, require `subscription_status = 'active'`.
+* Require an active subscription after promo expiry before creating new sales records.
+* Allow paid shops to create overages instead of blocking sales operations.
+* Show current plan, promo status, monthly usage, overages, and recommended tier in Settings and Subscription.
+* Let shops redeem promo codes through a guarded database RPC, with redemption history tracked per shop.
+
+Payment collection and admin plan-management are separate follow-up work. Until those exist, plan activation can be managed directly in Supabase by updating the shop's `subscription_plan` and `subscription_status`.

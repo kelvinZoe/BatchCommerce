@@ -6,7 +6,7 @@ This document is the canonical architecture note for the current app. Older docs
 
 BatchCommerce is a Supabase-backed Angular 17 application for WhatsApp preorder commerce. The Angular SPA in `app/` is the primary client. The Express service in `server/` is a protected admin API for privileged operations that must not run in the browser, such as Supabase Auth admin actions.
 
-The app is multi-shop/tenant-aware. Tenant-owned tables use `shop_id`, Supabase RLS is the primary isolation boundary, and service-layer shop scoping is defense in depth.
+The app is tenant-aware across shops, but each owner account is allowed to create only one shop. Tenant-owned tables use `shop_id`, Supabase RLS is the primary isolation boundary, and service-layer shop scoping is defense in depth.
 
 ## Canonical Names
 

@@ -614,6 +614,7 @@ export const ADMIN_NAV_ITEMS: AppNavItem[] = [
   { route: '/batches', icon: 'inventory_2', label: 'Manage Batches', resource: 'batches' },
   { route: '/users', icon: 'manage_accounts', label: 'Users', resource: 'users' },
   { route: '/roles', icon: 'admin_panel_settings', label: 'Roles & Permissions', resource: 'roles' },
+  { route: '/subscription', icon: 'workspace_premium', label: 'Subscription', resource: 'settings' },
   { route: '/settings', icon: 'settings', label: 'Settings', resource: 'settings' },
 ];
 
@@ -658,6 +659,35 @@ export interface StockSaleItem {
   quantity: number;
   unitPrice: number;
   subtotal: number;
+}
+
+export type PricingPlanKey = 'starter' | 'growth' | 'pro';
+export type SubscriptionStatus = 'promo' | 'active' | 'past_due' | 'suspended' | 'cancelled';
+
+export interface PricingUsage {
+  plan: PricingPlanKey;
+  status: SubscriptionStatus;
+  priceGhs: number;
+  monthlyLimit: number | null;
+  usageCount: number;
+  remaining: number | null;
+  overageCount: number;
+  promoStartedAt: string | null;
+  promoEndsAt: string | null;
+  promoActive: boolean;
+  canCreateSalesRecord: boolean;
+  recommendedPlan: PricingPlanKey;
+  monthStart: string;
+  monthEnd: string;
+}
+
+export interface PromoCodeRedemptionResult {
+  code: string;
+  description: string | null;
+  extraPromoDays: number;
+  discountPercent: number | null;
+  planOverride: PricingPlanKey | null;
+  promoEndsAt: string | null;
 }
 
 export type ExpenseCategory =

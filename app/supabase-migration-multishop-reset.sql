@@ -257,6 +257,13 @@ CREATE TABLE shops (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
   slug TEXT NOT NULL UNIQUE,
+  owner_device_id TEXT,
+  subscription_plan TEXT NOT NULL DEFAULT 'starter' CHECK (subscription_plan IN ('starter', 'growth', 'pro')),
+  subscription_status TEXT NOT NULL DEFAULT 'promo' CHECK (subscription_status IN ('promo', 'active', 'past_due', 'suspended', 'cancelled')),
+  promo_started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  promo_ends_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '2 months'),
+  billing_started_at TIMESTAMPTZ,
+  plan_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -336,6 +343,66 @@ CREATE TABLE shop_memberships (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (shop_id, auth_user_id)
 );
+
+CREATE OR REPLACE FUNCTION prevent_multiple_owned_shops()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_owner_device_id TEXT;
+BEGIN
+  IF NEW.auth_user_id IS NULL OR COALESCE(NEW.is_owner, FALSE) IS FALSE THEN
+    RETURN NEW;
+  END IF;
+
+  IF COALESCE(NEW.is_active, TRUE) IS FALSE
+     OR COALESCE(NEW.membership_status, 'active') = 'removed' THEN
+    RETURN NEW;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM shop_memberships existing
+    WHERE existing.auth_user_id = NEW.auth_user_id
+      AND existing.is_owner = TRUE
+      AND existing.is_active = TRUE
+      AND COALESCE(existing.membership_status, 'active') <> 'removed'
+      AND existing.id IS DISTINCT FROM NEW.id
+  ) THEN
+    RAISE EXCEPTION 'This account already owns a shop. Each account can create only one shop.'
+      USING ERRCODE = '23505';
+  END IF;
+
+  SELECT NULLIF(btrim(s.owner_device_id), '')
+    INTO v_owner_device_id
+  FROM shops s
+  WHERE s.id = NEW.shop_id;
+
+  IF v_owner_device_id IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM shop_memberships existing
+    JOIN shops existing_shop ON existing_shop.id = existing.shop_id
+    WHERE NULLIF(btrim(existing_shop.owner_device_id), '') = v_owner_device_id
+      AND existing.is_owner = TRUE
+      AND existing.is_active = TRUE
+      AND COALESCE(existing.membership_status, 'active') <> 'removed'
+      AND existing.id IS DISTINCT FROM NEW.id
+  ) THEN
+    RAISE EXCEPTION 'This device has already created a shop. Each device can start only one owner shop promo.'
+      USING ERRCODE = '23505';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_prevent_multiple_owned_shops
+  BEFORE INSERT OR UPDATE OF auth_user_id, is_owner, is_active, membership_status
+  ON shop_memberships
+  FOR EACH ROW
+  EXECUTE FUNCTION prevent_multiple_owned_shops();
 
 -- ============================================================
 -- BUSINESS TABLES
@@ -706,6 +773,84 @@ ALTER TABLE stock_sales
   ADD CONSTRAINT stock_sales_status_check
   CHECK (status IN ('open', 'closed', 'cancelled'));
 
+CREATE OR REPLACE FUNCTION shop_plan_limit(p_plan TEXT)
+RETURNS INTEGER
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE p_plan
+    WHEN 'starter' THEN 40
+    WHEN 'growth' THEN 120
+    WHEN 'pro' THEN NULL
+    ELSE 40
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION monthly_sales_record_count(
+  p_shop_id UUID,
+  p_month_start TIMESTAMPTZ DEFAULT date_trunc('month', now())
+)
+RETURNS INTEGER
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    (
+      SELECT COUNT(*)::INTEGER
+      FROM orders o
+      WHERE o.shop_id = p_shop_id
+        AND o.created_at >= p_month_start
+        AND o.created_at < (p_month_start + interval '1 month')
+    )
+    +
+    (
+      SELECT COUNT(*)::INTEGER
+      FROM stock_sales ss
+      WHERE ss.shop_id = p_shop_id
+        AND ss.created_at >= p_month_start
+        AND ss.created_at < (p_month_start + interval '1 month')
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION enforce_shop_sales_record_limit()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_shop shops%ROWTYPE;
+BEGIN
+  IF NEW.shop_id IS NULL THEN
+    RAISE EXCEPTION 'Shop context is required to create a sales record.';
+  END IF;
+
+  SELECT *
+    INTO v_shop
+  FROM shops
+  WHERE id = NEW.shop_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Shop not found for sales record.';
+  END IF;
+
+  IF COALESCE(v_shop.subscription_status, 'promo') = 'promo'
+     AND now() <= COALESCE(v_shop.promo_ends_at, now()) THEN
+    RETURN NEW;
+  END IF;
+
+  IF COALESCE(v_shop.subscription_status, 'promo') <> 'active' THEN
+    RAISE EXCEPTION 'Your 2-month promo has ended. Activate a paid plan to continue creating sales records.';
+  END IF;
+
+  -- Paid active shops may create overages. The app reports overage usage
+  -- and recommends the next tier instead of blocking sales operations.
+  RETURN NEW;
+END;
+$$;
+
 CREATE TABLE expenses (
   id BIGSERIAL PRIMARY KEY,
   shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
@@ -739,6 +884,14 @@ CREATE TABLE audit_log (
 -- ============================================================
 
 CREATE INDEX idx_shop_memberships_auth_user_id ON shop_memberships(auth_user_id);
+CREATE INDEX idx_shop_memberships_owner_guard
+  ON shop_memberships(auth_user_id)
+  WHERE is_owner = TRUE
+    AND is_active = TRUE
+    AND COALESCE(membership_status, 'active') <> 'removed';
+CREATE INDEX idx_shops_owner_device_id
+  ON shops(owner_device_id)
+  WHERE owner_device_id IS NOT NULL;
 CREATE INDEX idx_shop_memberships_shop_id ON shop_memberships(shop_id);
 CREATE INDEX idx_roles_shop_id ON roles(shop_id);
 CREATE INDEX idx_role_permissions_shop_id ON role_permissions(shop_id);
@@ -747,6 +900,7 @@ CREATE INDEX idx_products_shop_id ON products(shop_id);
 CREATE INDEX idx_batch_products_shop_id ON batch_products(shop_id);
 CREATE INDEX idx_customers_shop_id ON customers(shop_id);
 CREATE INDEX idx_orders_shop_id ON orders(shop_id);
+CREATE INDEX idx_orders_shop_created_usage ON orders(shop_id, created_at);
 CREATE INDEX idx_order_items_shop_id ON order_items(shop_id);
 CREATE INDEX idx_buying_list_shop_id ON buying_list(shop_id);
 CREATE INDEX idx_arrival_items_shop_id ON arrival_items(shop_id);
@@ -767,6 +921,7 @@ CREATE INDEX idx_shipping_payments_shop_id ON shipping_payments(shop_id);
 CREATE INDEX idx_deliveries_shop_id ON deliveries(shop_id);
 CREATE INDEX idx_stock_sales_shop_id ON stock_sales(shop_id);
 CREATE INDEX idx_stock_sales_shop_status_created ON stock_sales(shop_id, status, created_at DESC);
+CREATE INDEX idx_stock_sales_shop_created_usage ON stock_sales(shop_id, created_at);
 CREATE INDEX idx_stock_sale_items_shop_id ON stock_sale_items(shop_id);
 CREATE INDEX idx_expenses_shop_id ON expenses(shop_id);
 CREATE INDEX idx_audit_log_shop_id ON audit_log(shop_id);
@@ -898,6 +1053,8 @@ CREATE TRIGGER trg_orders_shop BEFORE INSERT OR UPDATE ON orders
   FOR EACH ROW EXECUTE FUNCTION set_shop_fields();
 CREATE TRIGGER trg_orders_actor BEFORE INSERT OR UPDATE ON orders
   FOR EACH ROW EXECUTE FUNCTION set_actor_fields();
+CREATE TRIGGER trg_zz_orders_sales_record_limit BEFORE INSERT ON orders
+  FOR EACH ROW EXECUTE FUNCTION enforce_shop_sales_record_limit();
 
 CREATE TRIGGER trg_order_items_shop BEFORE INSERT OR UPDATE ON order_items
   FOR EACH ROW EXECUTE FUNCTION set_shop_fields();
@@ -973,6 +1130,8 @@ CREATE TRIGGER trg_stock_sales_shop BEFORE INSERT OR UPDATE ON stock_sales
   FOR EACH ROW EXECUTE FUNCTION set_shop_fields();
 CREATE TRIGGER trg_stock_sales_actor BEFORE INSERT OR UPDATE ON stock_sales
   FOR EACH ROW EXECUTE FUNCTION set_actor_fields();
+CREATE TRIGGER trg_zz_stock_sales_record_limit BEFORE INSERT ON stock_sales
+  FOR EACH ROW EXECUTE FUNCTION enforce_shop_sales_record_limit();
 
 CREATE TRIGGER trg_stock_sale_items_shop BEFORE INSERT OR UPDATE ON stock_sale_items
   FOR EACH ROW EXECUTE FUNCTION set_shop_fields();

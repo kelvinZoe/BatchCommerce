@@ -36,6 +36,7 @@ export interface WorkspaceBootstrapInput {
   shopName: string;
   shopSlug?: string;
   phone: string;
+  deviceId?: string;
 }
 
 export interface WorkspaceBootstrapResult {
@@ -91,6 +92,7 @@ export interface PhoneVerificationResult {
 })
 export class AuthService {
   private readonly productionAdminApiUrl = 'https://batchcommerce-admin.onrender.com';
+  private readonly deviceIdStorageKey = 'batchcommerce_device_id';
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   private permissionsSubject = new BehaviorSubject<Permission[]>([]);
   private sessionRestorePromise: Promise<void> | null = null;
@@ -233,6 +235,40 @@ export class AuthService {
     }
 
     return runQuery();
+  }
+
+  private async resolveOwnedShopForAuthUser(authUserId: string): Promise<any | null> {
+    const { data, error } = await this.sb.from('shop_memberships')
+      .select('id, shop_id, is_owner, is_active, membership_status, shops(id, name, slug)')
+      .eq('auth_user_id', authUserId)
+      .eq('is_owner', true)
+      .eq('is_active', true)
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to check existing shop ownership');
+    }
+
+    return data && data.length > 0 ? data[0] : null;
+  }
+
+  async hasOwnedShop(): Promise<boolean> {
+    const { data: authData } = await this.sb.auth.getUser();
+    const authUser = authData?.user;
+    if (!authUser) return false;
+    return !!(await this.resolveOwnedShopForAuthUser(authUser.id));
+  }
+
+  getOrCreateDeviceId(): string {
+    const existing = localStorage.getItem(this.deviceIdStorageKey);
+    if (existing) return existing;
+
+    const generated = globalThis.crypto?.randomUUID?.()
+      || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+
+    localStorage.setItem(this.deviceIdStorageKey, generated);
+    return generated;
   }
 
   private buildUserFromMembership(authUser: any, membership: any): User {
@@ -1153,6 +1189,16 @@ export class AuthService {
         return { success: false, message: 'Please sign in before creating your shop.' };
       }
 
+      const existingOwnedShop = await this.resolveOwnedShopForAuthUser(authUser.id);
+      if (existingOwnedShop) {
+        const shop = Array.isArray(existingOwnedShop.shops) ? existingOwnedShop.shops[0] : existingOwnedShop.shops;
+        const shopName = shop?.name || 'your existing shop';
+        return {
+          success: false,
+          message: `This account already owns ${shopName}. Each account can create only one shop.`
+        };
+      }
+
       const normalizedPhone = this.normalizePhoneNumber(input.phone || '');
 
       if (!normalizedPhone) {
@@ -1164,7 +1210,8 @@ export class AuthService {
         p_full_name: input.fullName,
         p_email: input.email,
         p_phone: normalizedPhone,
-        p_shop_slug: input.shopSlug || null
+        p_shop_slug: input.shopSlug || null,
+        p_owner_device_id: input.deviceId || this.getOrCreateDeviceId()
       });
 
       if (error || !data) {

@@ -350,7 +350,7 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
 
     /* ── Modal ── */
     .bl-modal-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
-    .bl-modal { background: #fff; border-radius: 16px; width: 100%; max-width: 480px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.2); overflow: hidden; }
+    .bl-modal { background: #fff; border-radius: 16px; width: 100%; max-width: 480px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
     .bl-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid #ccc; }
     .bl-modal-title { font-size: 16px; font-weight: 700; color: #0f172a; margin: 0; }
     .bl-modal-close { background: none; border: none; cursor: pointer; color: #94a3b8; display: flex; padding: 2px; border-radius: 6px; }
@@ -361,7 +361,7 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
     .bl-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .bl-label { font-size: 12px; font-weight: 600; color: #475569; }
     .bl-input { padding: 9px 12px; border: 1px solid #ccc; border-radius: 9px; font-size: 13px; background: #f8fafc; color: #1e293b; transition: border-color 0.13s; width: 100%; box-sizing: border-box; }
-    .bl-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99,102,241), 0.12); background: #fff; }
+    .bl-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); background: #fff; }
     .bl-input:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
 
     /* ── Spinner ── */
@@ -392,7 +392,6 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
       padding: 12px 16px;
       border-radius: 12px;
       border: 1px solid transparent;
-      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
       font-size: 13px;
       font-weight: 700;
       animation: bl-toast-in 0.18s ease-out;

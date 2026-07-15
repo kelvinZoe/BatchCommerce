@@ -1,24 +1,37 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { DatabaseService } from '../../services/database.service';
 import { ShopConfigService } from '../../services/shop-config.service';
 import { AuthService } from '../../services/auth.service';
 import { ThemeService } from '../../services/theme.service';
 import { ExcelService } from '../../services/excel.service';
+import { ModalShellComponent } from '../../components/modal-shell/modal-shell.component';
+import { PricingUsage } from '../../models';
 import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModalShellComponent, RouterLink],
   template: `
     <div class="settings-page">
-      <div class="page-header">
-        <h1>Settings</h1>
-        <p class="subtitle">Manage application settings and preferences</p>
-      </div>
+      <section class="settings-hero">
+        <div class="hero-icon">
+          <span class="material-icons">tune</span>
+        </div>
+        <div class="hero-copy">
+          <span class="eyebrow">Workspace controls</span>
+          <h1>Settings</h1>
+          <p>Keep your shop profile, theme, data exports, and account security tidy from one place.</p>
+        </div>
+        <div class="hero-account">
+          <span class="hero-account-label">Signed in as</span>
+          <strong>{{ currentUserDisplayName }}</strong>
+          <span>{{ currentUserRole }} at {{ shopConfig.shopName }}</span>
+        </div>
+      </section>
 
       <div class="set-status" *ngIf="statusMessage"
            [class.set-status-success]="statusTone === 'success'"
@@ -29,179 +42,263 @@ import { firstValueFrom } from 'rxjs';
         <button class="set-status-close" (click)="clearStatus()"><span class="material-icons">close</span></button>
       </div>
 
-      <div class="settings-container">
-        <div class="card">
-          <div class="card-header">
-            <h2>Business Information</h2>
+      <section class="settings-card subscription-card">
+        <div class="card-heading">
+          <div>
+            <span class="eyebrow">Subscription</span>
+            <h2>Plan snapshot</h2>
+            <p>Monthly sales records count preorder orders and stock sales.</p>
           </div>
-          <div class="form-group">
-            <label>Business Name</label>
-            <input type="text" [(ngModel)]="settings.businessName" placeholder="Shakhis Ventures" />
-          </div>
-          <div class="form-group">
-            <label>Phone Number</label>
-            <input type="tel" [(ngModel)]="settings.phone" placeholder="Your business phone" />
-          </div>
-          <div class="form-group">
-            <label>WhatsApp Number</label>
-            <input type="tel" [(ngModel)]="settings.whatsapp" placeholder="WhatsApp for orders" />
-          </div>
-          <div class="form-group">
-            <label>Location/Address</label>
-            <textarea [(ngModel)]="settings.address" placeholder="Business address..."></textarea>
-          </div>
+          <a class="ghost-link" routerLink="/subscription">
+            View details
+            <span class="material-icons">arrow_forward</span>
+          </a>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <h2>Preferences</h2>
-          </div>
-          <div class="form-group">
-            <label>Currency Symbol</label>
-            <select [(ngModel)]="settings.currency">
-              <option value="GHS">GHS (Ghana Cedi)</option>
-              <option value="USD">USD (US Dollar)</option>
-              <option value="EUR">EUR (Euro)</option>
-              <option value="GBP">GBP (British Pound)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="toggle-row">
-              <input type="checkbox" [(ngModel)]="settings.enableOrderAlerts" />
-              <span>Enable order notifications</span>
-            </label>
-          </div>
-          <div class="form-group">
-            <label class="toggle-row">
-              <input type="checkbox" [(ngModel)]="settings.compactTables" />
-              <span>Use compact tables</span>
-            </label>
-          </div>
+        <div class="billing-loading" *ngIf="loadingPricing">
+          <span class="spinner"></span>
+          Loading plan usage...
         </div>
 
-        <!-- ── Appearance ── -->
-        <div class="card">
-          <div class="card-header">
-            <h2>Appearance</h2>
-            <p class="card-subtitle">Customize the primary color used throughout the app</p>
+        <div class="billing-error" *ngIf="pricingError">
+          <span class="material-icons">error_outline</span>
+          {{ pricingError }}
+        </div>
+
+        <div class="subscription-grid" *ngIf="!loadingPricing && pricingUsage">
+          <div class="plan-tile">
+            <span class="billing-badge" [class.billing-badge-promo]="pricingUsage.promoActive">
+              {{ pricingStatusLabel }}
+            </span>
+            <div class="plan-name">{{ pricingUsage.plan | titlecase }}</div>
+            <div class="plan-price">GHS {{ pricingUsage.priceGhs }}<span>/month</span></div>
+            <p *ngIf="pricingUsage.promoActive">Promo ends {{ pricingUsage.promoEndsAt | date:'mediumDate' }}.</p>
+            <p *ngIf="!pricingUsage.promoActive && pricingUsage.status !== 'active'">Activate billing to keep creating sales records.</p>
           </div>
 
-          <div class="appearance-row">
-            <div class="appearance-left">
-              <label class="ap-label">Primary Color</label>
-              <div class="ap-picker-row">
-                <div class="ap-swatch" [style.background]="primaryColor"></div>
-                <input type="color" class="ap-color-input" [(ngModel)]="primaryColor"
-                       (ngModelChange)="applyColor($event)" />
-                <span class="ap-hex-label">{{ primaryColor }}</span>
+          <div class="usage-tile">
+            <div class="usage-count">
+              <strong>{{ pricingUsage.usageCount }}</strong>
+              <span>/ {{ pricingUsage.monthlyLimit === null ? 'Unlimited' : pricingUsage.monthlyLimit }}</span>
+            </div>
+            <div class="billing-meter" *ngIf="pricingUsage.monthlyLimit !== null">
+              <div class="billing-meter-fill" [style.width.%]="pricingUsagePercent"></div>
+            </div>
+            <p>{{ pricingUsageSummary }}</p>
+            <small *ngIf="pricingUsage.recommendedPlan !== pricingUsage.plan">
+              Recommended tier: <strong>{{ pricingUsage.recommendedPlan | titlecase }}</strong>
+            </small>
+          </div>
+        </div>
+      </section>
+
+      <div class="settings-layout">
+        <main class="settings-main">
+          <section class="settings-card">
+            <div class="card-heading">
+              <div>
+                <span class="eyebrow">Business</span>
+                <h2>Shop profile</h2>
+                <p>This information is used across receipts, exports, and shared shop context.</p>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group form-group-wide">
+                <label>Business Name</label>
+                <input type="text" [(ngModel)]="settings.businessName" placeholder="Shakhis Ventures" />
+              </div>
+              <div class="form-group">
+                <label>Phone Number</label>
+                <input type="tel" [(ngModel)]="settings.phone" placeholder="Your business phone" />
+              </div>
+              <div class="form-group">
+                <label>WhatsApp Number</label>
+                <input type="tel" [(ngModel)]="settings.whatsapp" placeholder="WhatsApp for orders" />
+              </div>
+              <div class="form-group form-group-wide">
+                <label>Location/Address</label>
+                <textarea [(ngModel)]="settings.address" placeholder="Business address..."></textarea>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div class="card-heading">
+              <div>
+                <span class="eyebrow">Appearance</span>
+                <h2>Brand color</h2>
+                <p>Pick the color that anchors buttons, highlights, and active navigation.</p>
+              </div>
+            </div>
+
+            <div class="appearance-row">
+              <div class="appearance-left">
+                <label class="ap-label">Primary Color</label>
+                <div class="ap-picker-row">
+                  <div class="ap-swatch" [style.background]="primaryColor"></div>
+                  <input type="color" class="ap-color-input" [(ngModel)]="primaryColor"
+                         (ngModelChange)="applyColor($event)" />
+                  <span class="ap-hex-label">{{ primaryColor }}</span>
+                </div>
+
+                <label class="ap-label ap-label-spaced">Presets</label>
+                <div class="ap-presets">
+                  <button *ngFor="let p of colorPresets"
+                          class="ap-preset"
+                          [style.background]="p.color"
+                          [class.ap-preset-active]="primaryColor.toLowerCase() === p.color.toLowerCase()"
+                          (click)="applyColor(p.color)"
+                          [title]="p.name">
+                  </button>
+                </div>
               </div>
 
-              <label class="ap-label" style="margin-top:14px">Presets</label>
-              <div class="ap-presets">
-                <button *ngFor="let p of colorPresets"
-                        class="ap-preset"
-                        [style.background]="p.color"
-                        [class.ap-preset-active]="primaryColor.toLowerCase() === p.color.toLowerCase()"
-                        (click)="applyColor(p.color)"
-                        [title]="p.name">
+              <div class="ap-preview-panel" [style.--preview-color]="primaryColor">
+                <div class="ap-preview-label">Live Preview</div>
+                <button class="ap-preview-btn">
+                  <span class="material-icons">check_circle</span>
+                  Primary Button
                 </button>
+                <div class="ap-preview-nav">
+                  <span class="material-icons">dashboard</span>
+                  <span>Active Nav Item</span>
+                </div>
+                <div class="ap-preview-badge">Tag / Badge</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div class="card-heading compact-heading">
+              <div>
+                <span class="eyebrow">Preferences</span>
+                <h2>App behavior</h2>
               </div>
             </div>
 
-            <div class="ap-preview-panel" [style.--preview-color]="primaryColor">
-              <div class="ap-preview-label">Live Preview</div>
-              <button class="ap-preview-btn">
-                <span class="material-icons" style="font-size:16px">check_circle</span>
-                Primary Button
-              </button>
-              <div class="ap-preview-nav">
-                <span class="material-icons">dashboard</span>
-                <span>Active Nav Item</span>
-              </div>
-              <div class="ap-preview-badge">Tag / Badge</div>
+            <div class="form-group">
+              <label>Currency Symbol</label>
+              <select [(ngModel)]="settings.currency">
+                <option value="GHS">GHS (Ghana Cedi)</option>
+                <option value="USD">USD (US Dollar)</option>
+                <option value="EUR">EUR (Euro)</option>
+                <option value="GBP">GBP (British Pound)</option>
+              </select>
             </div>
-          </div>
-        </div>
 
-        <div class="card">
-          <div class="card-header">
-            <h2>Data Management</h2>
-          </div>
-          <div class="data-actions">
-            <div class="action-item">
-              <div class="action-info">
-                <strong>Export All Data</strong>
-                <p>Download all your data as an Excel file</p>
-              </div>
-              <button class="btn btn-secondary" (click)="exportData()" [disabled]="exporting">
-                <span *ngIf="exporting" class="spinner"></span>
-                <span class="material-icons">download</span>
-                {{ exporting ? 'Exporting...' : 'Export' }}
-              </button>
+            <div class="toggle-stack">
+              <label class="toggle-card">
+                <input type="checkbox" [(ngModel)]="settings.enableOrderAlerts" />
+                <span>
+                  <strong>Order notifications</strong>
+                  <small>Get prompted when order events need attention.</small>
+                </span>
+              </label>
+              <label class="toggle-card">
+                <input type="checkbox" [(ngModel)]="settings.compactTables" />
+                <span>
+                  <strong>Compact tables</strong>
+                  <small>Use tighter spacing where table density matters.</small>
+                </span>
+              </label>
             </div>
-            <div class="action-item danger">
-              <div class="action-info">
-                <strong>Clear All Data</strong>
-                <p>Remove all products, clients, batches, orders, deliveries, buying list &amp; expenses (cannot be undone)</p>
-              </div>
-              <button class="btn btn-danger" (click)="showClearModal = true" [disabled]="clearing">
-                <span class="material-icons">delete_forever</span>
-                {{ clearing ? 'Clearing...' : 'Clear All' }}
-              </button>
-            </div>
-          </div>
-        </div>
+          </section>
+        </main>
 
-        <div class="card">
-          <div class="card-header">
-            <h2>Account</h2>
-          </div>
-          <div class="about-info">
-            <div class="info-row">
-              <span>Signed in as</span>
-              <span>{{ currentUserDisplayName }}</span>
+        <aside class="settings-side">
+          <section class="settings-card account-card">
+            <div class="card-heading compact-heading">
+              <div>
+                <span class="eyebrow">Account</span>
+                <h2>Session</h2>
+              </div>
             </div>
-            <div class="info-row">
-              <span>Role</span>
-              <span>{{ currentUserRole }}</span>
+            <div class="about-info">
+              <div class="info-row">
+                <span>Name</span>
+                <strong>{{ currentUserDisplayName }}</strong>
+              </div>
+              <div class="info-row">
+                <span>Role</span>
+                <strong>{{ currentUserRole }}</strong>
+              </div>
+              <div class="info-row">
+                <span>Shop</span>
+                <strong>{{ shopConfig.shopName }}</strong>
+              </div>
             </div>
-            <div class="info-row">
-              <span>Current Shop</span>
-              <span>{{ shopConfig.shopName }}</span>
-            </div>
-          </div>
-          <div class="form-actions" style="margin-top:16px">
-            <button class="btn btn-secondary" (click)="logoutAndGoLogin()">
+            <button class="btn btn-secondary full-btn" (click)="logoutAndGoLogin()">
               <span class="material-icons">logout</span>
               Sign Out
             </button>
-          </div>
-        </div>
+          </section>
 
-        <div class="card">
-          <div class="card-header">
-            <h2>Security</h2>
-          </div>
-          <div class="form-group">
-            <label>Current Password</label>
-            <input type="password" [(ngModel)]="currentPassword" autocomplete="current-password" />
-          </div>
-          <div class="form-group">
-            <label>New Password</label>
-            <input type="password" [(ngModel)]="newPassword" autocomplete="new-password" />
-          </div>
-          <div class="form-group">
-            <label>Confirm New Password</label>
-            <input type="password" [(ngModel)]="confirmNewPassword" autocomplete="new-password" />
-          </div>
-          <div class="form-group">
-            <button class="btn btn-primary" (click)="changePassword()" [disabled]="changingPassword">
+          <section class="settings-card">
+            <div class="card-heading compact-heading">
+              <div>
+                <span class="eyebrow">Security</span>
+                <h2>Password</h2>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Current Password</label>
+              <input type="password" [(ngModel)]="currentPassword" autocomplete="current-password" />
+            </div>
+            <div class="form-group">
+              <label>New Password</label>
+              <input type="password" [(ngModel)]="newPassword" autocomplete="new-password" />
+            </div>
+            <div class="form-group">
+              <label>Confirm New Password</label>
+              <input type="password" [(ngModel)]="confirmNewPassword" autocomplete="new-password" />
+            </div>
+            <button class="btn btn-primary full-btn" (click)="changePassword()" [disabled]="changingPassword">
               <span *ngIf="changingPassword" class="spinner"></span>
               {{ changingPassword ? 'Updating...' : 'Change Password' }}
             </button>
-          </div>
-        </div>
+          </section>
 
+          <section class="settings-card data-card">
+            <div class="card-heading compact-heading">
+              <div>
+                <span class="eyebrow">Data</span>
+                <h2>Export & cleanup</h2>
+              </div>
+            </div>
+            <div class="data-actions">
+              <div class="action-item">
+                <span class="action-icon">
+                  <span class="material-icons">download</span>
+                </span>
+                <div class="action-info">
+                  <strong>Export All Data</strong>
+                  <p>Download your operational data as an Excel file.</p>
+                </div>
+                <button class="btn btn-secondary" (click)="exportData()" [disabled]="exporting">
+                  <span *ngIf="exporting" class="spinner"></span>
+                  {{ exporting ? 'Exporting...' : 'Export' }}
+                </button>
+              </div>
+              <div class="action-item danger">
+                <span class="action-icon danger-icon">
+                  <span class="material-icons">delete_forever</span>
+                </span>
+                <div class="action-info">
+                  <strong>Clear All Data</strong>
+                  <p>Remove operational records. Users and roles stay intact.</p>
+                </div>
+                <button class="btn btn-danger" (click)="showClearModal = true" [disabled]="clearing">
+                  {{ clearing ? 'Clearing...' : 'Clear' }}
+                </button>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <div class="settings-save-bar">
+        <span>Business profile and preferences are saved together.</span>
         <button class="btn btn-primary btn-lg save-btn" (click)="saveSettings()" [disabled]="savingSettings">
           <span *ngIf="savingSettings" class="spinner"></span>
           <span *ngIf="!savingSettings" class="material-icons">save</span>
@@ -210,60 +307,164 @@ import { firstValueFrom } from 'rxjs';
       </div>
 
       <!-- Clear Data Confirmation Modal -->
-      <div class="modal-overlay" *ngIf="showClearModal" (click)="showClearModal = false">
-        <div class="modal" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>⚠️ Clear All Data</h3>
-            <button class="close-btn" (click)="showClearModal = false">&times;</button>
-          </div>
-          <div class="modal-body">
-            <div class="danger-banner">
-              <span class="material-icons">warning</span>
-              <div>
-                <strong>This action is permanent and cannot be undone!</strong>
-                <p>The following data will be deleted:</p>
-                <ul>
-                  <li>All products</li>
-                  <li>All clients</li>
-                  <li>All orders &amp; order items</li>
-                  <li>All batches</li>
-                  <li>All deliveries</li>
-                  <li>All buying list items</li>
-                  <li>All expenses</li>
-                </ul>
-                <p><strong>Users and roles will NOT be affected.</strong></p>
-              </div>
-            </div>
-            <div class="form-group" style="margin-top:16px">
-              <label>Type <strong>DELETE ALL</strong> to confirm:</label>
-              <input type="text" [(ngModel)]="confirmPhrase" placeholder="Type DELETE ALL" autocomplete="off" />
+      <app-modal-shell
+        *ngIf="showClearModal"
+        size="sm"
+        tone="danger"
+        title="Clear All Data"
+        subtitle="This permanently removes operational records"
+        icon="warning"
+        (closeRequested)="closeClearDataModal()">
+        <div modal-body>
+          <div class="danger-banner">
+            <span class="material-icons">warning</span>
+            <div>
+              <strong>This action is permanent and cannot be undone!</strong>
+              <p>The following data will be deleted:</p>
+              <ul>
+                <li>All products</li>
+                <li>All clients</li>
+                <li>All orders &amp; order items</li>
+                <li>All batches</li>
+                <li>All deliveries</li>
+                <li>All buying list items</li>
+                <li>All expenses</li>
+              </ul>
+              <p><strong>Users and roles will NOT be affected.</strong></p>
             </div>
           </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" (click)="showClearModal = false; confirmPhrase = ''">Cancel</button>
-            <button class="btn btn-danger" [disabled]="confirmPhrase !== 'DELETE ALL'" (click)="clearData()">
-              <span class="material-icons">delete_forever</span>
-              Permanently Delete All Data
-            </button>
+          <div class="form-group" style="margin-top:16px">
+            <label>Type <strong>DELETE ALL</strong> to confirm:</label>
+            <input type="text" [(ngModel)]="confirmPhrase" placeholder="Type DELETE ALL" autocomplete="off" />
           </div>
         </div>
-      </div>
+        <div modal-footer>
+          <button class="btn btn-secondary" (click)="closeClearDataModal()">Cancel</button>
+          <button class="btn btn-danger" [disabled]="confirmPhrase !== 'DELETE ALL'" (click)="clearData()">
+            <span class="material-icons">delete_forever</span>
+            Permanently Delete All Data
+          </button>
+        </div>
+      </app-modal-shell>
     </div>
   `,
   styles: [`
     .settings-page {
-      max-width: 800px;
+      --set-ink: #152033;
+      --set-muted: #64748b;
+      --set-line: #dbe4ef;
+      --set-soft: #f8fafc;
+      --set-paper: #ffffff;
+      --set-warm: #fff7ed;
+      --set-green: #ecfdf5;
+      max-width: 1240px;
+      margin: 0 auto;
+      padding-bottom: 28px;
+      color: var(--set-ink);
     }
 
-    .subtitle {
-      color: var(--text-secondary);
-      margin-top: 4px;
+    .settings-hero {
+      position: relative;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) minmax(220px, 320px);
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 24px;
+      border: 1px solid rgba(99, 102, 241, 0.16);
+      border-radius: 28px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 12% 0%, rgba(99, 102, 241, 0.16), transparent 28%),
+        linear-gradient(135deg, #ffffff 0%, #f8fafc 48%, #fff7ed 100%);
+    }
+
+    .settings-hero::after {
+      content: '';
+      position: absolute;
+      inset: auto 26px 0 auto;
+      width: 190px;
+      height: 80px;
+      border-radius: 999px 999px 0 0;
+      background: rgba(99, 102, 241, 0.08);
+      transform: translateY(42%);
+      pointer-events: none;
+    }
+
+    .hero-icon {
+      width: 58px;
+      height: 58px;
+      border-radius: 20px;
+      display: grid;
+      place-items: center;
+      background: var(--primary-color, #6366f1);
+      color: #fff;
+      z-index: 1;
+    }
+
+    .hero-icon .material-icons {
+      font-size: 30px;
+    }
+
+    .hero-copy,
+    .hero-account {
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-copy h1 {
+      margin: 4px 0 6px;
+      font-size: clamp(30px, 4vw, 48px);
+      line-height: 0.95;
+      letter-spacing: -0.05em;
+      color: #111827;
+    }
+
+    .hero-copy p,
+    .card-heading p {
+      margin: 0;
+      color: var(--set-muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .hero-account {
+      justify-self: end;
+      width: 100%;
+      padding: 15px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.76);
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .hero-account-label,
+    .eyebrow {
+      color: var(--primary-color, #6366f1);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .hero-account strong {
+      color: #0f172a;
+      font-size: 15px;
+      line-height: 1.2;
+    }
+
+    .hero-account span:last-child {
+      color: var(--set-muted);
+      font-size: 12px;
     }
 
     .set-status {
-      margin: 12px 0 18px;
+      margin: 0 0 16px;
       padding: 12px 14px;
-      border-radius: 10px;
+      border-radius: 16px;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -272,9 +473,9 @@ import { firstValueFrom } from 'rxjs';
       border: 1px solid transparent;
     }
     .set-status .material-icons { font-size: 18px; }
-    .set-status-success { background:#ecfdf5; color:#166534; border-color:#bbf7d0; }
-    .set-status-info { background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; }
-    .set-status-error { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+    .set-status-success { background: #ecfdf5; color: #166534; border-color: #bbf7d0; }
+    .set-status-info { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+    .set-status-error { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
     .set-status-close {
       margin-left: auto;
       width: 24px;
@@ -291,138 +492,557 @@ import { firstValueFrom } from 'rxjs';
     }
     .set-status-close .material-icons { font-size: 16px; }
 
-    .settings-container {
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
+    .settings-card {
+      padding: 20px;
+      border: 1px solid var(--set-line);
+      border-radius: 24px;
+      background: var(--set-paper);
     }
 
-    .data-actions {
+    .card-heading {
       display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .action-item {
-      display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
-      padding: 16px;
-      background: var(--background-color);
-      border-radius: var(--radius-md);
-
-      &.danger {
-        background: #fef2f2;
-      }
+      gap: 16px;
+      margin-bottom: 18px;
     }
 
-    .toggle-row {
+    .compact-heading {
+      margin-bottom: 14px;
+    }
+
+    .card-heading h2 {
+      margin: 3px 0 4px;
+      color: #0f172a;
+      font-size: 20px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    .ghost-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 12px;
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 999px;
+      color: var(--primary-color, #6366f1);
+      background: rgba(99, 102, 241, 0.06);
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: transform 0.16s ease, background 0.16s ease;
+    }
+
+    .ghost-link:hover {
+      transform: translateY(-1px);
+      background: rgba(99, 102, 241, 0.1);
+    }
+
+    .ghost-link .material-icons {
+      font-size: 16px;
+    }
+
+    .subscription-card {
+      margin-bottom: 18px;
+      background:
+        linear-gradient(120deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.96)),
+        radial-gradient(circle at 95% 0%, rgba(245, 158, 11, 0.12), transparent 34%);
+    }
+
+    .subscription-grid {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.28fr);
+      gap: 14px;
+    }
+
+    .plan-tile,
+    .usage-tile {
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      border-radius: 20px;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.75);
+    }
+
+    .plan-name {
+      margin-top: 14px;
+      color: #0f172a;
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+
+    .plan-price {
+      margin-top: 8px;
+      color: var(--primary-color, #6366f1);
+      font-size: 21px;
+      font-weight: 900;
+    }
+
+    .plan-price span {
+      margin-left: 3px;
+      color: var(--set-muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .plan-tile p,
+    .usage-tile p,
+    .usage-tile small {
+      display: block;
+      margin: 10px 0 0;
+      color: var(--set-muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .billing-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    .billing-badge-promo {
+      background: #ecfdf5;
+      color: #166534;
+    }
+
+    .billing-loading,
+    .billing-error {
       display: flex;
       align-items: center;
       gap: 8px;
-      cursor: pointer;
-      font-size: 14px;
-      color: #334155;
-    }
-    .toggle-row input[type='checkbox'] {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--primary-color, #6366f1);
+      color: var(--set-muted);
+      font-size: 13px;
     }
 
-    .action-info {
-      strong {
-        display: block;
-        margin-bottom: 4px;
-      }
-
-      p {
-        color: var(--text-secondary);
-        font-size: 13px;
-        margin: 0;
-      }
+    .billing-error {
+      margin-top: 12px;
+      color: #991b1b;
     }
 
-    .about-info {
+    .billing-error .material-icons {
+      font-size: 18px;
+    }
+
+    .usage-count {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      color: var(--set-muted);
+    }
+
+    .usage-count strong {
+      color: #0f172a;
+      font-size: 34px;
+      letter-spacing: -0.05em;
+      line-height: 1;
+    }
+
+    .billing-meter {
+      height: 10px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .billing-meter-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--primary-color, #6366f1), #22c55e);
+      transition: width 0.2s ease;
+    }
+
+    .settings-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .settings-main,
+    .settings-side {
+      display: grid;
+      gap: 18px;
+    }
+
+    .settings-side {
+      position: sticky;
+      top: 18px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .form-group {
       display: flex;
       flex-direction: column;
+      gap: 7px;
+      margin: 0 0 14px;
     }
 
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 12px 0;
-      border-bottom: 1px solid var(--border-color);
-
-      &:last-child {
-        border-bottom: none;
-      }
-
-      span:first-child {
-        color: var(--text-secondary);
-      }
-
-      span:last-child {
-        font-weight: 500;
-      }
+    .form-group:last-child {
+      margin-bottom: 0;
     }
 
-    .save-btn {
+    .form-group-wide {
+      grid-column: 1 / -1;
+    }
+
+    .form-group label,
+    .ap-label {
+      color: #475569;
+      font-size: 12px;
+      font-weight: 850;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
       width: 100%;
+      border: 1px solid #dbe4ef;
+      border-radius: 14px;
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.16s ease, background 0.16s ease;
     }
 
-    .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+    .form-group input,
+    .form-group select {
+      min-height: 44px;
+      padding: 0 13px;
+    }
 
-    /* ── Card subtitle ── */
-    .card-subtitle { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+    .form-group textarea {
+      min-height: 92px;
+      resize: vertical;
+      padding: 12px 13px;
+    }
 
-    /* ── Appearance ─────────────────────────────────────── */
-    .appearance-row { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
-    .appearance-left { flex: 1; min-width: 200px; }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      border-color: rgba(99, 102, 241, 0.65);
+      background: #ffffff;
+    }
 
-    .ap-label { display: block; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .appearance-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(190px, 230px);
+      gap: 18px;
+      align-items: stretch;
+    }
 
-    .ap-picker-row { display: flex; align-items: center; gap: 10px; }
-    .ap-swatch { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #ccc; flex-shrink: 0; }
-    .ap-color-input { width: 42px; height: 36px; border: 1px solid #ccc; border-radius: 8px; padding: 2px; cursor: pointer; background: #fff; flex-shrink: 0; }
-    .ap-hex-label { font-size: 13px; font-weight: 600; color: #0f172a; font-family: 'SF Mono','Fira Code',monospace; }
+    .appearance-left {
+      min-width: 0;
+    }
 
-    .ap-presets { display: flex; flex-wrap: wrap; gap: 8px; }
-    .ap-preset { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.12s, border-color 0.12s; }
-    .ap-preset:hover { transform: scale(1.15); }
-    .ap-preset-active { border-color: #0f172a !important; transform: scale(1.1); }
+    .ap-label {
+      display: block;
+      margin-bottom: 8px;
+    }
 
-    /* ── Live preview panel ── */
-    .ap-preview-panel {
-      flex-shrink: 0;
-      width: 190px;
+    .ap-label-spaced {
+      margin-top: 16px;
+    }
+
+    .ap-picker-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
       background: #f8fafc;
-      border: 1px solid #ccc;
+    }
+
+    .ap-swatch {
+      width: 38px;
+      height: 38px;
       border-radius: 12px;
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      flex-shrink: 0;
+    }
+
+    .ap-color-input {
+      width: 44px;
+      height: 38px;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 3px;
+      cursor: pointer;
+      background: #fff;
+      flex-shrink: 0;
+    }
+
+    .ap-hex-label {
+      font-size: 13px;
+      font-weight: 800;
+      color: #0f172a;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    .ap-presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .ap-preset {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.9);
+      cursor: pointer;
+      transition: transform 0.12s;
+    }
+
+    .ap-preset:hover { transform: scale(1.15); }
+    .ap-preset-active {
+      transform: scale(1.08);
+    }
+
+    .ap-preview-panel {
+      min-width: 0;
+      border: 1px solid #dbe4ef;
+      border-radius: 20px;
       padding: 16px;
+      background:
+        radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--preview-color, #6366f1) 20%, transparent), transparent 30%),
+        #f8fafc;
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
-    .ap-preview-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin-bottom: 2px; }
+
+    .ap-preview-label {
+      font-size: 11px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+      margin-bottom: 2px;
+    }
+
     .ap-preview-btn {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 8px 14px; border: none; border-radius: 8px;
-      background: var(--preview-color, #6366f1); color: #fff;
-      font-size: 13px; font-weight: 600; cursor: default; width: 100%; justify-content: center;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 12px;
+      background: var(--preview-color, #6366f1);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: default;
+      width: 100%;
+      justify-content: center;
     }
+
+    .ap-preview-btn .material-icons {
+      font-size: 16px;
+    }
+
     .ap-preview-nav {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 10px; border-radius: 8px;
-      background: var(--preview-color, #6366f1); color: #fff;
-      font-size: 13px; font-weight: 500;
-      .material-icons { font-size: 18px; }
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 10px;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--preview-color, #6366f1) 13%, white);
+      color: var(--preview-color, #6366f1);
+      font-size: 13px;
+      font-weight: 800;
     }
+
+    .ap-preview-nav .material-icons {
+      font-size: 18px;
+    }
+
     .ap-preview-badge {
-      display: inline-flex; align-items: center; justify-content: center;
-      padding: 4px 12px; border-radius: 20px;
-      background: var(--preview-color, #6366f1); color: #fff;
-      font-size: 12px; font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      align-self: flex-start;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: #fff;
+      color: var(--preview-color, #6366f1);
+      border: 1px solid color-mix(in srgb, var(--preview-color, #6366f1) 35%, white);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .toggle-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .toggle-card {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 14px;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      background: #f8fafc;
+      cursor: pointer;
+    }
+
+    .toggle-card input[type='checkbox'] {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      accent-color: var(--primary-color, #6366f1);
+    }
+
+    .toggle-card strong {
+      display: block;
+      color: #0f172a;
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+
+    .toggle-card small {
+      color: var(--set-muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .about-info {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .info-row {
+      display: grid;
+      gap: 4px;
+      padding: 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      background: #f8fafc;
+    }
+
+    .info-row span {
+      color: var(--set-muted);
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .info-row strong {
+      min-width: 0;
+      color: #0f172a;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .full-btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .data-actions {
+      display: grid;
+      gap: 12px;
+    }
+
+    .action-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 13px;
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      background: #f8fafc;
+    }
+
+    .action-item.danger {
+      border-color: #fecaca;
+      background: #fff7f7;
+    }
+
+    .action-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: #eef2ff;
+      color: var(--primary-color, #6366f1);
+    }
+
+    .danger-icon {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .action-icon .material-icons {
+      font-size: 19px;
+    }
+
+    .action-info strong {
+      display: block;
+      color: #0f172a;
+      font-size: 13px;
+      margin-bottom: 3px;
+    }
+
+    .action-info p {
+      color: var(--set-muted);
+      font-size: 12px;
+      line-height: 1.35;
+      margin: 0;
+    }
+
+    .settings-save-bar {
+      position: sticky;
+      bottom: 16px;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      margin-top: 18px;
+      padding: 13px 14px 13px 18px;
+      border: 1px solid rgba(99, 102, 241, 0.16);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(14px);
+    }
+
+    .settings-save-bar span {
+      color: var(--set-muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .save-btn {
+      min-width: 170px;
+      justify-content: center;
     }
 
     .danger-banner {
@@ -444,57 +1064,97 @@ import { firstValueFrom } from 'rxjs';
       li { margin-bottom: 2px; }
     }
 
-    /* ── Info box ── */
-    .info-box {
-      display: flex;
-      gap: 12px;
-      padding: 14px;
-      background: #f0f9ff;
-      border: 1px solid #bfdbfe;
-      border-radius: 8px;
-      color: #1e40af;
-      margin-bottom: 16px;
-
-      .material-icons {
-        font-size: 20px;
-        flex-shrink: 0;
-        margin-top: 2px;
+    @media (max-width: 1100px) {
+      .settings-hero {
+        grid-template-columns: auto minmax(0, 1fr);
       }
 
-      strong { display: block; margin-bottom: 4px; }
-      p { margin: 0; font-size: 13px; line-height: 1.5; }
-      code { background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+      .hero-account {
+        grid-column: 1 / -1;
+        justify-self: stretch;
+      }
+
+      .settings-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .settings-side {
+        position: static;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .data-card {
+        grid-column: 1 / -1;
+      }
     }
 
-    /* ── Form actions ── */
-    .form-actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
+    @media (max-width: 760px) {
+      .settings-page {
+        padding-bottom: 18px;
+      }
+
+      .settings-hero,
+      .subscription-grid,
+      .form-grid,
+      .appearance-row,
+      .settings-side {
+        grid-template-columns: 1fr;
+      }
+
+      .settings-hero {
+        padding: 20px;
+        border-radius: 24px;
+      }
+
+      .hero-icon {
+        width: 52px;
+        height: 52px;
+      }
+
+      .card-heading,
+      .settings-save-bar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .ghost-link,
+      .billing-badge {
+        justify-content: center;
+      }
+
+      .settings-card {
+        padding: 17px;
+        border-radius: 22px;
+      }
+
+      .action-item {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+
+      .action-item button {
+        grid-column: 1 / -1;
+      }
+
+      .settings-save-bar {
+        bottom: 10px;
+      }
+
+      .save-btn {
+        width: 100%;
+      }
     }
 
-    /* ── Input large ── */
-    .input-lg {
-      padding: 10px 12px;
-      font-size: 13px;
-      width: 100%;
-      box-sizing: border-box;
-    }
+    @media (max-width: 420px) {
+      .settings-hero {
+        gap: 12px;
+      }
 
-    /* ── Status message ── */
-    .status-message {
-      display: flex;
-      align-items: center;
-      padding: 12px 14px;
-      background: #d1fae5;
-      border-radius: 8px;
-      color: #065f46;
-      font-size: 13px;
-      font-weight: 500;
+      .hero-copy h1 {
+        font-size: 34px;
+      }
 
-      .material-icons {
-        font-size: 18px;
-        margin-right: 6px;
+      .settings-save-bar span {
+        display: none;
       }
     }
   `]
@@ -517,6 +1177,30 @@ export class SettingsComponent {
   savingSettings = false;
   statusMessage = '';
   statusTone: 'success' | 'info' | 'error' = 'success';
+  pricingUsage: PricingUsage | null = null;
+  loadingPricing = false;
+  pricingError = '';
+
+  get pricingStatusLabel(): string {
+    if (!this.pricingUsage) return 'Loading';
+    if (this.pricingUsage.promoActive) return 'Promo';
+    return this.pricingUsage.status.replace('_', ' ');
+  }
+
+  get pricingUsagePercent(): number {
+    if (!this.pricingUsage?.monthlyLimit) return 0;
+    return Math.min(100, Math.round((this.pricingUsage.usageCount / this.pricingUsage.monthlyLimit) * 100));
+  }
+
+  get pricingUsageSummary(): string {
+    if (!this.pricingUsage) return '';
+    if (this.pricingUsage.monthlyLimit === null) return 'Unlimited records available.';
+    if (this.pricingUsage.overageCount > 0) {
+      return `${this.pricingUsage.overageCount} records over this plan range. Sales are still allowed.`;
+    }
+    return `${this.pricingUsage.remaining} records before this plan range is exceeded.`;
+  }
+
   get currentUserDisplayName(): string {
     return this.authService.currentUser?.fullName || this.authService.currentUser?.username || 'Unknown User';
   }
@@ -558,6 +1242,7 @@ export class SettingsComponent {
     private excelService: ExcelService
   ) {
     this.loadSettings();
+    this.loadPricingUsage();
     this.primaryColor = this.themeService.primaryColor;
   }
 
@@ -568,6 +1253,26 @@ export class SettingsComponent {
 
   clearStatus() {
     this.statusMessage = '';
+  }
+
+  loadPricingUsage() {
+    this.loadingPricing = true;
+    this.pricingError = '';
+    this.dbService.getPricingUsage().subscribe({
+      next: usage => {
+        this.pricingUsage = usage;
+        this.loadingPricing = false;
+      },
+      error: err => {
+        this.pricingError = err?.message || 'Could not load plan usage.';
+        this.loadingPricing = false;
+      }
+    });
+  }
+
+  closeClearDataModal() {
+    this.showClearModal = false;
+    this.confirmPhrase = '';
   }
 
   private normalizeShopSlug(value: string): string {

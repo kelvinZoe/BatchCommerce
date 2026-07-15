@@ -517,7 +517,6 @@ interface ManagedPageTab {
       background:
         radial-gradient(circle at top right, rgba(var(--primary-rgb, 37, 99, 235), 0.16), transparent 32%),
         linear-gradient(135deg, #ffffff 0%, #f8fbff 48%, #f6f9fc 100%);
-      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.07);
       align-items: center;
     }
 
@@ -570,7 +569,6 @@ interface ManagedPageTab {
       color: #475569;
       font-size: 12px;
       font-weight: 600;
-      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
     }
 
     .hero-hint .material-icons {
@@ -591,7 +589,6 @@ interface ManagedPageTab {
     .skeleton-panel-card {
       border-radius: 24px;
       border: 1px solid #e2e8f0;
-      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
     }
 
     .roles-sidebar {
@@ -655,7 +652,7 @@ interface ManagedPageTab {
       position: relative;
       background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
-      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+      transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
       display: grid;
       gap: 14px;
     }
@@ -663,7 +660,6 @@ interface ManagedPageTab {
     .role-card:hover {
       border-color: var(--primary-color, #2563eb);
       transform: translateY(-1px);
-      box-shadow: 0 14px 24px rgba(15, 23, 42, 0.08);
     }
 
     .role-card.active {
@@ -671,7 +667,6 @@ interface ManagedPageTab {
       background:
         radial-gradient(circle at top right, rgba(var(--primary-rgb, 37, 99, 235), 0.16), transparent 36%),
         linear-gradient(180deg, #f8fbff, #eef6ff);
-      box-shadow: 0 18px 30px rgba(var(--primary-rgb, 37, 99, 235), 0.12);
     }
 
     .role-card-main {
@@ -917,13 +912,12 @@ interface ManagedPageTab {
       cursor: pointer;
       display: grid;
       gap: 10px;
-      transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+      transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
     }
 
     .page-choice:hover {
       transform: translateY(-1px);
       border-color: #cbd5e1;
-      box-shadow: 0 12px 20px rgba(15, 23, 42, 0.05);
     }
 
     .page-choice-top {
@@ -960,7 +954,6 @@ interface ManagedPageTab {
     .page-choice.active {
       background: #f8fbff;
       border-color: #93c5fd;
-      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.08), 0 16px 28px rgba(59, 130, 246, 0.1);
     }
 
     .page-choice strong {
@@ -1116,7 +1109,6 @@ interface ManagedPageTab {
     .action-row.active {
       border-color: #2563eb;
       background: #eff6ff;
-      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.06);
     }
 
     .action-row:disabled {
@@ -1319,7 +1311,6 @@ interface ManagedPageTab {
       background: #fff;
       border-radius: 18px;
       border: 1px solid #e2e8f0;
-      box-shadow: 0 28px 60px rgba(15, 23, 42, 0.22);
       overflow: hidden;
     }
 
@@ -1350,7 +1341,6 @@ interface ManagedPageTab {
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      box-shadow: 0 8px 20px rgba(var(--primary-rgb, 99,102,241), 0.24);
     }
 
     .rl-modal-title-icon .material-icons {
@@ -1417,14 +1407,13 @@ interface ManagedPageTab {
       font-size: 13px;
       color: #0f172a;
       background: #fff;
-      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+      transition: border-color 0.18s ease;
     }
 
     .rl-form-group input:focus,
     .rl-form-group textarea:focus {
       outline: none;
       border-color: #60a5fa;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
     }
 
     .rl-form-group textarea {
@@ -1569,7 +1558,6 @@ interface ManagedPageTab {
         radial-gradient(circle at 10% 0%, rgba(216, 145, 36, 0.18), transparent 28%),
         radial-gradient(circle at 88% 18%, rgba(25, 98, 74, 0.14), transparent 30%),
         linear-gradient(135deg, #fffefa 0%, #f4efe4 100%);
-      box-shadow: 0 18px 40px rgba(35, 45, 39, 0.08);
     }
 
     .roles-hero-copy h1,
@@ -1623,7 +1611,6 @@ interface ManagedPageTab {
     .skeleton-panel-card {
       border-color: var(--rbac-line);
       background: var(--rbac-panel);
-      box-shadow: 0 12px 32px rgba(35, 45, 39, 0.06);
     }
 
     .roles-sidebar {
@@ -1650,12 +1637,10 @@ interface ManagedPageTab {
       background:
         radial-gradient(circle at top right, rgba(25, 98, 74, 0.16), transparent 36%),
         linear-gradient(180deg, #f8fff9, #edf6ef);
-      box-shadow: 0 18px 30px rgba(25, 98, 74, 0.12);
     }
 
     .role-card:hover {
       border-color: rgba(25, 98, 74, 0.4);
-      box-shadow: 0 14px 24px rgba(35, 45, 39, 0.08);
     }
 
     .role-icon {
@@ -1747,18 +1732,15 @@ interface ManagedPageTab {
       gap: 7px;
       border-color: var(--rbac-line);
       background: #fffefa;
-      box-shadow: none;
     }
 
     .page-choice:hover {
       border-color: rgba(25, 98, 74, 0.35);
-      box-shadow: 0 10px 18px rgba(35, 45, 39, 0.06);
     }
 
     .page-choice.active {
       background: #f1f8ef;
       border-color: var(--rbac-green);
-      box-shadow: inset 0 0 0 1px rgba(25, 98, 74, 0.08), 0 12px 22px rgba(25, 98, 74, 0.11);
     }
 
     .page-choice .material-icons {
@@ -1844,7 +1826,6 @@ interface ManagedPageTab {
       background: #10201b;
       color: #fffefa;
       flex-shrink: 0;
-      box-shadow: 0 10px 20px rgba(16, 32, 27, 0.16);
     }
 
     .action-count-pill strong {
@@ -1928,7 +1909,6 @@ interface ManagedPageTab {
     .action-row.active {
       border-color: var(--rbac-green);
       background: #edf6ef;
-      box-shadow: inset 0 0 0 1px rgba(25, 98, 74, 0.08);
     }
 
     .action-row-icon {

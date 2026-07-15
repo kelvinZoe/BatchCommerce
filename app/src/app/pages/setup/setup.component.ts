@@ -182,7 +182,6 @@ import { AuthService } from '../../services/auth.service';
     .setup-card {
       background: white;
       border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
       width: 100%;
       max-width: 560px;
       overflow: hidden;
@@ -192,7 +191,7 @@ import { AuthService } from '../../services/auth.service';
       text-align: center;
       padding: 40px 32px 16px;
 
-      .logo-icon { width: 56px; height: 56px; border-radius: 12px; display: block; margin: 0 auto 12px; box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25); }
+      .logo-icon { width: 56px; height: 56px; border-radius: 12px; display: block; margin: 0 auto 12px; }
       h1 { font-size: 24px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
       p { color: #64748b; font-size: 14px; line-height: 1.5; max-width: 400px; margin: 0 auto; }
     }
@@ -272,7 +271,6 @@ import { AuthService } from '../../services/auth.service';
         border-color: #cbd5e1;
         background: #f8fafc;
         transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       }
 
       &:disabled {
@@ -389,7 +387,6 @@ import { AuthService } from '../../services/auth.service';
         outline: none;
         border-color: #2563eb;
         background: white;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
       }
     }
 
@@ -571,12 +568,18 @@ export class SetupComponent implements OnInit {
         return;
       }
 
+      await this.authService.ensureSessionLoaded();
+      if (this.authService.currentUser?.shopId || (await this.authService.hasOwnedShop())) {
+        this.router.navigate(['/dashboard']);
+        return;
+      }
+
       this.fullName = this.fullName || authUser.user_metadata?.['full_name'] || authUser.user_metadata?.['name'] || '';
       this.email = this.email || authUser.email || '';
       this.phone = this.phone || authUser.user_metadata?.['phone'] || '';
       this.step = 2;
       this.awaitingVerification = false;
-      this.infoMessage = 'Your account is signed in. Create your shop workspace below.';
+      this.infoMessage = 'Your account is signed in. Create your shop below.';
     } catch {
       // Ignore auth lookup issues during first launch.
     }
@@ -651,7 +654,7 @@ export class SetupComponent implements OnInit {
       if (result.sessionCreated) {
         this.awaitingVerification = false;
         this.step = 2;
-        this.infoMessage = 'Account created. Now create your shop workspace.';
+        this.infoMessage = 'Account created. Now create your shop.';
         this.clearDraft();
         return;
       }

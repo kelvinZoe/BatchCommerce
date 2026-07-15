@@ -4,8 +4,11 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
-import { BatchCardComponent } from '../../components/batch-card/batch-card.component';
-import { MonthYearPickerComponent } from '../../components/month-year-picker/month-year-picker.component';
+import {
+  BatchListSectionComponent,
+  BatchSectionFooterDirective
+} from '../../components/batch-list-section/batch-list-section.component';
+import { BatchCardTagConfig } from '../../components/batch-card/batch-card.component';
 import { SearchableSelectComponent } from '../../components/searchable-select/searchable-select.component';
 import { ModalButtonConfig, ModalShellComponent } from '../../components/modal-shell/modal-shell.component';
 import { BatchDetailHeaderComponent, BatchDetailHeaderTagConfig } from '../../components/batch-detail-header/batch-detail-header.component';
@@ -47,7 +50,7 @@ interface PendingPriceUpdate {
 @Component({
   selector: 'app-products',
   standalone: true,
-  imports: [CommonModule, FormsModule, BatchCardComponent, MonthYearPickerComponent, SearchableSelectComponent, ModalShellComponent, TableComponent, BatchDetailHeaderComponent],
+  imports: [CommonModule, FormsModule, BatchListSectionComponent, BatchSectionFooterDirective, SearchableSelectComponent, ModalShellComponent, TableComponent, BatchDetailHeaderComponent],
   template: `
     <div class="pp-page">
 
@@ -89,77 +92,39 @@ interface PendingPriceUpdate {
 
         <!-- ══ BATCHES & PRODUCTS VIEW ══ -->
         <ng-container *ngIf="mainTab === 'batches'">
-        <ng-container *ngIf="loadingBatches && activeTab === 'batches'">
-          <div class="pp-skeleton-grid">
-            <div class="pp-skeleton-batch-card" *ngFor="let i of [1,2,3,4,5,6]">
-              <div class="pp-sk pp-sk-icon"></div>
-              <div class="pp-sk-body">
-                <div class="pp-sk pp-sk-line pp-sk-line-lg"></div>
-                <div class="pp-sk pp-sk-line pp-sk-line-sm"></div>
-              </div>
-            </div>
-          </div>
-        </ng-container>
-
         <!-- ══ BATCH LIST VIEW ══ -->
-        <div *ngIf="activeTab === 'batches' && !loadingBatches">
-
-          <!-- Toolbar -->
-          <div class="pp-toolbar">
-            <div class="pp-search-wrap">
-              <span class="material-icons pp-search-icon">search</span>
-              <input class="pp-search-input" type="text" placeholder="Search batches…"
-                     [(ngModel)]="batchSearchTerm" (input)="onBatchSearch()" />
-            </div>
-            <app-month-year-picker
-              [selectedMonth]="batchFilterMonth"
-              [selectedYear]="batchFilterYear"
-              [currentYear]="currentYear"
-              (selectionChange)="onBatchMonthYearChange($event)">
-            </app-month-year-picker>
-          </div>
-
-          <!-- Empty state -->
-          <div *ngIf="filteredBatches.length === 0" class="pp-empty">
-            <div class="pp-empty-icon"><span class="material-icons">folder_open</span></div>
-            <h3>No batches yet</h3>
-            <p>Create your first batch to start adding products with specific pricing.</p>
-            <button class="pp-btn pp-btn-primary" *ngIf="authService.canPerformProductOperation('canAddBatch')" (click)="openBatchModal()">
+        <app-batch-list-section
+          *ngIf="activeTab === 'batches'"
+          [loading]="loadingBatches"
+          [items]="filteredBatches"
+          [page]="batchPage"
+          [pageSize]="batchPageSize"
+          [total]="batchTotal"
+          [searchTerm]="batchSearchTerm"
+          [selectedMonth]="batchFilterMonth"
+          [selectedYear]="batchFilterYear"
+          [currentYear]="currentYear"
+          [emptyTitle]="'No batches yet'"
+          [emptyDescription]="'Create your first batch to start adding products with specific pricing.'"
+          [titleResolver]="productBatchTitleResolver"
+          [subtitleResolver]="productBatchSubtitleResolver"
+          [iconResolver]="productBatchIconResolver"
+          [tagResolver]="productBatchTagResolver"
+          [activeResolver]="productBatchActiveResolver"
+          [iconMutedResolver]="productBatchIconMutedResolver"
+          (searchTermChange)="onBatchSearchInput($event)"
+          (dateSelectionChange)="onBatchMonthYearChange($event)"
+          (pageChange)="setBatchPage($event)"
+          (cardClick)="viewBatchProducts($event)">
+          <button batchSectionEmptyAction class="pp-btn pp-btn-primary" *ngIf="authService.canPerformProductOperation('canAddBatch')" (click)="openBatchModal()">
               <span class="material-icons">add</span> Create Batch
+          </button>
+          <ng-template batchSectionFooter let-batch>
+            <button class="pp-card-action-btn pp-cab-primary pp-batch-open-btn" (click)="$event.stopPropagation(); viewBatchProducts(batch)">
+              Open <span class="material-icons">chevron_right</span>
             </button>
-          </div>
-
-          <!-- Batch card grid -->
-          <div *ngIf="filteredBatches.length > 0" class="pp-batch-grid">
-            <app-batch-card
-              *ngFor="let batch of filteredBatches"
-              [title]="batch.name"
-              [subtitle]="batch.createdAt ? (batch.createdAt | date:'mediumDate') : ''"
-              [icon]="batch.status === 'open' ? 'folder_open' : 'folder'"
-              [tag]="batch.status === 'open'
-                ? { tagName: 'Open', color: 'green', icon: 'check_circle' }
-                : { tagName: 'Closed', color: 'gray', icon: 'task_alt' }"
-              [active]="selectedBatch?.id === batch.id"
-              [iconMuted]="false"
-              (cardClick)="viewBatchProducts(batch)">
-              <button batchCardFooter class="pp-card-action-btn pp-cab-primary pp-batch-open-btn" (click)="$event.stopPropagation(); viewBatchProducts(batch)">
-                Open <span class="material-icons">chevron_right</span>
-              </button>
-            </app-batch-card>
-          </div>
-
-          <!-- Pagination -->
-          <div class="pp-pagination" *ngIf="batchTotal > batchPageSize">
-            <span class="pp-pg-info">{{ batchRangeStart }}–{{ batchRangeEnd }} of {{ batchTotal }}</span>
-            <div class="pp-pg-btns">
-              <button (click)="setBatchPage(1)" [disabled]="batchPage === 1"><span class="material-icons">first_page</span></button>
-              <button (click)="setBatchPage(batchPage - 1)" [disabled]="batchPage === 1"><span class="material-icons">chevron_left</span></button>
-              <span class="pp-pg-cur">{{ batchPage }} / {{ totalBatchPages }}</span>
-              <button (click)="setBatchPage(batchPage + 1)" [disabled]="batchPage >= totalBatchPages"><span class="material-icons">chevron_right</span></button>
-              <button (click)="setBatchPage(totalBatchPages)" [disabled]="batchPage >= totalBatchPages"><span class="material-icons">last_page</span></button>
-            </div>
-          </div>
-        </div>
+          </ng-template>
+        </app-batch-list-section>
 
         <!-- ══ BATCH DETAIL VIEW ══ -->
         <div *ngIf="activeTab === 'products'">
@@ -698,17 +663,17 @@ interface PendingPriceUpdate {
     .pp-tab-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border:none; background:transparent; border-radius:6px; font-size:13px; font-weight:600; color:#475569; cursor:pointer; transition:all 0.15s; white-space:nowrap; }
     .pp-tab-btn .material-icons { font-size:17px; }
     .pp-tab-btn:hover { background:rgba(var(--primary-rgb,99,102,241),0.05); color:#1e293b; }
-    .pp-tab-active { background:#fff; color:var(--primary-color,#6366f1); box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+    .pp-tab-active { background:#fff; color:var(--primary-color,#6366f1); }
 
     /* ── Card ── */
-    .pp-card { background:var(--card-background,#fff); border-radius:14px; border:1px solid var(--border-color,#e2e8f0); padding:20px 24px; box-shadow:0 1px 4px rgba(0,0,0,0.05); }
+    .pp-card { background:var(--card-background,#fff); border-radius:14px; border:1px solid var(--border-color,#e2e8f0); padding:20px 24px; }
 
     /* ── Buttons ── */
-    .pp-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:background 0.15s,box-shadow 0.15s; }
+    .pp-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:background 0.15s; }
     .pp-btn .material-icons { font-size:17px; }
     .pp-btn:disabled { opacity:0.45; cursor:default; pointer-events:none; }
     .pp-btn-primary { background:var(--primary-color,#6366f1); color:#fff; }
-    .pp-btn-primary:hover:not(:disabled) { background:var(--primary-dark,#4f46e5); box-shadow:0 3px 10px rgba(var(--primary-rgb,99,102,241),0.3); }
+    .pp-btn-primary:hover:not(:disabled) { background:var(--primary-dark,#4f46e5); }
     @media (max-width: 980px) {
       .pp-header {
         align-items: stretch;
@@ -785,13 +750,7 @@ interface PendingPriceUpdate {
 
     /* ── Toolbar ── */
     .pp-toolbar { display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
-    .pp-search-wrap { display:flex; align-items:center; border:1px solid var(--border-color,#e2e8f0); border-radius:10px; overflow:hidden; background:var(--card-background,#fff); transition:border-color 0.13s; min-width:260px; max-width:400px; }
-    .pp-search-wrap:focus-within { border-color:var(--primary-light,#a5b4fc); }
-    .pp-search-icon { color:var(--text-secondary,#94a3b8); font-size:18px; padding:0 10px; flex-shrink:0; }
-    .pp-search-input { flex:1; border:none; outline:none; padding:9px 10px 9px 0; font-size:13px; background:transparent; color:var(--text-primary,#1e293b); min-width:0; }
 
-    /* ── Batch card grid ── */
-    .pp-batch-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; margin-bottom:16px; }
     .pp-card-action-btn { display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:5px 8px; border-radius:7px; border:1px solid transparent; font-size:12px; font-weight:600; cursor:pointer; transition:background 0.13s; line-height:0; }
     .pp-card-action-btn .material-icons { font-size:16px; line-height:1; }
     .pp-card-action-btn:disabled { opacity:0.35; cursor:default; pointer-events:none; }
@@ -821,27 +780,6 @@ interface PendingPriceUpdate {
     .pp-empty h3 { margin:0; font-size:17px; font-weight:700; color:var(--text-primary,#0f172a); }
     .pp-empty p { margin:0; font-size:13px; color:var(--text-secondary,#64748b); max-width:340px; }
 
-    /* ── Pagination ── */
-    .pp-pagination { display:flex; align-items:center; justify-content:space-between; padding:12px 4px; border-top:1px solid var(--border-color,#e2e8f0); margin-top:8px; }
-    .pp-pg-info { font-size:13px; color:var(--text-secondary,#64748b); font-weight:500; }
-    .pp-pg-btns { display:flex; align-items:center; gap:4px; }
-    .pp-pg-btns button { display:inline-flex; align-items:center; justify-content:center; padding:5px 7px; border-radius:7px; border:1px solid var(--border-color,#e2e8f0); background:var(--card-background,#fff); cursor:pointer; line-height:0; transition:background 0.13s; }
-    .pp-pg-btns button .material-icons { font-size:18px; color:var(--text-secondary,#64748b); }
-    .pp-pg-btns button:hover:not(:disabled) { background:#f1f5f9; }
-    .pp-pg-btns button:disabled { opacity:0.35; cursor:default; }
-    .pp-pg-cur { padding:0 10px; font-size:13px; font-weight:600; color:var(--text-secondary,#64748b); }
-
-    /* ── Skeletons ── */
-    .pp-skeleton-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; margin-bottom:16px; }
-    .pp-skeleton-batch-card { display:flex; align-items:center; gap:12px; padding:16px; border:1px solid #f1f5f9; border-radius:14px; }
-    .pp-sk { border-radius:6px; background:linear-gradient(90deg,#f0f0f0 25%,#e6e6e6 50%,#f0f0f0 75%); background-size:400% 100%; animation:pp-shimmer 1.4s linear infinite; }
-    .pp-sk-icon { width:40px; height:40px; border-radius:10px; flex-shrink:0; }
-    .pp-sk-body { flex:1; display:flex; flex-direction:column; gap:8px; }
-    .pp-sk-line { height:12px; }
-    .pp-sk-line-lg { width:70%; }
-    .pp-sk-line-sm { width:40%; height:10px; }
-    @keyframes pp-shimmer { 0%{background-position:-400% 0} 100%{background-position:400% 0} }
-
     /* ── Spinner ── */
     .pp-spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(0,0,0,0.12); border-top-color:rgba(0,0,0,0.6); border-radius:50%; animation:pp-spin 0.7s linear infinite; }
     .pp-spinner-sm { width:14px; height:14px; border-top-color:#fff; border-color:rgba(255,255,255,0.3); }
@@ -855,11 +793,11 @@ interface PendingPriceUpdate {
     .pp-label { display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:5px; }
     .pp-required { color:#ef4444; margin-left:2px; }
     .pp-optional { color:#94a3b8; font-weight:400; }
-    .pp-input { width:100%; padding:9px 12px; border:1px solid var(--border-color,#e2e8f0); border-radius:9px; font-size:13px; background:#fff; color:#1e293b; transition:border-color 0.13s,box-shadow 0.13s; box-sizing:border-box; }
-    .pp-input:focus { outline:none; border-color:#a5b4fc; box-shadow:0 0 0 3px rgba(165,180,252,0.25); }
+    .pp-input { width:100%; padding:9px 12px; border:1px solid var(--border-color,#e2e8f0); border-radius:9px; font-size:13px; background:#fff; color:#1e293b; transition:border-color 0.13s; box-sizing:border-box; }
+    .pp-input:focus { outline:none; border-color:#a5b4fc; }
     .pp-input:disabled { background:#f8fafc; color:#94a3b8; }
     .pp-textarea { width:100%; padding:9px 12px; border:1px solid var(--border-color,#e2e8f0); border-radius:9px; font-size:13px; resize:vertical; background:#fff; color:#1e293b; transition:border-color 0.13s; box-sizing:border-box; }
-    .pp-textarea:focus { outline:none; border-color:#a5b4fc; box-shadow:0 0 0 3px rgba(165,180,252,0.25); }
+    .pp-textarea:focus { outline:none; border-color:#a5b4fc; }
     .pp-readonly { padding:10px 12px; border:1px solid var(--border-color,#e2e8f0); border-radius:9px; background:#f8fafc; font-size:13px; color:#64748b; }
     .pp-readonly-stock { display:flex; align-items:center; gap:8px; font-weight:600; color:#334155; }
     .pp-readonly-stock .material-icons { font-size:16px; color:#6366f1; }
@@ -874,9 +812,9 @@ interface PendingPriceUpdate {
     .pp-stock-badge .pp-stock-none { color:#dc2626; }
     .pp-existing-loading { display:inline-flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; color:#94a3b8; }
     .pp-input-prefix { display:flex; align-items:center; border:1px solid var(--border-color,#e2e8f0); border-radius:9px; overflow:hidden; background:#fff; transition:border-color 0.13s; }
-    .pp-input-prefix:focus-within { border-color:var(--primary-light,#a5b4fc); box-shadow:0 0 0 3px rgba(var(--primary-rgb,99,102,241),0.15); }
+    .pp-input-prefix:focus-within { border-color:var(--primary-light,#a5b4fc); }
     .pp-input-prefix span { padding:0 10px; font-size:11px; font-weight:700; color:#94a3b8; background:#f8fafc; border-right:1px solid var(--border-color,#e2e8f0); white-space:nowrap; align-self:stretch; display:flex; align-items:center; }
-    .pp-input-prefixed { border:none !important; border-radius:0 !important; box-shadow:none !important; flex:1; }
+    .pp-input-prefixed { border:none !important; border-radius:0 !important; flex:1; }
     .pp-form-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }
     .pp-form-row-narrow { max-width:220px; }
 
@@ -946,7 +884,7 @@ interface PendingPriceUpdate {
     .pp-pill-toggle { display:inline-flex; gap:4px; padding:4px; border:1px solid var(--border-color,#e2e8f0); border-radius:12px; background:#f8fafc; margin-bottom:16px; }
     .pp-pill { display:inline-flex; align-items:center; gap:5px; padding:7px 14px; border-radius:9px; border:none; background:transparent; font-size:12px; font-weight:600; color:#64748b; cursor:pointer; transition:background 0.13s,color 0.13s; }
     .pp-pill .material-icons { font-size:15px; }
-    .pp-pill-active { background:var(--primary-color,#6366f1); color:#fff !important; box-shadow:0 2px 6px rgba(var(--primary-rgb,99,102,241),0.25); }
+    .pp-pill-active { background:var(--primary-color,#6366f1); color:#fff !important; }
 
     /* ── Price change modal ── */
     .pp-price-change-summary { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:16px; }
@@ -1351,6 +1289,26 @@ export class ProductsComponent implements OnInit {
     return this.batches;
   }
 
+  readonly productBatchTitleResolver = (batch: OrderBatch) => batch.name;
+
+  readonly productBatchSubtitleResolver = (batch: OrderBatch) =>
+    batch.createdAt
+      ? new Date(batch.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+      : '';
+
+  readonly productBatchIconResolver = (batch: OrderBatch) =>
+    batch.status === 'open' ? 'folder_open' : 'folder';
+
+  readonly productBatchTagResolver = (batch: OrderBatch): BatchCardTagConfig =>
+    batch.status === 'open'
+      ? { tagName: 'Open', color: 'green', icon: 'check_circle' }
+      : { tagName: 'Closed', color: 'gray', icon: 'task_alt' };
+
+  readonly productBatchActiveResolver = (batch: OrderBatch) =>
+    this.selectedBatch?.id === batch.id;
+
+  readonly productBatchIconMutedResolver = () => false;
+
   get totalBatchPages() {
     return Math.max(1, Math.ceil(this.batchTotal / this.batchPageSize));
   }
@@ -1372,15 +1330,6 @@ export class ProductsComponent implements OnInit {
     return Math.max(1, Math.ceil(this.batchProductsTotal / this.batchProductsPageSize));
   }
 
-  get batchRangeStart() {
-    if (this.batchTotal === 0) return 0;
-    return (this.batchPage - 1) * this.batchPageSize + 1;
-  }
-
-  get batchRangeEnd() {
-    return Math.min(this.batchPage * this.batchPageSize, this.batchTotal);
-  }
-
   get batchProductsRangeStart() {
     if (this.batchProductsTotal === 0) return 0;
     return (this.batchProductsPage - 1) * this.batchProductsPageSize + 1;
@@ -1392,15 +1341,6 @@ export class ProductsComponent implements OnInit {
 
   get totalCatalogPages() {
     return Math.max(1, Math.ceil(this.catalogTotal / this.catalogPageSize));
-  }
-
-  get catalogRangeStart() {
-    if (this.catalogTotal === 0) return 0;
-    return (this.catalogPage - 1) * this.catalogPageSize + 1;
-  }
-
-  get catalogRangeEnd() {
-    return Math.min(this.catalogPage * this.catalogPageSize, this.catalogTotal);
   }
 
   onBatchMonthYearChange(selection: { month: number | null; year: number | null }) {
@@ -1516,6 +1456,11 @@ export class ProductsComponent implements OnInit {
   onBatchSearch() {
     this.batchPage = 1;
     this.loadBatches();
+  }
+
+  onBatchSearchInput(term: string) {
+    this.batchSearchTerm = term;
+    this.onBatchSearch();
   }
 
   setBatchPage(page: number) {

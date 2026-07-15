@@ -55,7 +55,6 @@ import { ShopConfigService } from '../../services/shop-config.service';
     .callback-card {
       background: white;
       border-radius: 20px;
-      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.4);
       width: 100%;
       max-width: 440px;
       text-align: center;
@@ -71,7 +70,6 @@ import { ShopConfigService } from '../../services/shop-config.service';
         border-radius: 12px;
         display: block;
         margin: 0 auto 16px;
-        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25);
       }
 
       h1 {

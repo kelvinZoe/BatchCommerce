@@ -58,7 +58,7 @@ Here’s the TODO list I’d use, in the order we should tackle it:
 - [done] Stop restoring trusted users/permissions from `localStorage`; hydrate from the live Supabase session and shop membership.
 - [done] Add a Supabase security migration that removes JWT `user_metadata.shop_id` trust and enforces role permissions in RLS.
 - [done] Add shop-admin checks to service-role admin API routes.
-- [manual] Run `supabase/migrations/20260613120000_enforce_role_permissions.sql` against the live project.
+- [done] Run `supabase/migrations/20260613120000_enforce_role_permissions.sql` against the live project.
 - [backlog] Continue replacing any future admin-only or hardcoded action gates with explicit RBAC operation checks.
 
 **Phase 6: Workflow State Cleanup**
@@ -77,15 +77,61 @@ Here’s the TODO list I’d use, in the order we should tackle it:
 - [done] Keep `app-table` tabular on mobile and enable horizontal scrolling for dense data.
 - [done] Add reusable mobile bottom-sheet behavior to `app-modal-shell`.
 - [done] Improve `app-batch-list-section` mobile toolbar/grid behavior.
-- [in-progress] Continue moving pages to shared `app-table`, `app-modal-shell`, `app-batch-list-section`, and `app-stat-cards`.
-- Remove legacy modal/table patterns after migration.
-- Standardize loading, empty states, status pills, filters, pagination, and action buttons.
-- Improve mobile responsiveness for the main shell/sidebar and table-heavy pages.
+- [done] Make `app-table` use skeletons for first load and muted existing rows for refetch/search/page changes.
+- [done] Remove obvious dead page CSS and stale local styles left behind by shared table/modal/list/stat migrations.
+- [done] Move Products batch list to `app-batch-list-section`.
+- [done] Move the Settings clear-data confirmation to `app-modal-shell`.
+- [done] Move the Expenses add/edit form modal to `app-modal-shell`.
+- [in-progress] Continue moving remaining pages to shared `app-table`, `app-modal-shell`, `app-batch-list-section`, and `app-stat-cards`.
+- [next] Migrate remaining custom modal overlays where the reusable modal shell fits: Buying List add/edit item, Orders create/edit flows, Arrivals confirmation/damage modals, Stock Sales modals, and Users modals.
+- [next] Migrate table-heavy legacy pages where practical: Deliveries, Users, Stock Sales, Expenses.
+- [backlog] Standardize status pills, filters, pagination, and action buttons on shared components.
+- [backlog] Continue mobile responsiveness cleanup on table-heavy pages after shared component migration.
 
 **Phase 8: Verification**
-- Run `npm run build` in `app`.
-- Smoke test: register, bootstrap shop, create batch, add product, create client, create order, close batch.
-- Smoke test: buying list to arrivals to tracking to shipping to ledger to delivery.
-- Smoke test: stock sale reduces stock correctly.
-- Test two shops to confirm data isolation.
-- Test non-admin roles to confirm permissions block actions correctly.
+- [done] Run `npm run build` in `app` after the reusable table loader, page CSS cleanup, Products batch-list migration, and simple modal migrations.
+- [done] Add owner single-shop guards for pricing promo protection: setup redirect, bootstrap precheck, generated device ID capture, and database trigger migration.
+- [done] Run `supabase/migrations/20260629120000_enforce_single_owner_shop.sql` against the live project.
+- [done] Implement pricing model foundation: shop plan/promo fields, monthly sales-record usage, Settings usage card, and order/stock-sale creation guards.
+- [manual] Run `supabase/migrations/20260629124500_add_pricing_plan_usage.sql` against the live project.
+- [done] Allow paid overages and update bands to Starter 0-40, Growth 41-120, Pro 121+.
+- [manual] Run `supabase/migrations/20260629130000_allow_pricing_overages.sql` against the live project.
+- [done] Add a dedicated Subscription status page for plan, promo, usage, overage, and recommended tier visibility.
+- [done] Add promo-code redemption foundation: promo code tables, one-use-per-shop redemption tracking, guarded RPC, and `/subscription` apply-code UI.
+- [manual] Run `supabase/migrations/20260630090000_add_promo_codes.sql` against the live project.
+- [backlog] Add payment collection/admin plan-management flow for activating paid plans after the promo.
+- [backlog] Add platform/admin promo-code management UI when we introduce a secure owner/admin surface for campaign creation.
+- [manual] Smoke test: register, bootstrap shop, create batch, add product, create client, create order, close batch.
+- [manual] Smoke test: buying list to arrivals to tracking to shipping to ledger to delivery.
+- [manual] Smoke test: stock sale reduces stock correctly, including open/close/cancel/delete states.
+- [manual] Test two shops to confirm data isolation.
+- [manual] Test non-admin roles to confirm permissions block actions correctly.
+- [backlog] Add automated unit/integration coverage for workflow transitions and service-layer guards.
+
+**Phase 9: Architecture Quality Remediation**
+- [in-progress] Tighten service-layer tenant scoping for remaining direct tenant-owned reads/writes/deletes.
+- [done] Tighten Product/Product Catalog create/update/delete paths with explicit active-shop requirements and service-layer shop scoping.
+- [done] Move Product Catalog cascade deletion to guarded transactional RPC `delete_product_catalog_cascade`.
+- [done] Run `supabase/migrations/20260710120000_add_product_delete_cascade_rpc.sql` against the live project.
+- [done] Move Batch cascade deletion to guarded transactional RPC `delete_batch_cascade`.
+- [done] Run `supabase/migrations/20260710123000_add_batch_delete_cascade_rpc.sql` against the live project.
+- [done] Move Stock Sale create/update/cancel/delete mutations to guarded transactional RPCs.
+- [done] Run `supabase/migrations/20260710130000_add_stock_sale_mutation_rpcs.sql` against the live project.
+- [next] Move remaining multi-step destructive/state-changing operations into transactional database RPCs or server-side functions.
+- [done] Add initial Node contract tests for pricing-band alignment, promo-code guardrails, high-risk RPC migrations, and `DatabaseService` RPC-first fallbacks.
+- [done] Add guarded live Supabase integration-test harness for a dedicated test project.
+- [done] Add seeded live Supabase integration coverage for pricing guards, promo-code redemption, stock sale state changes, order creation, and workflow transitions.
+- [manual] Run `npm run test:integration` against a dedicated Supabase test project with `RUN_SUPABASE_INTEGRATION_TESTS=true`.
+- [in-progress] Extract domain data services behind the existing `DatabaseService` facade.
+- [done] Extract first `BatchDataService` slice for batch list/detail/create/update/open/close/delete and RPC-first cascade deletion.
+- [done] Extract `ProductDataService` for product/catalog CRUD, batch-product CRUD, price-impact preview, recalculation, and RPC-first product cascade deletion.
+- [done] Extract `StockSaleDataService` for stock availability reads, stock-sale paging/detail, RPC-first create/update/cancel/delete, close/finalize, and scoped stock fallback adjustments.
+- [next] Extract `OrderDataService`, `ShippingDataService`, `PricingDataService`, and `DashboardDataService`.
+- [next] Refactor large page components into route containers plus smaller feature components.
+- [next] Convert nested/manual subscriptions to `forkJoin`, `switchMap`, and `takeUntilDestroyed`.
+- [next] Remove dashboard direct Supabase table access by moving metric loading into `DashboardDataService`.
+- [next] Continue replacing legacy `batch_name` compatibility paths with `batch_id`.
+- [next] Split `AuthService` into session, shop context, permissions, users, roles, and verification/admin API services.
+- [next] Add lint/format scripts and CI checks for build, tests, and type quality.
+- [next] Harden the Express admin API with route modules, rate limiting, request size limits, structured errors, and audit logging.
+- [backlog] Revisit Angular bundle/style budgets after the service and component refactors settle.

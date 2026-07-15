@@ -1,9 +1,12 @@
 import { Injectable } from '@angular/core';
-import { Observable, of, Subject } from 'rxjs';
+import { Observable, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { SupabaseService } from './supabase.service';
 import { AuthService } from './auth.service';
+import { BatchDataService } from './batch-data.service';
 import { ClientDataService } from './client-data.service';
+import { ProductDataService } from './product-data.service';
+import { StockSaleDataService } from './stock-sale-data.service';
 import { from, rowsToCamel, SupabaseDataAccessService, toCamel } from './supabase-data-access.service';
 import {
   Product,
@@ -29,7 +32,11 @@ import {
   StockProduct,
   StockSale,
   StockSaleItem,
-  OrderItemAdjustment
+  OrderItemAdjustment,
+  PricingPlanKey,
+  PromoCodeRedemptionResult,
+  PricingUsage,
+  SubscriptionStatus
 } from '../models';
 import {
   BatchWorkflowSnapshot,
@@ -52,27 +59,24 @@ interface ShippingQueueDraftRow {
   providedIn: 'root'
 })
 export class DatabaseService extends SupabaseDataAccessService {
-  private getPriceForQuantity(basePrice: number, discountMinQty: number, discountPrice: number, quantity: number): number {
-    const normalizedBasePrice = Number(basePrice || 0);
-    const normalizedDiscountMinQty = Number(discountMinQty || 0);
-    const normalizedDiscountPrice = Number(discountPrice || 0);
-    const normalizedQuantity = Number(quantity || 0);
+  private readonly pricingPlans: Record<PricingPlanKey, { priceGhs: number; monthlyLimit: number | null }> = {
+    starter: { priceGhs: 150, monthlyLimit: 40 },
+    growth: { priceGhs: 200, monthlyLimit: 120 },
+    pro: { priceGhs: 300, monthlyLimit: null }
+  };
 
-    return normalizedDiscountMinQty > 0 && normalizedDiscountPrice > 0 && normalizedQuantity >= normalizedDiscountMinQty
-      ? normalizedDiscountPrice
-      : normalizedBasePrice;
-  }
-
-  // Notification subject for when batches are deleted
-  private batchDeletedSource = new Subject<string>();
-  public batchDeleted$ = this.batchDeletedSource.asObservable();
+  public readonly batchDeleted$: Observable<string>;
 
   constructor(
     supa: SupabaseService,
     authService: AuthService,
-    private clients: ClientDataService
+    private clients: ClientDataService,
+    private batches: BatchDataService,
+    private products: ProductDataService,
+    private stockSales: StockSaleDataService
   ) {
     super(supa, authService);
+    this.batchDeleted$ = this.batches.batchDeleted$;
   }
 
   private mapBatchWorkflowSnapshot(row: any): BatchWorkflowSnapshot | null {
@@ -117,6 +121,148 @@ export class DatabaseService extends SupabaseDataAccessService {
     return canRunBatchWorkflowTransition(batch, transition);
   }
 
+  getPricingUsage(): Observable<PricingUsage> {
+    return from(this.fetchPricingUsage());
+  }
+
+  redeemPromoCode(code: string): Observable<PromoCodeRedemptionResult> {
+    return from(this.redeemPromoCodeAsync(code));
+  }
+
+  private getMonthRange(date = new Date()) {
+    const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
+    return { monthStart, monthEnd };
+  }
+
+  private normalizePlan(value: any): PricingPlanKey {
+    return value === 'growth' || value === 'pro' ? value : 'starter';
+  }
+
+  private normalizeSubscriptionStatus(value: any): SubscriptionStatus {
+    return ['promo', 'active', 'past_due', 'suspended', 'cancelled'].includes(value) ? value : 'promo';
+  }
+
+  private getRecommendedPlan(usageCount: number): PricingPlanKey {
+    if (usageCount <= this.pricingPlans.starter.monthlyLimit!) return 'starter';
+    if (usageCount <= this.pricingPlans.growth.monthlyLimit!) return 'growth';
+    return 'pro';
+  }
+
+  private async redeemPromoCodeAsync(code: string): Promise<PromoCodeRedemptionResult> {
+    const shopId = this.activeShopId;
+    const normalizedCode = code.trim();
+
+    if (!shopId) {
+      throw new Error('Active shop context is required to redeem a promo code.');
+    }
+
+    if (!normalizedCode) {
+      throw new Error('Enter a promo code.');
+    }
+
+    const { data, error } = await (this.sb as any).rpc('redeem_shop_promo_code', {
+      p_shop_id: shopId,
+      p_code: normalizedCode
+    });
+
+    if (error) throw new Error(error.message || 'Could not redeem promo code.');
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      throw new Error('Promo code was not redeemed.');
+    }
+
+    return {
+      code: row.code,
+      description: row.description ?? null,
+      extraPromoDays: Number(row.extra_promo_days || 0),
+      discountPercent: row.discount_percent ?? null,
+      planOverride: this.normalizePlan(row.plan_override) === row.plan_override ? row.plan_override : null,
+      promoEndsAt: row.promo_ends_at ?? null
+    };
+  }
+
+  private async fetchMonthlySalesRecordCount(monthStart: Date, monthEnd: Date): Promise<number> {
+    const shopId = this.activeShopId;
+    if (!shopId) return 0;
+
+    const [{ count: orderCount, error: orderError }, { count: stockSaleCount, error: stockSaleError }] = await Promise.all([
+      this.sb.from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('shop_id', shopId)
+        .gte('created_at', monthStart.toISOString())
+        .lt('created_at', monthEnd.toISOString()),
+      this.sb.from('stock_sales')
+        .select('id', { count: 'exact', head: true })
+        .eq('shop_id', shopId)
+        .gte('created_at', monthStart.toISOString())
+        .lt('created_at', monthEnd.toISOString())
+    ]);
+
+    if (orderError) throw orderError;
+    if (stockSaleError) throw stockSaleError;
+
+    return Number(orderCount || 0) + Number(stockSaleCount || 0);
+  }
+
+  private async fetchPricingUsage(): Promise<PricingUsage> {
+    const shopId = this.activeShopId;
+    if (!shopId) {
+      throw new Error('Active shop context is required to load pricing usage.');
+    }
+
+    const { monthStart, monthEnd } = this.getMonthRange();
+    const [{ data: shop, error: shopError }, usageCount] = await Promise.all([
+      this.sb.from('shops')
+        .select('subscription_plan, subscription_status, promo_started_at, promo_ends_at')
+        .eq('id', shopId)
+        .maybeSingle(),
+      this.fetchMonthlySalesRecordCount(monthStart, monthEnd)
+    ]);
+
+    if (shopError) throw shopError;
+
+    const plan = this.normalizePlan((shop as any)?.subscription_plan);
+    const status = this.normalizeSubscriptionStatus((shop as any)?.subscription_status);
+    const planConfig = this.pricingPlans[plan];
+    const promoEndsAt = (shop as any)?.promo_ends_at || null;
+    const promoActive = status === 'promo' && !!promoEndsAt && new Date(promoEndsAt).getTime() >= Date.now();
+    const isActivePaid = status === 'active';
+    const remaining = planConfig.monthlyLimit === null
+      ? null
+      : Math.max(0, planConfig.monthlyLimit - usageCount);
+    const overageCount = planConfig.monthlyLimit === null
+      ? 0
+      : Math.max(0, usageCount - planConfig.monthlyLimit);
+
+    return {
+      plan,
+      status,
+      priceGhs: planConfig.priceGhs,
+      monthlyLimit: planConfig.monthlyLimit,
+      usageCount,
+      remaining,
+      overageCount,
+      promoStartedAt: (shop as any)?.promo_started_at || null,
+      promoEndsAt,
+      promoActive,
+      canCreateSalesRecord: promoActive || isActivePaid,
+      recommendedPlan: this.getRecommendedPlan(usageCount),
+      monthStart: monthStart.toISOString(),
+      monthEnd: monthEnd.toISOString()
+    };
+  }
+
+  private async assertCanCreateSalesRecord(recordLabel: 'order' | 'stock sale'): Promise<void> {
+    const usage = await this.fetchPricingUsage();
+    if (usage.canCreateSalesRecord) return;
+
+    if (!usage.promoActive && usage.status !== 'active') {
+      throw new Error('Your 2-month promo has ended. Activate a paid plan to continue creating sales records.');
+    }
+  }
+
   private async replaceOpenShippingQueueRows(
     batchId: number,
     batchName: string,
@@ -145,112 +291,39 @@ export class DatabaseService extends SupabaseDataAccessService {
   // Products
   // =====================
   getProducts(): Observable<Product[]> {
-    return from(
-      this.scopeShopQuery(this.sb.from('products').select('*')).order('name')
-    ).pipe(map(({ data }) => rowsToCamel<Product>(data || [])));
+    return this.products.getProducts();
   }
 
   getProductCatalog(): Observable<ProductCatalog[]> {
-    return from(
-      this.scopeTable('products')
-        .select('id, name, description, image_url, is_active, stock, created_at, updated_at')
-        .order('name')
-    ).pipe(map(({ data }) => rowsToCamel<ProductCatalog>(data || [])));
+    return this.products.getProductCatalog();
   }
 
   getMostRecentBatchProductForProduct(productId: number): Observable<BatchProduct | null> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batch_products').select('preorder_price, preorder_discount_min_qty, preorder_discount_price, stock_price, stock_discount_min_qty, stock_discount_price, in_stock_qty'))
-        .eq('product_id', productId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    ).pipe(map(({ data }) => data ? toCamel(data) as BatchProduct : null));
+    return this.products.getMostRecentBatchProductForProduct(productId);
   }
 
   getProduct(id: number): Observable<Product | null> {
-    return from(
-      this.scopeShopQuery(this.sb.from('products').select('*')).eq('id', id).single()
-    ).pipe(map(({ data }) => data ? toCamel(data) as Product : null));
+    return this.products.getProduct(id);
   }
 
   getProductStock(productId: number): Observable<number> {
-    return from(
-      this.scopeShopQuery(this.sb.from('products').select('stock')).eq('id', productId).single()
-    ).pipe(map(({ data }) => Number((data as any)?.stock || 0)));
+    return this.products.getProductStock(productId);
   }
 
   createProduct(product: Product): Observable<number> {
-    const row = {
-      shop_id: this.activeShopId,
-      name: product.name,
-      stock: product.stock || 0,
-      preorder_price: product.preorderPrice || 0,
-      purchase_price: product.purchasePrice || 0,
-      description: product.description || '',
-      image_url: product.imageUrl || ''
-    };
-    return from(
-      this.sb.from('products').insert(row).select('id').single()
-    ).pipe(map(({ data }) => data?.id ?? 0));
+    return this.products.createProduct(product);
   }
 
   updateProduct(product: Product): Observable<boolean> {
-    const row = {
-      name: product.name,
-      stock: product.stock || 0,
-      preorder_price: product.preorderPrice || 0,
-      purchase_price: product.purchasePrice || 0,
-      description: product.description || '',
-      image_url: product.imageUrl || ''
-    };
-    return from(
-      this.sb.from('products').update(row).eq('id', product.id)
-    ).pipe(map(({ error }) => !error));
+    return this.products.updateProduct(product);
   }
 
   deleteProduct(id: number): Observable<boolean> {
-    return from(
-      this.sb.from('products').delete().eq('id', id)
-    ).pipe(map(({ error }) => !error));
+    return this.products.deleteProduct(id);
   }
 
   createProductCatalog(product: ProductCatalog): Observable<number> {
-    return from(this.doCreateProductCatalog(product));
-  }
-
-  private async doCreateProductCatalog(product: ProductCatalog): Promise<number> {
-    const baseRow = {
-      shop_id: this.activeShopId,
-      name: product.name,
-      description: product.description || '',
-      image_url: product.imageUrl || '',
-      is_active: product.isActive ?? true,
-      stock: product.stock || 0
-    } as Record<string, any>;
-
-    const pricingRow = {
-      ...baseRow,
-      stock_price: product.stockPrice || 0,
-      stock_discount_min_qty: product.stockDiscountMinQty || 0,
-      stock_discount_price: product.stockDiscountPrice || 0
-    };
-
-    const withPricing = await this.sb.from('products').insert(pricingRow).select('id').single();
-    if (!withPricing.error) {
-      return withPricing.data?.id ?? 0;
-    }
-
-    if (!this.isMissingColumnOrTableError(withPricing.error)) {
-      throw withPricing.error;
-    }
-
-    const fallback = await this.sb.from('products').insert(baseRow).select('id').single();
-    if (fallback.error) {
-      throw fallback.error;
-    }
-
-    return fallback.data?.id ?? 0;
+    return this.products.createProductCatalog(product);
   }
 
   getProductCatalogPage(
@@ -259,237 +332,37 @@ export class DatabaseService extends SupabaseDataAccessService {
     searchTerm = '',
     statusFilter: 'all' | 'active' | 'inactive' = 'all'
   ): Observable<{ data: ProductCatalog[]; total: number }> {
-    const fromIndex = (page - 1) * pageSize;
-    const toIndex = fromIndex + pageSize - 1;
-    let query = this.scopeTable('products')
-      .select('id, name, description, image_url, is_active, stock, created_at, updated_at', { count: 'exact' })
-      .order('name');
-    
-    if (searchTerm) {
-      query = query.ilike('name', `%${searchTerm}%`);
-    }
-
-    if (statusFilter === 'active') {
-      query = query.eq('is_active', true);
-    } else if (statusFilter === 'inactive') {
-      query = query.eq('is_active', false);
-    }
-    
-    return from(query.range(fromIndex, toIndex)).pipe(
-      map(({ data, count }) => ({
-        data: rowsToCamel<ProductCatalog>(data || []),
-        total: count || 0
-      }))
-    );
+    return this.products.getProductCatalogPage(page, pageSize, searchTerm, statusFilter);
   }
 
   updateProductCatalog(productId: number, product: ProductCatalog): Observable<boolean> {
-    return from(this.doUpdateProductCatalog(productId, product));
-  }
-
-  private async doUpdateProductCatalog(productId: number, product: ProductCatalog): Promise<boolean> {
-    const baseRow = {
-      name: product.name,
-      description: product.description || '',
-      image_url: product.imageUrl || '',
-      is_active: product.isActive ?? true,
-      stock: product.stock || 0,
-      updated_at: new Date().toISOString()
-    } as Record<string, any>;
-
-    const pricingRow = {
-      ...baseRow,
-      stock_price: product.stockPrice || 0,
-      stock_discount_min_qty: product.stockDiscountMinQty || 0,
-      stock_discount_price: product.stockDiscountPrice || 0
-    };
-
-    const withPricing = await this.scopeShopQuery(this.sb.from('products').update(pricingRow)).eq('id', productId);
-    if (!withPricing.error) {
-      return true;
-    }
-
-    if (!this.isMissingColumnOrTableError(withPricing.error)) {
-      return false;
-    }
-
-    const fallback = await this.scopeShopQuery(this.sb.from('products').update(baseRow)).eq('id', productId);
-    return !fallback.error;
+    return this.products.updateProductCatalog(productId, product);
   }
 
   deleteProductCatalog(productId: number): Observable<boolean> {
-    return from(this.doDeleteProductCatalog(productId));
-  }
-
-  private async doDeleteProductCatalog(productId: number): Promise<boolean> {
-    try {
-      console.log('[db] Deleting product with ID:', productId);
-
-      // 1. Delete from order_items where product_id matches (RESTRICT constraint)
-      const delErr1 = await this.sb.from('order_items').delete().eq('product_id', productId);
-      if (delErr1.error) {
-        console.error('[db] Error deleting order_items:', delErr1.error, ' - Status:', delErr1.status);
-        return false;
-      }
-      console.log('[db] Deleted order_items');
-
-      // 2. Delete from stock_sale_items where product_id matches (RESTRICT constraint)
-      const delErr2 = await this.sb.from('stock_sale_items').delete().eq('product_id', productId);
-      if (delErr2.error) {
-        console.error('[db] Error deleting stock_sale_items:', delErr2.error, ' - Status:', delErr2.status);
-        return false;
-      }
-      console.log('[db] Deleted stock_sale_items');
-
-      // 3. Delete from shipping_invoice_items where product_id matches (RESTRICT constraint)
-      const delErr3 = await this.sb.from('shipping_invoice_items').delete().eq('product_id', productId);
-      if (delErr3.error) {
-        console.error('[db] Error deleting shipping_invoice_items:', delErr3.error, ' - Status:', delErr3.status);
-        return false;
-      }
-      console.log('[db] Deleted shipping_invoice_items');
-
-      // 4. Delete from batch_product_shipping where product_id matches (RESTRICT constraint)
-      const delErr4 = await this.sb.from('batch_product_shipping').delete().eq('product_id', productId);
-      if (delErr4.error) {
-        console.error('[db] Error deleting batch_product_shipping:', delErr4.error, ' - Status:', delErr4.status);
-        return false;
-      }
-      console.log('[db] Deleted batch_product_shipping');
-
-      // 5. Delete from follow_ups where product_id matches (RESTRICT constraint)
-      const delErr5 = await this.sb.from('follow_ups').delete().eq('product_id', productId);
-      if (delErr5.error) {
-        console.error('[db] Error deleting follow_ups:', delErr5.error, ' - Status:', delErr5.status);
-        return false;
-      }
-      console.log('[db] Deleted follow_ups');
-
-      // 6. Delete from damaged_items where product_id matches (RESTRICT constraint)
-      const delErr6 = await this.sb.from('damaged_items').delete().eq('product_id', productId);
-      if (delErr6.error) {
-        console.error('[db] Error deleting damaged_items:', delErr6.error, ' - Status:', delErr6.status);
-        return false;
-      }
-      console.log('[db] Deleted damaged_items');
-
-      // 7. Delete from arrival_items where product_id matches (RESTRICT constraint)
-      const delErr7 = await this.sb.from('arrival_items').delete().eq('product_id', productId);
-      if (delErr7.error) {
-        console.error('[db] Error deleting arrival_items:', delErr7.error, ' - Status:', delErr7.status);
-        return false;
-      }
-      console.log('[db] Deleted arrival_items');
-
-      // 8. Delete from buying_list where product_id matches (RESTRICT constraint)
-      const delErr8 = await this.sb.from('buying_list').delete().eq('product_id', productId);
-      if (delErr8.error) {
-        console.error('[db] Error deleting buying_list:', delErr8.error, ' - Status:', delErr8.status);
-        return false;
-      }
-      console.log('[db] Deleted buying_list');
-
-      // 9. Delete from batch_products where product_id matches (RESTRICT constraint)
-      const delErr9 = await this.scopeShopQuery(this.sb.from('batch_products').delete()).eq('product_id', productId);
-      if (delErr9.error) {
-        console.error('[db] Error deleting batch_products:', delErr9.error, ' - Status:', delErr9.status);
-        return false;
-      }
-      console.log('[db] Deleted batch_products');
-
-      // 10. Finally delete the product itself
-      console.log('[db] Attempting to delete product record with ID:', productId);
-      const delErr10 = await this.sb.from('products').delete().eq('id', productId);
-      if (delErr10.error) {
-        console.error('[db] Error deleting product record:', delErr10.error, ' - Status:', delErr10.status);
-        return false;
-      }
-      console.log('[db] Product deleted successfully');
-
-      return true;
-    } catch (err) {
-      console.error('Error deleting product cascade:', err);
-      return false;
-    }
+    return this.products.deleteProductCatalog(productId);
   }
 
   getBatchProducts(batchId: number): Observable<BatchProduct[]> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batch_products').select('id, batch_id, product_id, preorder_price, preorder_discount_min_qty, preorder_discount_price, stock_price, stock_discount_min_qty, stock_discount_price, in_stock_qty, created_at, updated_at, products(name, description, image_url)'))
-        .eq('batch_id', batchId)
-        .order('id', { ascending: true })
-    ).pipe(map(({ data }) => (data || []).map((r: any) => ({
-      ...toCamel(r),
-      productName: r.products?.name,
-      description: r.products?.description,
-      imageUrl: r.products?.image_url
-    } as BatchProduct))));
+    return this.products.getBatchProducts(batchId);
   }
 
   getBatchProductsPage(batchId: number, page: number, pageSize: number, searchTerm = ''): Observable<{ data: BatchProduct[]; total: number }> {
-    const fromIndex = (page - 1) * pageSize;
-    const toIndex = fromIndex + pageSize - 1;
-    const joinType = searchTerm ? 'products!inner(name, description, image_url)' : 'products(name, description, image_url)';
-    let query = this.scopeShopQuery(this.sb.from('batch_products').select(`id, batch_id, product_id, preorder_price, preorder_discount_min_qty, preorder_discount_price, stock_price, stock_discount_min_qty, stock_discount_price, in_stock_qty, created_at, updated_at, ${joinType}`, { count: 'exact' }))
-      .eq('batch_id', batchId)
-      .order('id', { ascending: true })
-      .range(fromIndex, toIndex);
-    if (searchTerm) {
-      query = query.ilike('products.name', `%${searchTerm}%`);
-    }
-    return from(query).pipe(map(({ data, count }) => ({
-      data: (data || []).map((r: any) => ({
-        ...toCamel(r),
-        productName: r.products?.name,
-        description: r.products?.description,
-        imageUrl: r.products?.image_url
-      } as BatchProduct)),
-      total: count || 0
-    })));
+    return this.products.getBatchProductsPage(batchId, page, pageSize, searchTerm);
   }
 
   addBatchProduct(row: BatchProduct): Observable<number> {
-    return from(
-      this.sb.from('batch_products').insert({
-        shop_id: this.activeShopId,
-        batch_id: row.batchId,
-        product_id: row.productId,
-        preorder_price: row.preorderPrice,
-        preorder_discount_min_qty: row.preorderDiscountMinQty,
-        preorder_discount_price: row.preorderDiscountPrice,
-        stock_price: row.stockPrice,
-        stock_discount_min_qty: row.stockDiscountMinQty,
-        stock_discount_price: row.stockDiscountPrice,
-        in_stock_qty: row.inStockQty
-      }).select('id').single()
-    ).pipe(map(({ data, error }) => {
-      if (error) throw error;
-      return data?.id ?? 0;
-    }));
+    return this.products.addBatchProduct(row);
   }
 
   updateBatchProduct(id: number, row: Partial<BatchProduct>): Observable<boolean> {
-    const updates: any = {
-      preorder_price: row.preorderPrice,
-      preorder_discount_min_qty: row.preorderDiscountMinQty,
-      preorder_discount_price: row.preorderDiscountPrice,
-      stock_price: row.stockPrice,
-      stock_discount_min_qty: row.stockDiscountMinQty,
-      stock_discount_price: row.stockDiscountPrice,
-      in_stock_qty: row.inStockQty
-    };
-    return from(
-      this.scopeShopQuery(this.sb.from('batch_products').update(updates)).eq('id', id)
-    ).pipe(map(({ error }) => !error));
+    return this.products.updateBatchProduct(id, row);
   }
 
   deleteBatchProduct(id: number): Observable<boolean> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batch_products').delete()).eq('id', id)
-    ).pipe(map(({ error }) => !error));
+    return this.products.deleteBatchProduct(id);
   }
 
-  // Preview what orders and stock sales will be affected by a price/discount change
   previewPriceChange(
     batchProductId: number,
     preorderPrice: number,
@@ -499,7 +372,7 @@ export class DatabaseService extends SupabaseDataAccessService {
     stockDiscountMinQty: number,
     stockDiscountPrice: number
   ): Observable<any> {
-    return from(this.doPreviewPriceChange(
+    return this.products.previewPriceChange(
       batchProductId,
       preorderPrice,
       preorderDiscountMinQty,
@@ -507,144 +380,9 @@ export class DatabaseService extends SupabaseDataAccessService {
       stockPrice,
       stockDiscountMinQty,
       stockDiscountPrice
-    ));
+    );
   }
 
-  private async doPreviewPriceChange(
-    batchProductId: number,
-    newPreorderPrice: number,
-    newPreorderDiscountMinQty: number,
-    newPreorderDiscountPrice: number,
-    newStockPrice: number,
-    newStockDiscountMinQty: number,
-    newStockDiscountPrice: number
-  ): Promise<any> {
-    try {
-      // Get all order items using this batch product
-      const { data: orderItems, error: itemsError } = await this.scopeShopQuery(this.sb
-        .from('order_items')
-        .select('id, order_id, quantity, unit_price, subtotal')
-      )
-        .eq('batch_product_id', batchProductId);
-
-      if (itemsError) throw itemsError;
-
-      // Get all stock sale items using this batch product
-      const { data: stockSaleItems, error: stockItemsError } = await this.scopeShopQuery(this.sb
-        .from('stock_sale_items')
-        .select('id, stock_sale_id, quantity, unit_price, subtotal')
-      )
-        .eq('batch_product_id', batchProductId);
-
-      if (stockItemsError) throw stockItemsError;
-
-      const affectedOrders: any[] = [];
-      let totalCostChange = 0;
-
-      // 1. Process preorder order items
-      if (orderItems && orderItems.length > 0) {
-        const scopedOrderItems = orderItems as any[];
-        const orderIds = [...new Set(scopedOrderItems.map((item: any) => item.order_id))];
-        const { data: orders } = await this.scopeShopQuery(this.sb
-          .from('orders')
-          .select('id, customer_id, customers(name)')
-        )
-          .in('id', orderIds);
-
-        const orderMap = new Map(((orders || []) as any[]).map((o: any) => [o.id, o]));
-
-        for (const item of scopedOrderItems) {
-          const order = orderMap.get(item.order_id);
-          const customers = order?.customers as any;
-          const customerName = (Array.isArray(customers) ? customers[0]?.name : customers?.name) || 'Unknown';
-
-          const currentPrice = Number(item.unit_price || 0);
-          const quantity = Number(item.quantity || 0);
-
-          const calculatedNewPrice = this.getPriceForQuantity(
-            newPreorderPrice,
-            newPreorderDiscountMinQty,
-            newPreorderDiscountPrice,
-            quantity
-          );
-
-          const oldTotal = Number(item.subtotal || (quantity * currentPrice));
-          const newTotal = quantity * calculatedNewPrice;
-          totalCostChange += (newTotal - oldTotal);
-
-          affectedOrders.push({
-            id: item.id,
-            orderId: item.order_id,
-            customerName,
-            quantity,
-            currentPrice,
-            newPrice: calculatedNewPrice,
-            oldTotal,
-            newTotal,
-            type: 'Preorder'
-          });
-        }
-      }
-
-      // 2. Process stock sale items
-      if (stockSaleItems && stockSaleItems.length > 0) {
-        const scopedStockSaleItems = stockSaleItems as any[];
-        const saleIds = [...new Set(scopedStockSaleItems.map((item: any) => item.stock_sale_id))];
-        const { data: sales } = await this.scopeShopQuery(this.sb
-          .from('stock_sales')
-          .select('id, customer_name')
-        )
-          .in('id', saleIds);
-
-        const saleMap = new Map(((sales || []) as any[]).map((s: any) => [s.id, s]));
-
-        for (const item of scopedStockSaleItems) {
-          const sale = saleMap.get(item.stock_sale_id);
-          const customerName = sale?.customer_name || 'Walk-in Customer';
-
-          const currentPrice = Number(item.unit_price || 0);
-          const quantity = Number(item.quantity || 0);
-
-          const calculatedNewPrice = this.getPriceForQuantity(
-            newStockPrice,
-            newStockDiscountMinQty,
-            newStockDiscountPrice,
-            quantity
-          );
-
-          const oldTotal = Number(item.subtotal || (quantity * currentPrice));
-          const newTotal = quantity * calculatedNewPrice;
-          totalCostChange += (newTotal - oldTotal);
-
-          affectedOrders.push({
-            id: item.id,
-            saleId: item.stock_sale_id,
-            customerName,
-            quantity,
-            currentPrice,
-            newPrice: calculatedNewPrice,
-            oldTotal,
-            newTotal,
-            type: 'Stock Sale'
-          });
-        }
-      }
-
-      return {
-        affectedRecordCount: affectedOrders.length,
-        affectedOrderCount: affectedOrders.length,
-        affectedPreorderItemCount: orderItems?.length || 0,
-        affectedStockSaleItemCount: stockSaleItems?.length || 0,
-        affectedOrders,
-        totalCostChange
-      };
-    } catch (err) {
-      console.error('Error previewing price change:', err);
-      throw err;
-    }
-  }
-
-  // Update batch product price and recalculate affected orders/sales
   updateBatchProductPriceWithRecalc(
     batchProductId: number,
     preorderPrice: number,
@@ -654,7 +392,7 @@ export class DatabaseService extends SupabaseDataAccessService {
     stockDiscountMinQty: number,
     stockDiscountPrice: number
   ): Observable<any> {
-    return from(this.doUpdateBatchProductPrice(
+    return this.products.updateBatchProductPriceWithRecalc(
       batchProductId,
       preorderPrice,
       preorderDiscountMinQty,
@@ -662,145 +400,7 @@ export class DatabaseService extends SupabaseDataAccessService {
       stockPrice,
       stockDiscountMinQty,
       stockDiscountPrice
-    ));
-  }
-
-  private async doUpdateBatchProductPrice(
-    batchProductId: number,
-    preorderPrice: number,
-    preorderDiscountMinQty: number,
-    preorderDiscountPrice: number,
-    stockPrice: number,
-    stockDiscountMinQty: number,
-    stockDiscountPrice: number
-  ): Promise<any> {
-    try {
-      // 1. Update the batch product row itself
-      const { error: updateError } = await this.scopeShopQuery(this.sb
-        .from('batch_products')
-        .update({
-          preorder_price: preorderPrice,
-          preorder_discount_min_qty: preorderDiscountMinQty,
-          preorder_discount_price: preorderDiscountPrice,
-          stock_price: stockPrice,
-          stock_discount_min_qty: stockDiscountMinQty,
-          stock_discount_price: stockDiscountPrice
-        })
-      )
-        .eq('id', batchProductId);
-
-      if (updateError) throw updateError;
-
-      // 2. Recalculate order_items (Preorders)
-      const { data: orderItems, error: itemsError } = await this.scopeShopQuery(this.sb
-        .from('order_items')
-        .select('id, order_id, quantity')
-      )
-        .eq('batch_product_id', batchProductId);
-
-      if (itemsError) throw itemsError;
-
-      let affectedOrderItemsCount = 0;
-      if (orderItems && orderItems.length > 0) {
-        for (const item of orderItems) {
-          const quantity = Number(item.quantity || 0);
-          const calculatedNewPrice = this.getPriceForQuantity(
-            preorderPrice,
-            preorderDiscountMinQty,
-            preorderDiscountPrice,
-            quantity
-          );
-          const subtotal = quantity * calculatedNewPrice;
-
-          const { error } = await this.scopeShopQuery(this.sb
-            .from('order_items')
-            .update({
-              unit_price: calculatedNewPrice,
-              subtotal: subtotal
-            })
-          )
-            .eq('id', item.id);
-
-          if (error) throw error;
-          affectedOrderItemsCount++;
-        }
-      }
-
-      // 3. Recalculate stock_sale_items and update parent stock_sales total_amount
-      const { data: stockSaleItems, error: stockItemsError } = await this.scopeShopQuery(this.sb
-        .from('stock_sale_items')
-        .select('id, stock_sale_id, quantity')
-      )
-        .eq('batch_product_id', batchProductId);
-
-      if (stockItemsError) throw stockItemsError;
-
-      let affectedStockItemsCount = 0;
-      const affectedSaleIds = new Set<number>();
-
-      if (stockSaleItems && stockSaleItems.length > 0) {
-        for (const item of stockSaleItems) {
-          const quantity = Number(item.quantity || 0);
-          const calculatedNewPrice = this.getPriceForQuantity(
-            stockPrice,
-            stockDiscountMinQty,
-            stockDiscountPrice,
-            quantity
-          );
-          const subtotal = quantity * calculatedNewPrice;
-
-          const { error } = await this.scopeShopQuery(this.sb
-            .from('stock_sale_items')
-            .update({
-              unit_price: calculatedNewPrice,
-              subtotal: subtotal
-            })
-          )
-            .eq('id', item.id);
-
-          if (error) throw error;
-          affectedStockItemsCount++;
-          affectedSaleIds.add(item.stock_sale_id);
-        }
-
-        // Update the total_amount on each affected stock_sales row
-        for (const saleId of affectedSaleIds) {
-          // Select all items for this stock sale to get the sum
-          const { data: allSaleItems, error: sumError } = await this.scopeShopQuery(this.sb
-            .from('stock_sale_items')
-            .select('subtotal')
-          )
-            .eq('stock_sale_id', saleId);
-
-          if (sumError) throw sumError;
-
-          const newTotal = ((allSaleItems || []) as any[]).reduce(
-            (sum: number, item: any) => sum + Number(item.subtotal || 0),
-            0
-          );
-
-          const { error: saleUpdateError } = await this.scopeShopQuery(this.sb
-            .from('stock_sales')
-            .update({ total_amount: newTotal })
-          )
-            .eq('id', saleId);
-
-          if (saleUpdateError) throw saleUpdateError;
-        }
-      }
-
-      return {
-        success: true,
-        affectedRecordCount: affectedOrderItemsCount + affectedStockItemsCount,
-        affectedOrderItemsCount,
-        affectedStockItemsCount,
-        affectedSalesCount: affectedSaleIds.size,
-        message: `Successfully updated pricing. Recalculated ${affectedOrderItemsCount} preorder items and ${affectedStockItemsCount} stock sale items.`
-      };
-    } catch (err) {
-      console.error('Error updating batch product price and recalculating:', err);
-      throw err;
-    }
+    );
   }
 
   // =====================
@@ -850,97 +450,39 @@ export class DatabaseService extends SupabaseDataAccessService {
   // Batches
   // =====================
   getOrderBatches(): Observable<OrderBatch[]> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batches').select('*')).order('created_at', { ascending: false })
-    ).pipe(map(({ data }) => rowsToCamel<OrderBatch>(data || [])));
+    return this.batches.getOrderBatches();
   }
 
   getOrderBatchesPage(page: number, pageSize: number, searchTerm = '', status?: OrderBatchStatus, monthYear?: { month: number; year: number }): Observable<{ data: OrderBatch[]; total: number }> {
-    const fromIndex = (page - 1) * pageSize;
-    const toIndex = fromIndex + pageSize - 1;
-    let query = this.scopeTable('batches')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(fromIndex, toIndex);
-    if (status) {
-      query = query.eq('status', status);
-    }
-    if (searchTerm) {
-      query = query.ilike('name', `%${searchTerm}%`);
-    }
-    if (monthYear) {
-      const { month, year } = monthYear;
-      const start = new Date(year, month, 1).toISOString();
-      const end = new Date(year, month + 1, 1).toISOString();
-      query = query.gte('created_at', start).lt('created_at', end);
-    }
-    return from(query).pipe(map(({ data, count }) => ({
-      data: rowsToCamel<OrderBatch>(data || []),
-      total: count || 0
-    })));
+    return this.batches.getOrderBatchesPage(page, pageSize, searchTerm, status, monthYear);
   }
 
   getOrderBatchById(id: number): Observable<OrderBatch | null> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batches').select('*')).eq('id', id).single()
-    ).pipe(map(({ data }) => (data ? toCamel(data) as OrderBatch : null)));
+    return this.batches.getOrderBatchById(id);
   }
 
   getOpenBatches(): Observable<OrderBatch[]> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batches').select('*')).eq('status', 'open').order('created_at', { ascending: false })
-    ).pipe(map(({ data }) => rowsToCamel<OrderBatch>(data || [])));
+    return this.batches.getOpenBatches();
   }
 
   createOrderBatch(name: string): Observable<number> {
-    return from(
-      this.sb.from('batches').insert({
-        shop_id: this.activeShopId,
-        name,
-        status: 'open',
-        order_status: 'pending',
-        buying_status: 'pending',
-        delivery_status: 'not_sent'
-      }).select('id').single()
-    ).pipe(map(({ data }) => data?.id ?? 0));
+    return this.batches.createOrderBatch(name);
   }
 
   closeOrderBatch(batchId: number): Observable<boolean> {
-    return from(this.doCloseOrderBatch(batchId));
-  }
-
-  private async doCloseOrderBatch(batchId: number): Promise<boolean> {
-    const batch = await this.getBatchWorkflowSnapshotById(batchId);
-    if (!batch) return false;
-    if (batch.status === 'closed') return true;
-    if (!this.canRunBatchWorkflowTransition(batch, 'orders_to_buying')) return false;
-
-    const hasBuyingList = await this.hasBatchRows('buying_list', batchId);
-    if (!hasBuyingList) return false;
-
-    const { data, error } = await this.scopeShopQuery(
-      this.sb.from('batches')
-        .update({ status: 'closed', closed_at: new Date().toISOString() })
-    ).eq('id', batchId).eq('status', 'open').select('id').maybeSingle();
-    return !error && !!data;
+    return this.batches.closeOrderBatch(batchId);
   }
 
   reopenOrderBatch(batchId: number): Observable<boolean> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batches').update({ status: 'open', closed_at: null })).eq('id', batchId)
-    ).pipe(map(({ error }) => !error));
+    return this.batches.reopenOrderBatch(batchId);
   }
 
   deleteOrderBatch(id: number): Observable<boolean> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batches').delete()).eq('id', id)
-    ).pipe(map(({ error }) => !error));
+    return this.batches.deleteOrderBatch(id);
   }
 
   updateOrderBatch(id: number, name: string): Observable<boolean> {
-    return from(
-      this.scopeShopQuery(this.sb.from('batches').update({ name })).eq('id', id)
-    ).pipe(map(({ error }) => !error));
+    return this.batches.updateOrderBatch(id, name);
   }
 
   // =====================
@@ -1206,6 +748,12 @@ export class DatabaseService extends SupabaseDataAccessService {
   }
 
   createOrder(order: Order): Observable<number> {
+    return from(this.doCreateOrder(order));
+  }
+
+  private async doCreateOrder(order: Order): Promise<number> {
+    await this.assertCanCreateSalesRecord('order');
+
     const row: any = {
       shop_id: this.activeShopId,
       customer_id: order.clientId,
@@ -1214,9 +762,9 @@ export class DatabaseService extends SupabaseDataAccessService {
     if (order.batchId) {
       row.batch_id = order.batchId;
     }
-    return from(
-      this.sb.from('orders').insert(row).select('id').single()
-    ).pipe(map(({ data }) => data?.id ?? 0));
+    const { data, error } = await this.sb.from('orders').insert(row).select('id').single();
+    if (error) throw error;
+    return data?.id ?? 0;
   }
 
   addOrderItem(item: OrderItem): Observable<number> {
@@ -1651,68 +1199,22 @@ export class DatabaseService extends SupabaseDataAccessService {
   // Stock Sales
   // =====================
 
-  /** All products with stock > 0, priced at their most recent batch_product entry */
   getStockAvailableProducts(): Observable<StockProduct[]> {
-    return from(Promise.all([
-      this.scopeTable('products', 'id, name, stock').gt('stock', 0).order('name'),
-      this.scopeTable('batch_products')
-        .select('id, product_id, stock_price, stock_discount_min_qty, stock_discount_price')
-        .order('created_at', { ascending: false })
-    ])).pipe(map(([productsRes, bpRes]: any[]) => {
-      const products = (productsRes.data || []) as any[];
-      const bpRows   = (bpRes.data   || []) as any[];
-      const latest: Record<number, any> = {};
-      for (const row of bpRows) {
-        if (!latest[row.product_id]) latest[row.product_id] = row;
-      }
-      return products.map((p: any) => ({
-        id:                   p.id,
-        name:                 p.name,
-        stock:                p.stock || 0,
-        stockPrice:           latest[p.id]?.stock_price           ?? 0,
-        stockDiscountMinQty:  latest[p.id]?.stock_discount_min_qty ?? 0,
-        stockDiscountPrice:   latest[p.id]?.stock_discount_price   ?? 0,
-        latestBatchProductId: latest[p.id]?.id                    ?? null,
-      })) as StockProduct[];
-    }));
+    return this.stockSales.getStockAvailableProducts();
   }
 
-  getStockSalesPage(page: number, pageSize: number, search = '', dateFrom = '', dateTo = '')
-    : Observable<{ data: StockSale[]; total: number }> {
-    const fromIdx = (page - 1) * pageSize;
-    const toIdx   = fromIdx + pageSize - 1;
-    let q = this.scopeTable('stock_sales')
-      .select('id, sale_uuid, customer_name, customer_id, sale_channel, total_amount, created_at, status, stock_sale_items(id)', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(fromIdx, toIdx);
-    if (search)   q = (q as any).ilike('customer_name', `%${search}%`);
-    if (dateFrom) q = (q as any).gte('created_at', dateFrom);
-    if (dateTo)   q = (q as any).lte('created_at', dateTo + 'T23:59:59');
-    return from(q).pipe(map(({ data, count }: any) => ({
-      data: (data || []).map((r: any) => ({
-        ...toCamel(r),
-        itemCount: Array.isArray(r.stock_sale_items) ? r.stock_sale_items.length : 0
-      })) as StockSale[],
-      total: count || 0
-    })));
+  getStockSalesPage(
+    page: number,
+    pageSize: number,
+    search = '',
+    dateFrom = '',
+    dateTo = ''
+  ): Observable<{ data: StockSale[]; total: number }> {
+    return this.stockSales.getStockSalesPage(page, pageSize, search, dateFrom, dateTo);
   }
 
   getStockSaleDetail(id: number): Observable<StockSale | null> {
-    return from(
-      this.scopeTable('stock_sales')
-        .select('*, stock_sale_items(*, products(name))')
-        .eq('id', id)
-        .single()
-    ).pipe(map(({ data }: any) => {
-      if (!data) return null;
-      return {
-        ...toCamel(data),
-        items: (data.stock_sale_items || []).map((i: any) => ({
-          ...toCamel(i),
-          productName: i.products?.name
-        }))
-      } as StockSale;
-    }));
+    return this.stockSales.getStockSaleDetail(id);
   }
 
   createStockSale(
@@ -1722,72 +1224,9 @@ export class DatabaseService extends SupabaseDataAccessService {
     totalAmount: number,
     items: StockSaleItem[]
   ): Observable<{ id: number; saleUuid: string }> {
-    return from(this.doCreateStockSale(customerId, customerName, saleChannel, totalAmount, items));
-  }
-
-  private async doCreateStockSale(
-    customerId: number | null,
-    customerName: string,
-    saleChannel: string,
-    totalAmount: number,
-    items: StockSaleItem[]
-  ): Promise<{ id: number; saleUuid: string }> {
-    const { data: sale, error: saleErr } = await this.sb.from('stock_sales').insert({
-      shop_id: this.activeShopId,
-      customer_id:   customerId || null,
-      customer_name: customerName,
-      sale_channel:  saleChannel,
-      total_amount:  totalAmount,
-      status:        'open'
-    }).select('id, sale_uuid').single();
-    if (saleErr || !sale) throw saleErr;
-
-    const itemRows = items.map(i => ({
-      shop_id: this.activeShopId,
-      stock_sale_id:    (sale as any).id,
-      batch_product_id: i.batchProductId,
-      product_id:       i.productId,
-      quantity:         i.quantity,
-      unit_price:       i.unitPrice,
-      subtotal:         i.subtotal
-    }));
-    const { error: itemsErr } = await this.sb.from('stock_sale_items').insert(itemRows);
-    if (itemsErr) throw itemsErr;
-
-    // Decrement stock once per product to avoid duplicate updates in the same sale.
-    const quantityByProduct = new Map<number, number>();
-    for (const item of items) {
-      const productId = Number(item.productId);
-      if (!productId) continue;
-      quantityByProduct.set(productId, (quantityByProduct.get(productId) || 0) + Number(item.quantity || 0));
-    }
-
-    for (const [productId, soldQty] of quantityByProduct.entries()) {
-      const { data: prod, error: prodErr } = await this.scopeShopQuery(
-        this.sb.from('products').select('id, stock')
-      ).eq('id', productId).maybeSingle();
-
-      if (prodErr) {
-        throw new Error(prodErr.message || `Failed to read stock for product ${productId}`);
-      }
-
-      if (!prod) {
-        throw new Error(`Product ${productId} not found for the active shop`);
-      }
-
-      const currentStock = Number((prod as any)?.stock || 0);
-      const newStock = Math.max(0, currentStock - soldQty);
-
-      const { error: stockErr } = await this.scopeShopQuery(
-        this.sb.from('products').update({ stock: newStock })
-      ).eq('id', productId);
-
-      if (stockErr) {
-        throw new Error(stockErr.message || `Failed to update stock for product ${productId}`);
-      }
-    }
-
-    return { id: (sale as any).id, saleUuid: (sale as any).sale_uuid };
+    return from(this.assertCanCreateSalesRecord('stock sale')).pipe(
+      switchMap(() => this.stockSales.createStockSale(customerId, customerName, saleChannel, totalAmount, items))
+    );
   }
 
   updateStockSale(
@@ -1798,147 +1237,19 @@ export class DatabaseService extends SupabaseDataAccessService {
     totalAmount: number,
     items: StockSaleItem[]
   ): Observable<boolean> {
-    return from(this.doUpdateStockSale(saleId, customerId, customerName, saleChannel, totalAmount, items));
-  }
-
-  private async doUpdateStockSale(
-    saleId: number,
-    customerId: number | null,
-    customerName: string,
-    saleChannel: string,
-    totalAmount: number,
-    items: StockSaleItem[]
-  ): Promise<boolean> {
-    if (!this.activeShopId || !saleId) return false;
-
-    const { data: existingItems, error: existingErr } = await this.scopeShopQuery(
-      this.sb.from('stock_sale_items').select('product_id, quantity')
-    ).eq('stock_sale_id', saleId);
-    if (existingErr) return false;
-
-    await this.adjustProductStock(existingItems || [], 1);
-
-    const { error: saleErr } = await this.scopeShopQuery(this.sb.from('stock_sales').update({
-      customer_id: customerId || null,
-      customer_name: customerName,
-      sale_channel: saleChannel,
-      total_amount: totalAmount
-    })).eq('id', saleId);
-    if (saleErr) return false;
-
-    const { error: deleteItemsErr } = await this.scopeShopQuery(this.sb.from('stock_sale_items').delete())
-      .eq('stock_sale_id', saleId);
-    if (deleteItemsErr) return false;
-
-    const itemRows = items.map(i => ({
-      shop_id: this.activeShopId,
-      stock_sale_id: saleId,
-      batch_product_id: i.batchProductId,
-      product_id: i.productId,
-      quantity: i.quantity,
-      unit_price: i.unitPrice,
-      subtotal: i.subtotal
-    }));
-
-    if (itemRows.length > 0) {
-      const { error: insertErr } = await this.scopeShopQuery(this.sb.from('stock_sale_items').insert(itemRows));
-      if (insertErr) return false;
-    }
-
-    await this.adjustProductStock(items, -1);
-    return true;
+    return this.stockSales.updateStockSale(saleId, customerId, customerName, saleChannel, totalAmount, items);
   }
 
   deleteStockSale(saleId: number): Observable<boolean> {
-    return from(this.doDeleteStockSale(saleId));
-  }
-
-  private async doDeleteStockSale(saleId: number): Promise<boolean> {
-    if (!this.activeShopId || !saleId) return false;
-
-    const { data: sale, error: saleErr } = await this.scopeShopQuery(
-      this.sb.from('stock_sales').select('status')
-    ).eq('id', saleId).maybeSingle();
-    if (saleErr || !sale) return false;
-    if ((sale as any).status !== 'cancelled') return false;
-
-    const { error: deleteErr } = await this.scopeShopQuery(this.sb.from('stock_sales').delete()).eq('id', saleId);
-    if (deleteErr) return false;
-
-    return true;
+    return this.stockSales.deleteStockSale(saleId);
   }
 
   closeStockSale(saleId: number, closedByUserId: number | null): Observable<boolean> {
-    return from(this.doCloseStockSale(saleId, closedByUserId));
-  }
-
-  private async doCloseStockSale(saleId: number, closedByUserId: number | null): Promise<boolean> {
-    if (!this.activeShopId || !saleId) return false;
-    const updatePayload: Record<string, any> = {
-      status: 'closed',
-      closed_at: new Date().toISOString()
-    };
-    if (closedByUserId) {
-      updatePayload['closed_by'] = closedByUserId;
-    }
-
-    const { data, error } = await this.scopeShopQuery(
-      this.sb.from('stock_sales').update(updatePayload)
-    ).eq('id', saleId).eq('status', 'open').select('id').maybeSingle();
-    return !error && !!data;
+    return this.stockSales.closeStockSale(saleId, closedByUserId);
   }
 
   cancelStockSale(saleId: number): Observable<boolean> {
-    return from(this.doCancelStockSale(saleId));
-  }
-
-  private async doCancelStockSale(saleId: number): Promise<boolean> {
-    if (!this.activeShopId || !saleId) return false;
-
-    const { data: sale, error: saleErr } = await this.scopeShopQuery(
-      this.sb.from('stock_sales').select('status')
-    ).eq('id', saleId).maybeSingle();
-    if (saleErr || !sale || (sale as any).status !== 'open') return false;
-
-    // Fetch stock_sale_items linked to the sale
-    const { data: existingItems, error: existingErr } = await this.scopeShopQuery(
-      this.sb.from('stock_sale_items').select('product_id, quantity')
-    ).eq('stock_sale_id', saleId);
-    if (existingErr) return false;
-
-    // Update status to 'cancelled'
-    const { data: updatedSale, error: updateErr } = await this.scopeShopQuery(
-      this.sb.from('stock_sales').update({
-        status: 'cancelled'
-      })
-    ).eq('id', saleId).eq('status', 'open').select('id').maybeSingle();
-    if (updateErr || !updatedSale) return false;
-
-    // Return product quantities to stock
-    await this.adjustProductStock(existingItems || [], 1);
-    return true;
-  }
-
-  private async adjustProductStock(items: Array<{ productId?: number; product_id?: number; quantity?: number }>, direction: 1 | -1): Promise<void> {
-    const quantityByProduct = new Map<number, number>();
-    for (const item of items || []) {
-      const productId = Number(item.productId ?? item.product_id ?? 0);
-      const quantity = Number(item.quantity || 0);
-      if (!productId || quantity <= 0) continue;
-      quantityByProduct.set(productId, (quantityByProduct.get(productId) || 0) + quantity);
-    }
-
-    for (const [productId, quantity] of quantityByProduct.entries()) {
-      const { data: product, error: productErr } = await this.scopeShopQuery(
-        this.sb.from('products').select('stock')
-      ).eq('id', productId).maybeSingle();
-      if (productErr || !product) continue;
-      const current = Number((product as any).stock || 0);
-      const next = direction === 1
-        ? current + quantity
-        : Math.max(0, current - quantity);
-      await this.scopeShopQuery(this.sb.from('products').update({ stock: next })).eq('id', productId);
-    }
+    return this.stockSales.cancelStockSale(saleId);
   }
 
   // =====================
@@ -4947,239 +4258,11 @@ export class DatabaseService extends SupabaseDataAccessService {
    * PRESERVES: products table (even if created for this batch)
    */
   deleteBatchCascade(batchName: string): Observable<boolean> {
-    return from(this.doDeleteBatchCascade(batchName));
+    return this.batches.deleteBatchCascade(batchName);
   }
 
   deleteBatchCascadeById(batchId: number, batchName?: string): Observable<boolean> {
-    return from(this.doDeleteBatchCascadeById(batchId, batchName));
-  }
-
-  private async doDeleteBatchCascade(batchName: string): Promise<boolean> {
-    try {
-      // Compatibility wrapper for older callers. New code should delete by batch_id.
-      const { data: batchData } = await this.scopeShopQuery(this.sb.from('batches').select('id, name'))
-        .eq('name', batchName)
-        .maybeSingle();
-      const batchId = batchData?.id;
-      
-      if (!batchId) {
-        console.warn('[db] Batch not found for deletion:', batchName);
-        return false;
-      }
-
-      return this.doDeleteBatchCascadeById(batchId, batchData?.name || batchName);
-    } catch (err) {
-      console.error('[db] Error in deleteBatchCascade:', err);
-      return false;
-    }
-  }
-
-  private async doDeleteBatchCascadeById(batchId: number, batchName?: string): Promise<boolean> {
-    try {
-      const { data: batchData } = await this.scopeShopQuery(this.sb.from('batches').select('id, name'))
-        .eq('id', batchId)
-        .maybeSingle();
-      const resolvedBatchName = batchData?.name || batchName || '';
-
-      if (!batchData?.id) {
-        console.warn('[db] Batch not found for deletion:', batchId);
-        return false;
-      }
-
-      console.log('[db] Deleting batch:', batchName, 'with ID:', batchId);
-
-      // Delete in order of dependencies (foreign keys)
-      // Must respect ON DELETE RESTRICT constraints
-      
-      // 1. Get all batch_products for this batch first
-      const { data: batchProducts } = await this.scopeShopQuery(this.sb.from('batch_products').select('id')).eq('batch_id', batchId);
-      const batchProductIds = batchProducts ? batchProducts.map((bp: any) => bp.id) : [];
-      console.log('[db] Found', batchProductIds.length, 'batch products');
-
-      // 2. Delete stock_sale_items that reference our batch products (RESTRICT on batch_product_id)
-      if (batchProductIds.length > 0) {
-        const delErr2 = await this.scopeShopQuery(this.sb.from('stock_sale_items').delete()).in('batch_product_id', batchProductIds);
-        if (delErr2.error) {
-          console.error('[db] Error deleting stock_sale_items:', delErr2.error, ' - Status:', delErr2.status);
-          return false;
-        }
-        console.log('[db] Deleted stock_sale_items');
-      }
-
-      // 3. Get and delete shipping_invoices and their items
-      const { data: shippingInvoices } = await this.scopeShopQuery(this.sb.from('shipping_invoices').select('id')).eq('batch_id', batchId);
-      if (shippingInvoices && shippingInvoices.length > 0) {
-        const siIds = shippingInvoices.map((si: any) => si.id);
-        
-        // Delete shipping_invoice_items first (RESTRICT on shipping_invoice_id)
-        const delErr3a = await this.scopeShopQuery(this.sb.from('shipping_invoice_items').delete()).in('shipping_invoice_id', siIds);
-        if (delErr3a.error) {
-          console.error('[db] Error deleting shipping_invoice_items:', delErr3a.error, ' - Status:', delErr3a.status);
-          return false;
-        }
-        console.log('[db] Deleted shipping_invoice_items');
-
-        // Delete shipping_invoices (references batch_id)
-        const delErr3b = await this.scopeShopQuery(this.sb.from('shipping_invoices').delete()).in('id', siIds);
-        if (delErr3b.error) {
-          console.error('[db] Error deleting shipping_invoices:', delErr3b.error, ' - Status:', delErr3b.status);
-          return false;
-        }
-        console.log('[db] Deleted shipping_invoices');
-      }
-
-      // 4. Delete shipping ledger rows. Prefer batch_id, then clean up legacy name-based rows.
-      const delErr4 = await this.scopeShopQuery(this.sb.from('shipping_fees').delete()).eq('batch_id', batchId);
-      if (delErr4.error) {
-        console.error('[db] Error deleting shipping_fees:', delErr4.error, ' - Status:', delErr4.status);
-        return false;
-      }
-      if (resolvedBatchName) {
-        const legacyFeesDelete = await this.scopeShopQuery(this.sb.from('shipping_fees').delete()).eq('batch_name', resolvedBatchName);
-        if (legacyFeesDelete.error) {
-          console.error('[db] Error deleting legacy shipping_fees:', legacyFeesDelete.error, ' - Status:', legacyFeesDelete.status);
-          return false;
-        }
-      }
-      console.log('[db] Deleted shipping_fees');
-
-      const shippingPaymentsDelete = await this.scopeShopQuery(this.sb.from('shipping_payments').delete()).eq('batch_id', batchId);
-      if (shippingPaymentsDelete.error) {
-        console.error('[db] Error deleting shipping_payments:', shippingPaymentsDelete.error, ' - Status:', shippingPaymentsDelete.status);
-        return false;
-      }
-      if (resolvedBatchName) {
-        const legacyPaymentsDelete = await this.scopeShopQuery(this.sb.from('shipping_payments').delete()).eq('batch_name', resolvedBatchName);
-        if (legacyPaymentsDelete.error) {
-          console.error('[db] Error deleting legacy shipping_payments:', legacyPaymentsDelete.error, ' - Status:', legacyPaymentsDelete.status);
-          return false;
-        }
-
-        const shippingBatchDelete = await this.scopeShopQuery(this.sb.from('shipping_batches').delete()).eq('batch_name', resolvedBatchName);
-        if (shippingBatchDelete.error) {
-          console.error('[db] Error deleting shipping_batches:', shippingBatchDelete.error, ' - Status:', shippingBatchDelete.status);
-          return false;
-        }
-      }
-      console.log('[db] Deleted shipping payment summaries');
-
-      // 5. Delete deliveries (references batch_id)
-      const delErr5 = await this.scopeShopQuery(this.sb.from('deliveries').delete()).eq('batch_id', batchId);
-      if (delErr5.error) {
-        console.error('[db] Error deleting deliveries:', delErr5.error, ' - Status:', delErr5.status);
-        return false;
-      }
-      console.log('[db] Deleted deliveries');
-
-      // 6. Delete damage_order_allocations by batch_id, then legacy name-based rows.
-      const delErr6 = await this.scopeShopQuery(this.sb.from('damage_order_allocations').delete()).eq('batch_id', batchId);
-      if (delErr6.error) {
-        console.error('[db] Error deleting damage_order_allocations:', delErr6.error, ' - Status:', delErr6.status);
-        return false;
-      }
-      if (resolvedBatchName) {
-        const legacyDamageDelete = await this.scopeShopQuery(this.sb.from('damage_order_allocations').delete()).eq('batch_name', resolvedBatchName);
-        if (legacyDamageDelete.error) {
-          console.error('[db] Error deleting legacy damage_order_allocations:', legacyDamageDelete.error, ' - Status:', legacyDamageDelete.status);
-          return false;
-        }
-      }
-      console.log('[db] Deleted damage_order_allocations');
-
-      // 7. Delete order_items and orders for this batch
-      const { data: orders } = await this.scopeShopQuery(this.sb.from('orders').select('id')).eq('batch_id', batchId);
-      
-      if (orders && orders.length > 0) {
-        const orderIds = orders.map((o: any) => o.id);
-        const delErr7a = await this.scopeShopQuery(this.sb.from('order_items').delete()).in('order_id', orderIds);
-        if (delErr7a.error) {
-          console.error('[db] Error deleting order_items:', delErr7a.error, ' - Status:', delErr7a.status);
-          return false;
-        }
-        console.log('[db] Deleted order_items');
-      }
-
-      const delErr7b = await this.scopeShopQuery(this.sb.from('orders').delete()).eq('batch_id', batchId);
-      if (delErr7b.error) {
-        console.error('[db] Error deleting orders:', delErr7b.error, ' - Status:', delErr7b.status);
-        return false;
-      }
-      console.log('[db] Deleted orders');
-
-      // 8. Delete buying_list items by batch_id
-      const delErr8 = await this.scopeShopQuery(this.sb.from('buying_list').delete()).eq('batch_id', batchId);
-      if (delErr8.error) {
-        console.error('[db] Error deleting buying_list:', delErr8.error, ' - Status:', delErr8.status);
-        return false;
-      }
-      console.log('[db] Deleted buying_list');
-
-      // 9. Delete arrival_items
-      const delErr9 = await this.scopeShopQuery(this.sb.from('arrival_items').delete()).eq('batch_id', batchId);
-      if (delErr9.error) {
-        console.error('[db] Error deleting arrival_items:', delErr9.error, ' - Status:', delErr9.status);
-        return false;
-      }
-      console.log('[db] Deleted arrival_items');
-
-      // 10. Delete damaged_items
-      const delErr10 = await this.scopeShopQuery(this.sb.from('damaged_items').delete()).eq('batch_id', batchId);
-      if (delErr10.error) {
-        console.error('[db] Error deleting damaged_items:', delErr10.error, ' - Status:', delErr10.status);
-        return false;
-      }
-      console.log('[db] Deleted damaged_items');
-
-      // 11. Delete follow_ups
-      const delErr11 = await this.scopeShopQuery(this.sb.from('follow_ups').delete()).eq('batch_id', batchId);
-      if (delErr11.error) {
-        console.error('[db] Error deleting follow_ups:', delErr11.error, ' - Status:', delErr11.status);
-        return false;
-      }
-      console.log('[db] Deleted follow_ups');
-
-      // 12. Delete product_tracking
-      const delErr12 = await this.scopeShopQuery(this.sb.from('product_tracking').delete()).eq('batch_id', batchId);
-      if (delErr12.error) {
-        console.error('[db] Error deleting product_tracking:', delErr12.error, ' - Status:', delErr12.status);
-        return false;
-      }
-      console.log('[db] Deleted product_tracking');
-
-      // 13. Delete batch_product_shipping
-      const delErr13 = await this.scopeShopQuery(this.sb.from('batch_product_shipping').delete()).eq('batch_id', batchId);
-      if (delErr13.error) {
-        console.error('[db] Error deleting batch_product_shipping:', delErr13.error, ' - Status:', delErr13.status);
-        return false;
-      }
-      console.log('[db] Deleted batch_product_shipping');
-
-      // 14. Delete batch_products
-      const delErr14 = await this.scopeShopQuery(this.sb.from('batch_products').delete()).eq('batch_id', batchId);
-      if (delErr14.error) {
-        console.error('[db] Error deleting batch_products:', delErr14.error, ' - Status:', delErr14.status);
-        return false;
-      }
-      console.log('[db] Deleted batch_products');
-
-      // 15. Finally delete the batch itself
-      console.log('[db] Attempting to delete batch record:', batchName, 'by ID:', batchId);
-      const delErr15 = await this.scopeShopQuery(this.sb.from('batches').delete()).eq('id', batchId);
-      if (delErr15.error) {
-        console.error('[db] Error deleting batch record:', delErr15.error, ' - Status:', delErr15.status);
-        return false;
-      }
-      console.log('[db] Deleted batch record');
-
-      console.log('[db] Batch deleted successfully:', resolvedBatchName || batchId);
-
-      // Notify all subscribers that a batch was deleted
-      this.batchDeletedSource.next(resolvedBatchName || String(batchId));
-      return true;
-    } catch (err) {
-      console.error('Error deleting batch cascade:', err);
-      return false;
-    }
+    return this.batches.deleteBatchCascadeById(batchId, batchName);
   }
 
   sendArrivalsToDeliveries(batchName: string): Observable<boolean> {

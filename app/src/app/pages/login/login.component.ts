@@ -24,7 +24,7 @@ import { firstValueFrom } from 'rxjs';
 
         <div class="brand-content">
           <div class="brand-logo">
-            <img src="assets/batchcommerce_icon.png" alt="BatchCommerce" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);" />
+            <img src="assets/batchcommerce_icon.png" alt="BatchCommerce" style="width: 48px; height: 48px; object-fit: cover; border-radius: 12px;" />
             <span class="brand-name">BatchCommerce</span>
           </div>
 
@@ -36,7 +36,7 @@ import { firstValueFrom } from 'rxjs';
           <div class="brand-features">
             <div class="feature-item">
               <div class="feature-icon"><i class="ri-store-2-line"></i></div>
-              <span>Multi-shop workspace</span>
+              <span>Single-shop workspace</span>
             </div>
             <div class="feature-item">
               <div class="feature-icon"><i class="ri-bar-chart-2-line"></i></div>
@@ -398,9 +398,6 @@ import { firstValueFrom } from 'rxjs';
       background: #fff;
       border-radius: 20px;
       padding: 40px 36px;
-      box-shadow:
-        0 1px 3px rgba(0,0,0,0.06),
-        0 8px 32px rgba(0,0,0,0.08);
       border: 1px solid #e2e8f0;
 
       @media (max-width: 480px) {
@@ -481,7 +478,7 @@ import { firstValueFrom } from 'rxjs';
       font-family: inherit;
       color: #0f172a;
       background: #f8fafc;
-      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+      transition: border-color 0.2s, background 0.2s;
       outline: none;
       box-sizing: border-box;
 
@@ -490,7 +487,6 @@ import { firstValueFrom } from 'rxjs';
       &:focus {
         border-color: #6366f1;
         background: #fff;
-        box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
       }
     }
 
@@ -561,8 +557,7 @@ import { firstValueFrom } from 'rxjs';
       align-items: center;
       justify-content: center;
       gap: 8px;
-      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
-      box-shadow: 0 4px 14px rgba(99,102,241,0.35);
+      transition: transform 0.15s, opacity 0.15s;
       position: relative;
       overflow: hidden;
 
@@ -577,13 +572,11 @@ import { firstValueFrom } from 'rxjs';
 
       &:hover:not(:disabled) {
         transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(99,102,241,0.45);
         &::after { opacity: 1; }
       }
 
       &:active:not(:disabled) {
         transform: translateY(0);
-        box-shadow: 0 2px 8px rgba(99,102,241,0.3);
       }
 
       &:disabled {

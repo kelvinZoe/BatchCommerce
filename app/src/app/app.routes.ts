@@ -114,6 +114,11 @@ export const routes: Routes = [
     canActivate: [authGuard, permissionGuard('settings')]
   },
   {
+    path: 'subscription',
+    loadComponent: () => import('./pages/subscription/subscription.component').then(m => m.SubscriptionComponent),
+    canActivate: [authGuard, permissionGuard('settings')]
+  },
+  {
     path: 'batches',
     loadComponent: () => import('./pages/batches/batches.component').then(m => m.BatchesComponent),
     canActivate: [authGuard, permissionGuard('batches')]

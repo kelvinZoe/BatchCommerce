@@ -30,15 +30,20 @@ export abstract class SupabaseDataAccessService {
     return this.authService.currentUser?.shopId || null;
   }
 
+  protected requireActiveShopId(): string {
+    const shopId = this.activeShopId;
+    if (!shopId) {
+      throw new Error('Active shop context is required for this operation.');
+    }
+    return shopId;
+  }
+
   protected get currentAppUserId(): number | null {
     return this.authService.currentUser?.id || null;
   }
 
   protected scopeShopQuery(query: any) {
-    const shopId = this.activeShopId;
-    if (!shopId) {
-      throw new Error('Active shop context is required for this operation.');
-    }
+    const shopId = this.requireActiveShopId();
     if (!query || typeof query.eq !== 'function') return query;
     return query.eq('shop_id', shopId);
   }
@@ -51,6 +56,12 @@ export abstract class SupabaseDataAccessService {
     const code = error?.code;
     // 42703 = unknown column, 42P01 = unknown table, PGRST204/205 = schema cache miss
     return code === '42703' || code === '42P01' || code === 'PGRST204' || code === 'PGRST205';
+  }
+
+  protected isMissingRpcError(error: any): boolean {
+    const code = String(error?.code || '').toUpperCase();
+    const message = String(error?.message || '').toLowerCase();
+    return code === 'PGRST202' || code === '42883' || (message.includes('function') && message.includes('not found'));
   }
 
   protected async getBatchIdByName(batchName: string | null | undefined): Promise<number | null> {

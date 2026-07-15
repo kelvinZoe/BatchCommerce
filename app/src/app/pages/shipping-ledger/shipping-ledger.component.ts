@@ -198,7 +198,6 @@ interface LedgerRow {
       padding: 12px 16px;
       border-radius: 12px;
       border: 1px solid transparent;
-      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
       font-size: 13px;
       font-weight: 700;
       animation: sl-toast-in 0.18s ease-out;
@@ -244,7 +243,7 @@ interface LedgerRow {
     .sl-detail-sub { font-size: 11px; color: #94a3b8; }
     /* MODAL */
     .sl-modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
-    .sl-modal { background: #fff; border-radius: 16px; width: 480px; max-width: 95vw; box-shadow: 0 20px 60px rgba(0,0,0,0.18); overflow: hidden; display: flex; flex-direction: column; }
+    .sl-modal { background: #fff; border-radius: 16px; width: 480px; max-width: 95vw; overflow: hidden; display: flex; flex-direction: column; }
     .sl-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 16px; border-bottom: 1px solid #f1f5f9; background: linear-gradient(135deg, #f8faff 0%, #fff 100%); }
     .sl-modal-title-group { display: flex; align-items: center; gap: 12px; }
     .sl-modal-avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--primary-color, #6366f1); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }

@@ -87,7 +87,6 @@ import { firstValueFrom } from 'rxjs';
     .reset-card {
       background: white;
       border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
       width: 100%;
       max-width: 420px;
       overflow: hidden;
@@ -96,7 +95,7 @@ import { firstValueFrom } from 'rxjs';
     .reset-header {
       text-align: center;
       padding: 40px 32px 24px;
-      .logo-icon { width: 56px; height: 56px; border-radius: 12px; display: block; margin: 0 auto 16px; box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25); }
+      .logo-icon { width: 56px; height: 56px; border-radius: 12px; display: block; margin: 0 auto 16px; }
       h1 { font-size: 24px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
       p { color: #64748b; font-size: 14px; }
     }
@@ -128,7 +127,7 @@ import { firstValueFrom } from 'rxjs';
         border-radius: 10px;
         font-size: 14px;
         box-sizing: border-box;
-        &:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        &:focus { outline: none; border-color: #2563eb; }
       }
       .toggle-password {
         position: absolute;

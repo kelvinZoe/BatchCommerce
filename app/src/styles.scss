@@ -113,7 +113,6 @@ body {
 .card {
   background: var(--surface-color);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-color);
   padding: 24px;
 
@@ -184,7 +183,6 @@ table {
     &:focus {
       outline: none;
       border-color: var(--primary-color);
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
     }
   }
 
@@ -595,7 +593,6 @@ table {
 .skeleton-card {
   background: var(--surface-color);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-color);
   padding: 24px;
 }

@@ -487,7 +487,7 @@ interface CartItem {
 
     /* ── Modal ── */
     .ss-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:200; display:flex; align-items:center; justify-content:center; padding:16px; }
-    .ss-modal { background:#fff; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,0.2); width:100%; max-width:960px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
+    .ss-modal { background:#fff; border-radius:16px; width:100%; max-width:960px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
     .ss-modal-sm { max-width:520px; }
 
     .ss-modal-header { display:flex; align-items:center; gap:14px; padding:18px 20px; border-bottom:1px solid #e2e8f0; flex-shrink:0; }
@@ -513,7 +513,7 @@ interface CartItem {
     .ss-pill-toggle  { display:inline-flex; gap:3px; padding:3px; border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc; }
     .ss-pill         { display:inline-flex; align-items:center; gap:5px; padding:6px 12px; border-radius:7px; border:none; background:transparent; font-size:12px; font-weight:600; color:#64748b; cursor:pointer; transition:all 0.13s; }
     .ss-pill .material-icons { font-size:14px; }
-    .ss-pill-active  { background:#fff; color:var(--primary-color,#6366f1); box-shadow:0 1px 4px rgba(0,0,0,0.1); }
+    .ss-pill-active  { background:#fff; color:var(--primary-color,#6366f1); }
 
     .ss-form-group   { margin-bottom:10px; }
     .ss-form-row     { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; }

@@ -73,8 +73,7 @@ import { CommonModule } from '@angular/common';
     .dd-panel {
       position: absolute; top: calc(100% + 6px); left: 0; z-index: 100;
       background: #fff; border: 1px solid #ccc; border-radius: 12px;
-      padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-      min-width: 240px;
+      padding: 14px;      min-width: 240px;
     }
     .dd-panel-right { left: auto; right: 0; }
   `]

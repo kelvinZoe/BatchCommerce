@@ -571,7 +571,7 @@ export interface ToolbarButtonConfig {
       font-weight: 700;
       white-space: nowrap;
       cursor: pointer;
-      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
     }
 
     .table-toolbar__action-btn .material-icons {
@@ -582,7 +582,6 @@ export interface ToolbarButtonConfig {
       border-color: rgba(var(--primary-rgb, 99,102,241), 0.22);
       background: #fff;
       color: var(--primary-color, #6366f1);
-      box-shadow: 0 6px 18px rgba(var(--primary-rgb, 99,102,241), 0.08);
     }
 
     .table-filters {
@@ -609,7 +608,6 @@ export interface ToolbarButtonConfig {
     }
 
     .table-filters__btn--filter {
-      box-shadow: 0 1px 0 rgba(16, 24, 40, 0.04);
     }
 
     .table-filters__btn--filter.dropdown-toggle::after {
@@ -715,7 +713,6 @@ export interface ToolbarButtonConfig {
 
     .search-input .form-control:focus {
       border-color: #6366f1;
-      box-shadow: none;
     }
 
     .no-data {
@@ -835,13 +832,12 @@ export interface ToolbarButtonConfig {
       text-align: center;
       background: #f8fafc;
       color: #0f172a;
-      transition: border-color 0.13s, box-shadow 0.13s, background 0.13s;
+      transition: border-color 0.13s, background 0.13s;
     }
 
     .table-inline-input:focus {
       outline: none;
       border-color: var(--base-color, #6366f1);
-      box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 99,102,241), 0.12);
       background: #fff;
     }
 
@@ -918,17 +914,14 @@ export interface ToolbarButtonConfig {
       opacity: 0.45;
       cursor: not-allowed;
       transform: none;
-      box-shadow: none;
     }
 
     .action-btn:hover {
       transform: scale(1.1);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
 
     .action-btn:hover:disabled {
       transform: none;
-      box-shadow: none;
     }
 
     .action-blue {
@@ -995,7 +988,6 @@ export interface ToolbarButtonConfig {
     .table-search-input-wrapper:focus-within {
       border-color: var(--base-color, #6366f1);
       background-color: #fff;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
     }
 
     .table-search-icon {

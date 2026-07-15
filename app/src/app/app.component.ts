@@ -30,7 +30,7 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       <aside class="sidebar" [class.sidebar-open]="mobileSidebarOpen">
         <!-- Logo -->
         <div class="sidebar-logo">
-          <img src="assets/batchcommerce_icon.png" alt="Logo" style="width: 28px; height: 28px; border-radius: 6px; object-fit: cover; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25); flex-shrink: 0;" />
+          <img src="assets/batchcommerce_icon.png" alt="Logo" class="sidebar-logo-img" />
           <span class="sidebar-logo-text">{{ shopConfig.shopName }}</span>
         </div>
 
@@ -46,7 +46,6 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
         <div class="sidebar-workspace">
           <span class="sidebar-workspace-label">Shop</span>
           <strong>{{ shopConfig.shopName }}</strong>
-          <small *ngIf="shopConfig.shopId">{{ shopConfig.shopId }}</small>
         </div>
 
         <nav class="sidebar-nav">
@@ -94,6 +93,7 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
     .app-container {
       display: flex;
       min-height: 100vh;
+      background: #f7f3eb;
     }
 
     .mobile-topbar,
@@ -104,8 +104,11 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
     /* ── Sidebar shell ───────────────────────────────────── */
     .sidebar {
       width: 240px;
-      background: #ffffff;
-      border-right: 1px solid #ccc;
+      background:
+        radial-gradient(circle at 16% 5%, rgba(var(--primary-rgb, 99,102,241), 0.13), transparent 30%),
+        radial-gradient(circle at 100% 12%, rgba(15, 118, 110, 0.10), transparent 28%),
+        linear-gradient(180deg, #fffdf8 0%, #f8fafc 48%, #f4f0e8 100%);
+      border-right: 1px solid rgba(148, 163, 184, 0.35);
       display: flex;
       flex-direction: column;
       position: fixed;
@@ -114,6 +117,8 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       top: 0;
       overflow-y: auto;
       z-index: 110;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(100, 116, 139, 0.32) transparent;
     }
 
     /* ── Logo ───────────────────────────────────────────── */
@@ -121,12 +126,22 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 20px 18px;
-      border-bottom: 1px solid #ccc;
+      padding: 18px 14px 14px;
+      margin: 0 0 2px;
     }
+
+    .sidebar-logo-img {
+      width: 31px;
+      height: 31px;
+      border-radius: 10px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
     .sidebar-logo-text {
-      font-size: 18px;
-      font-weight: 700;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
       color: #0f172a;
       white-space: nowrap;
       overflow: hidden;
@@ -138,23 +153,31 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 14px 18px;
-      border-bottom: 1px solid #ccc;
+      margin: 6px 10px 10px;
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.72);
     }
 
     .sidebar-workspace {
       display: flex;
       flex-direction: column;
       gap: 3px;
-      padding: 12px 18px;
-      border-bottom: 1px solid #ccc;
-      background: #f8fafc;
+      margin: 0 10px 10px;
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 18px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.78)),
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.09), transparent 45%);
 
       .sidebar-workspace-label {
-        font-size: 11px;
+        font-size: 10px;
+        font-weight: 900;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: #94a3b8;
+        letter-spacing: 0.1em;
+        color: #0f766e;
       }
 
       strong {
@@ -164,22 +187,24 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       }
 
       small {
-        font-size: 11px;
+        font-size: 10.5px;
         color: #64748b;
         word-break: break-all;
+        line-height: 1.35;
       }
     }
 
     .sidebar-avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: var(--primary-color, #6366f1);
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      background:
+        linear-gradient(135deg, var(--primary-color, #6366f1), #0f766e);
       color: #fff;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 700;
+      font-weight: 900;
       font-size: 15px;
       flex-shrink: 0;
     }
@@ -187,14 +212,14 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      strong { font-size: 13px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      small  { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+      strong { font-size: 12.5px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      small  { font-size: 11px; color: #64748b; margin-top: 2px; }
     }
 
     /* ── Nav ────────────────────────────────────────────── */
     .sidebar-nav {
       flex: 1;
-      padding: 10px 10px;
+      padding: 4px 10px 12px;
       overflow-y: auto;
     }
 
@@ -202,53 +227,65 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 10px 12px;
+      min-height: 39px;
+      padding: 9px 11px;
       color: #475569;
       text-decoration: none;
-      border-radius: 8px;
-      margin-bottom: 2px;
-      transition: background 0.15s, color 0.15s;
+      border: 1px solid transparent;
+      border-radius: 13px;
+      margin-bottom: 3px;
+      transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
       cursor: pointer;
-      font-size: 13.5px;
-      font-weight: 500;
+      font-size: 13px;
+      font-weight: 800;
 
-      .material-icons { font-size: 20px; flex-shrink: 0; }
+      .material-icons { font-size: 19px; flex-shrink: 0; opacity: 0.9; }
       .sidebar-item-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
       &:hover {
-        background: rgba(var(--primary-rgb, 99,102,241), 0.08);
+        background: rgba(255, 255, 255, 0.78);
+        border-color: rgba(var(--primary-rgb, 99,102,241), 0.14);
         color: var(--primary-color, #6366f1);
+        transform: translateX(2px);
       }
 
       &.active {
-        background: var(--primary-color, #6366f1);
+        background:
+          linear-gradient(135deg, var(--primary-color, #6366f1), color-mix(in srgb, var(--primary-color, #6366f1) 72%, #0f766e));
         color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.45);
+        transform: none;
       }
     }
 
     .sidebar-divider {
       height: 1px;
-      background: #ccc;
-      margin: 10px 4px;
+      background: linear-gradient(90deg, transparent, rgba(100, 116, 139, 0.28), transparent);
+      margin: 12px 6px;
     }
 
     .sidebar-logout {
       color: #ef4444;
-      &:hover { background: rgba(239,68,68,0.08) !important; color: #ef4444 !important; }
+      &:hover {
+        background: rgba(254, 242, 242, 0.9) !important;
+        border-color: rgba(239, 68, 68, 0.18) !important;
+        color: #ef4444 !important;
+      }
     }
 
     /* ── Bottom section ─────────────────────────────────── */
     .sidebar-bottom {
-      border-top: 1px solid #ccc;
+      border-top: 1px solid rgba(148, 163, 184, 0.26);
       padding: 10px 10px 6px;
       flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.32);
     }
 
     .sidebar-footer {
       padding: 8px 8px 4px;
       text-align: center;
       color: #94a3b8;
-      p     { font-size: 12px; margin-bottom: 2px; }
+      p     { font-size: 11.5px; margin-bottom: 2px; color: #64748b; }
       small { font-size: 11px; }
     }
 
@@ -257,7 +294,9 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       flex: 1;
       margin-left: 240px;
       padding: 24px;
-      background: #f8fafc;
+      background:
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.07), transparent 34rem),
+        #f8fafc;
       min-height: 100vh;
       min-width: 0;
     }
@@ -281,7 +320,7 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
         align-items: center;
         gap: 12px;
         border-bottom: 1px solid rgba(148, 163, 184, 0.35);
-        background: rgba(248, 250, 252, 0.92);
+        background: rgba(255, 253, 248, 0.92);
         backdrop-filter: blur(16px);
       }
 
@@ -295,7 +334,6 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
       }
 
       .mobile-brand {
@@ -336,7 +374,6 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
         width: min(86vw, 320px);
         transform: translateX(-105%);
         transition: transform 0.22s ease;
-        box-shadow: 18px 0 40px rgba(15, 23, 42, 0.18);
         border-right: 1px solid #e2e8f0;
       }
 

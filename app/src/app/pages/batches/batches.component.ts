@@ -186,7 +186,7 @@ interface BatchInfo {
     /* BATCH LIST */
     .batch-list { display: flex; flex-direction: column; gap: 12px; }
     .batch-item { display: flex; align-items: center; justify-content: space-between; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; transition: all 0.13s; }
-    .batch-item:hover { background: #fff; border-color: var(--primary-light, #a5b4fc); box-shadow: 0 2px 8px rgba(99,102,241,0.1); }
+    .batch-item:hover { background: #fff; border-color: var(--primary-light, #a5b4fc); }
     .batch-item-header { flex: 1; min-width: 0; }
     .batch-item-top { display: flex; align-items: center; gap: 10px; }
     .batch-item-name { font-size: 14px; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -228,7 +228,7 @@ interface BatchInfo {
 
     /* MODAL */
     .batch-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-    .batch-modal { background: #fff; border-radius: 14px; box-shadow: 0 20px 25px rgba(0,0,0,0.15); overflow: hidden; animation: batch-modal-slide-in 0.2s ease-out; }
+    .batch-modal { background: #fff; border-radius: 14px; overflow: hidden; animation: batch-modal-slide-in 0.2s ease-out; }
     .batch-modal-sm { max-width: 450px; width: 90%; }
     @keyframes batch-modal-slide-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
@@ -244,7 +244,7 @@ interface BatchInfo {
     .batch-modal-body { padding: 20px; max-height: 60vh; overflow-y: auto; }
     .batch-form-label { display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; }
     .batch-input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 14px; color: #0f172a; box-sizing: border-box; }
-    .batch-input:focus { outline: none; border-color: var(--primary-color, #6366f1); box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+    .batch-input:focus { outline: none; border-color: var(--primary-color, #6366f1); }
     .batch-delete-warning { font-size: 14px; color: #0f172a; margin: 0 0 12px; line-height: 1.5; }
     .batch-delete-info { font-size: 13px; color: #64748b; margin: 12px 0 8px; }
     .batch-delete-list { font-size: 13px; color: #64748b; margin: 8px 0 16px 20px; padding: 0; }

@@ -41,7 +41,7 @@ import { User, Role } from '../../models';
           <div class="u-scope-kicker">Active shop</div>
           <div class="u-scope-name">{{ activeShopName }}</div>
           <p class="u-scope-copy">
-            Role and active access below apply only to this shop. Full name, username, email, and phone are shared account details across shops.
+            Role and active access below apply to this shop. Full name, username, email, and phone are shared account details for the user.
           </p>
         </div>
 
@@ -451,7 +451,6 @@ import { User, Role } from '../../models';
       font-size: 13px;
       font-weight: 600;
       border: 1px solid transparent;
-      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
     }
     .u-status-banner .material-icons { font-size: 18px; }
     .u-status-banner-success { background: #ecfdf5; color: #166534; border-color: #bbf7d0; }
@@ -493,7 +492,6 @@ import { User, Role } from '../../models';
       background:
         radial-gradient(circle at top right, rgba(255,255,255,0.18), transparent 38%),
         linear-gradient(135deg, #0f172a, #1e293b 58%, #334155);
-      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
     }
     .u-scope-kicker {
       font-size: 11px;
@@ -523,7 +521,6 @@ import { User, Role } from '../../models';
       display: flex;
       align-items: center;
       gap: 12px;
-      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
     }
     .u-stat-card .material-icons {
       width: 38px;
@@ -662,7 +659,7 @@ import { User, Role } from '../../models';
 
     /* ── Modal ── */
     .u-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:200; display:flex; align-items:center; justify-content:center; padding:16px; }
-    .u-modal        { background:#fff; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,0.2); width:100%; max-width:520px; display:flex; flex-direction:column; overflow:hidden; }
+    .u-modal        { background:#fff; border-radius:16px; width:100%; max-width:520px; display:flex; flex-direction:column; overflow:hidden; }
     .u-modal-header { display:flex; align-items:center; gap:14px; padding:18px 20px; border-bottom:1px solid #e2e8f0; flex-shrink:0; }
     .u-modal-header-icon { width:38px; height:38px; border-radius:10px; background:var(--primary-color,#6366f1); color:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
     .u-modal-header-danger { background:#fef2f2; color:#dc2626; }
