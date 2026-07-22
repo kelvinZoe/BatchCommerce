@@ -1142,6 +1142,6 @@ app.post('/admin/preview-price-change', requireAdminAuth, async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => res.send('Shakhis Admin API')); 
+app.get('/', (req, res) => res.send('Batch Commerce Admin API'));
 
 app.listen(PORT, () => console.log(`Admin API listening on port ${PORT}`));

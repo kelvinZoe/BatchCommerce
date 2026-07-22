@@ -1,4 +1,4 @@
-# Shakhis Commerce
+# Batch Commerce
 
 A desktop application for managing WhatsApp-based product sales, built with Angular and Electron.
 
@@ -79,9 +79,9 @@ app/
 ## Database
 
 The app uses SQLite for local data storage. The database file is stored in:
-- macOS: `~/Library/Application Support/shakhis-commerce/`
-- Windows: `%APPDATA%/shakhis-commerce/`
-- Linux: `~/.config/shakhis-commerce/`
+- macOS: `~/Library/Application Support/batch-commerce/`
+- Windows: `%APPDATA%/batch-commerce/`
+- Linux: `~/.config/batch-commerce/`
 
 ### Tables
 - `products` - Product catalog with prices

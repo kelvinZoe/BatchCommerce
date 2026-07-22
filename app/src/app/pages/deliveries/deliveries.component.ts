@@ -1242,7 +1242,7 @@ export class DeliveriesComponent implements OnInit {
     const qty = Number(this.damageQuantity || 0);
     if (qty <= 0) return alert('Quantity must be > 0');
     this.dbService.createDamagedFromDelivery(
-      this.damageProductId, qty, this.damageNote || '', this.viewingDelivery.batchName
+      this.damageProductId, qty, this.damageNote || '', this.viewingDelivery.batchName, this.viewingDelivery.batchId
     ).subscribe(ok => {
       if (ok) {
         alert('Damaged item recorded');

@@ -962,7 +962,7 @@ export class StockSalesComponent implements OnInit {
   // ── Receipt ──────────────────────────────────────────────
 
   buildReceiptText(sale?: StockSale, items?: CartItem[]): string {
-    const shopName = 'Shakhis Commerce';
+    const shopName = 'Batch Commerce';
     const date     = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     let lines: string[] = [];
     lines.push(`*${shopName} - Receipt*`);

@@ -49,7 +49,7 @@ import { AuthService } from '../../services/auth.service';
 
           <div class="form-group">
             <label>Full Name *</label>
-            <input type="text" [(ngModel)]="fullName" placeholder="e.g., Shakhis Mensah" class="input-lg" />
+            <input type="text" [(ngModel)]="fullName" placeholder="e.g., Ama Mensah" class="input-lg" />
           </div>
 
           <div class="form-group">
@@ -99,7 +99,7 @@ import { AuthService } from '../../services/auth.service';
 
           <div class="form-group">
             <label>Shop Name *</label>
-            <input type="text" [(ngModel)]="shopName" placeholder="e.g., Shakhis Ventures" class="input-lg" />
+            <input type="text" [(ngModel)]="shopName" placeholder="e.g., Ama's Boutique" class="input-lg" />
           </div>
 
           <div class="step-actions">
@@ -535,7 +535,7 @@ export class SetupComponent implements OnInit {
   infoMessage = '';
   emailVerificationChecked = false;
   emailVerified = false;
-  private readonly draftKey = 'shakhis_pending_workspace_setup';
+  private readonly draftKey = 'batchcommerce_pending_workspace_setup';
 
   constructor(
     public shopConfig: ShopConfigService,

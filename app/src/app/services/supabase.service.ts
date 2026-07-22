@@ -7,6 +7,7 @@ import { environment } from '../../environments/environment';
 })
 export class SupabaseService {
   private supabase: SupabaseClient | null = null;
+  private readonly authStorageKey = 'batchcommerce_auth';
 
   constructor() {
     if (environment.supabaseUrl && environment.supabaseKey) {
@@ -20,7 +21,7 @@ export class SupabaseService {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
-        storageKey: 'shakhis_auth'
+        storageKey: this.authStorageKey
       }
     });
   }

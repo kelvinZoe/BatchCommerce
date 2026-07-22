@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define the current account model for Shakhis Commerce around real, verified email identities:
+Define the current account model for Batch Commerce around real, verified email identities:
 
 - the first account for a shop uses a real email address
 - staff invited later also use real email addresses

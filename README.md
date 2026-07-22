@@ -1,4 +1,4 @@
-# BatchCommerce (Shakhis Commerce)
+# BatchCommerce
 
 Repository: https://github.com/kelvinZoe/BatchCommerce
 

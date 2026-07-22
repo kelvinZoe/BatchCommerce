@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "shakhis-commerce": {
+    "batch-commerce": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -18,7 +18,7 @@
         "build": {
           "builder": "@angular-devkit/build-angular:application",
           "options": {
-            "outputPath": "dist/shakhis-commerce",
+            "outputPath": "dist/batch-commerce",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
@@ -56,10 +56,10 @@
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "shakhis-commerce:build:production"
+              "buildTarget": "batch-commerce:build:production"
             },
             "development": {
-              "buildTarget": "shakhis-commerce:build:development"
+              "buildTarget": "batch-commerce:build:development"
             }
           },
           "defaultConfiguration": "development"

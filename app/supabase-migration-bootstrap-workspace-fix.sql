@@ -1,5 +1,5 @@
 -- ============================================================
--- Shakhis Commerce - Bootstrap Fixes
+-- Batch Commerce - Bootstrap Fixes
 -- Apply this after the reset schema on the already-provisioned project.
 -- Fixes self-serve onboarding issues on existing databases.
 -- ============================================================

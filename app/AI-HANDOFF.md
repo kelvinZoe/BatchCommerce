@@ -1,8 +1,8 @@
-# Shakhis Commerce Handoff
+# Batch Commerce Handoff
 
 ## Project Snapshot
 
-Shakhis Commerce / BatchCommerce is an Angular 17 web app for managing WhatsApp preorder commerce workflows around products, clients, batches, orders, deliveries, buying lists, shipping, and stock sales.
+Batch Commerce is an Angular 17 web app for managing WhatsApp preorder commerce workflows around products, clients, batches, orders, deliveries, buying lists, shipping, and stock sales.
 
 The current canonical architecture is Supabase-backed, tenant-aware, and documented in `ARCHITECTURE.md`. Treat old SQLite/Electron-first notes as historical unless `ARCHITECTURE.md` says otherwise.
 
@@ -136,15 +136,25 @@ Phase 9 quality remediation has started:
 - `supabase/migrations/20260710120000_add_product_delete_cascade_rpc.sql` adds guarded transactional `delete_product_catalog_cascade`, and `DatabaseService.deleteProductCatalog()` prefers it with a scoped compatibility fallback until the migration is applied.
 - `supabase/migrations/20260710123000_add_batch_delete_cascade_rpc.sql` adds guarded transactional `delete_batch_cascade`, and `DatabaseService.deleteBatchCascadeById()` prefers it with the existing scoped client-side deletion as a compatibility fallback.
 - `supabase/migrations/20260710130000_add_stock_sale_mutation_rpcs.sql` adds guarded transactional stock-sale create/update/cancel/delete RPCs, and `DatabaseService` now prefers them with client-side compatibility fallbacks.
+- `supabase/migrations/20260710133000_add_shipping_workflow_rpcs.sql` adds guarded transactional shipping workflow RPCs for batch arrivals-to-shipping, single arrival item to shipping, and paid-client shipping-to-deliveries. The migration has been applied live.
 - `src/app/services/batch-data.service.ts` is the first Phase 9 domain extraction behind the `DatabaseService` facade. It owns batch list/detail/create/update/open/close/delete plus RPC-first cascade deletion; workflow-heavy buying/arrivals/shipping helpers still live in `DatabaseService` for now.
 - `src/app/services/product-data.service.ts` is the second Phase 9 extraction behind the facade. It owns product/catalog CRUD, batch-product CRUD, product cascade delete, price-impact preview, and batch-product price recalculation.
 - `src/app/services/stock-sale-data.service.ts` is the third Phase 9 extraction behind the facade. It owns stock availability reads, stock-sale paging/detail, RPC-first stock-sale create/update/cancel/delete, close/finalize, and scoped stock-adjustment compatibility fallbacks. `DatabaseService.createStockSale()` still runs the pricing/promo guard before delegating.
+- `src/app/services/pricing-data.service.ts` is the fourth Phase 9 extraction behind the facade. It owns pricing bands, promo-code redemption, monthly sales-record usage, recommended tier calculation, and create-record guard checks used by preorder orders and stock sales.
+- `src/app/services/dashboard-data.service.ts` is the fifth Phase 9 extraction. It owns the dashboard data-loading bundle and removes direct Supabase table access from `dashboard.component.ts`; the page still owns visual metric calculations for now.
+- `src/app/services/order-data.service.ts` is the sixth Phase 9 extraction behind the facade. It owns order reads, batch paging/search, order/item mutations, batch preview stats, and pricing-guarded order creation. `DatabaseService` still keeps the broader order-to-buying workflow transition code for a later workflow/shipping extraction.
+- `src/app/services/shipping-data.service.ts` is the seventh Phase 9 extraction behind the facade. It owns Shipping/Shipping Ledger data reads, queue paging with damage enrichment, fee summaries/totals, client shipping item reads, and client payment saves.
+- `src/app/services/shipping-workflow.service.ts` is the eighth Phase 9 extraction behind the facade. It owns the live RPC-backed arrivals-to-shipping and paid-client shipping-to-deliveries transitions after `20260710133000_add_shipping_workflow_rpcs.sql` was applied.
+- `supabase/migrations/20260710140000_prefer_batch_id_for_shipping_totals.sql` adds a canonical unique key for `shipping_batches(shop_id, batch_id)` after backfilling and deduping duplicate total rows. The migration has been applied live.
+- Shipping totals, queue reads, ledger reads/counts, client shipping item reads, and client payment saves now resolve the UI batch name to `batch_id` first and only fall back to `batch_name` when the batch cannot be resolved.
+- `supabase/migrations/20260710143000_backfill_delivery_damage_batch_ids.sql` backfills `batch_id` for legacy `deliveries`, `damaged_items`, and `damage_order_allocations` rows that only had `batch_name`. The migration has been applied live.
+- Deliveries and damage allocation paths now prefer `batch_id` for reads/writes while retaining `batch_name` as display and legacy fallback.
 - `SupabaseDataAccessService` now carries the shared `isMissingRpcError()` helper so extracted data services can keep RPC-first compatibility behavior without duplicating it.
 - `npm test` now runs Node contract tests in `app/tests/sql-rpc-contract.test.js`, covering pricing-band alignment, promo-code guardrails, high-risk RPC migration contracts, and RPC-first service fallbacks.
 - `app/tests/supabase-live.integration.test.js` adds an opt-in live Supabase integration harness. It is skipped by default, refuses the known production project, and requires explicit `SUPABASE_TEST_*` credentials for a dedicated test project.
 - Seeded live tests now cover promo-code redemption, pricing guards, stock-sale RPC lifecycle with stock restoration, order creation, and a buying-list to arrivals workflow transition.
 - `app/TESTING.md` documents the fast local contract tests and the guarded live integration-test command.
-- Continue this phase by moving the next multi-step destructive workflow into an RPC/server-side function and then extracting the matching domain service.
+- Continue this phase by replacing remaining legacy `batch_name` compatibility paths with `batch_id` where practical, or move to the component/subscription refactor items.
 
 Pricing model foundation is now implemented in code:
 
@@ -188,6 +198,11 @@ Pricing model foundation is now implemented in code:
 - `src/app/services/batch-data.service.ts`
 - `src/app/services/product-data.service.ts`
 - `src/app/services/stock-sale-data.service.ts`
+- `src/app/services/pricing-data.service.ts`
+- `src/app/services/dashboard-data.service.ts`
+- `src/app/services/order-data.service.ts`
+- `src/app/services/shipping-data.service.ts`
+- `src/app/services/shipping-workflow.service.ts`
 - `src/app/services/auth.service.ts`
 - `src/app/models/index.ts`
 - `roles-list.txt`
@@ -218,7 +233,7 @@ The current automated test suite is intentionally small:
 1. Continue migrating remaining custom modal overlays to `app-modal-shell` where the layout fits.
 2. Migrate table-heavy legacy pages where practical: Deliveries, Users, Stock Sales, Expenses.
 3. Smoke test role-restricted users against every page in `roles-list.txt`, with special attention to destructive actions and closed-batch edits.
-4. Continue Phase 9 by extracting the next low-risk `DatabaseService` domain behind the facade, likely `PricingDataService`, `DashboardDataService`, or `OrderDataService`.
+4. Continue replacing remaining legacy `batch_name` compatibility paths with `batch_id` where practical, or move to the component/subscription refactor items.
 5. Continue replacing legacy `batch_name` relationships with `batch_id` after the needed migrations are verified.
 6. Revisit Angular style budgets after the UI refactors settle, especially `roles.component.ts`.
 

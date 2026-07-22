@@ -106,7 +106,7 @@ import { firstValueFrom } from 'rxjs';
             <div class="form-grid">
               <div class="form-group form-group-wide">
                 <label>Business Name</label>
-                <input type="text" [(ngModel)]="settings.businessName" placeholder="Shakhis Ventures" />
+                <input type="text" [(ngModel)]="settings.businessName" placeholder="Ama's Boutique" />
               </div>
               <div class="form-group">
                 <label>Phone Number</label>
@@ -1161,7 +1161,7 @@ import { firstValueFrom } from 'rxjs';
 })
 export class SettingsComponent {
   settings = {
-    businessName: 'Shakhis Ventures',
+    businessName: 'Batch Commerce',
     phone: '',
     whatsapp: '',
     address: '',
@@ -1293,7 +1293,8 @@ export class SettingsComponent {
 
   loadSettings() {
     this.settings.businessName = this.shopConfig.shopName || this.settings.businessName;
-    const saved = localStorage.getItem('shakhis_settings');
+    const settingsKey = 'batchcommerce_settings';
+    const saved = localStorage.getItem(settingsKey);
     if (saved) {
       this.settings = { ...this.settings, ...JSON.parse(saved) };
     }
@@ -1320,7 +1321,7 @@ export class SettingsComponent {
     this.clearStatus();
 
     try {
-      localStorage.setItem('shakhis_settings', JSON.stringify(sanitizedSettings));
+      localStorage.setItem('batchcommerce_settings', JSON.stringify(sanitizedSettings));
       this.settings = { ...sanitizedSettings };
 
       const existing = this.shopConfig.config;

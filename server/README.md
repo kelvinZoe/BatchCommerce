@@ -1,4 +1,4 @@
-Shakhis Admin API
+Batch Commerce Admin API
 
 This small Express service provides protected admin endpoints that use the Supabase `service_role` key for operations the browser cannot safely perform directly. Browser callers must send a Supabase access token, and the API verifies that the caller is an admin/owner for the target shop before using service-role privileges.
 
@@ -10,11 +10,11 @@ Setup
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ... (service_role key)
 RESEND_API_KEY=re_...
-EMAIL_FROM=Shakhis Commerce <onboarding@resend.dev>
+EMAIL_FROM=Batch Commerce <onboarding@resend.dev>
 APP_BASE_URL=https://batchcommerce.vercel.app
 ADMIN_API_ALLOWED_ORIGINS=https://batchcommerce.vercel.app
 # Optional backward compatible alias
-RESEND_FROM_EMAIL=Shakhis Commerce <no-reply@your-domain.com>
+RESEND_FROM_EMAIL=Batch Commerce <no-reply@your-domain.com>
 PORT=3000
 ```
 

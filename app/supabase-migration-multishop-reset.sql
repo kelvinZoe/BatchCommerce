@@ -1,5 +1,5 @@
 -- ============================================================
--- Shakhis Commerce - Multi-Shop Reset Schema
+-- Batch Commerce - Multi-Shop Reset Schema
 -- Canonical tenant-aware schema for the new shared Supabase setup.
 -- Existing data is test-only, so this file intentionally resets the
 -- database to a clean multi-shop model.

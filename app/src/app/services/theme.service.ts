@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
-  private readonly STORAGE_KEY = 'shakhis_primary_color';
+  private readonly STORAGE_KEY = 'batchcommerce_primary_color';
   readonly DEFAULT_COLOR = '#6366f1';
 
   get primaryColor(): string {

@@ -74,4 +74,21 @@ export abstract class SupabaseDataAccessService {
 
     return data?.id ? Number(data.id) : null;
   }
+
+  protected async getBatchLookupByName(batchName: string | null | undefined): Promise<{ id: number; name: string } | null> {
+    const normalizedBatchName = (batchName || '').toString().trim();
+    if (!normalizedBatchName) return null;
+
+    const { data } = await this.scopeShopQuery(this.sb.from('batches').select('id, name'))
+      .eq('name', normalizedBatchName)
+      .maybeSingle();
+
+    return data?.id ? { id: Number(data.id), name: data.name || normalizedBatchName } : null;
+  }
+
+  protected applyResolvedBatchFilter(query: any, batch: { id: number; name: string } | null, batchName: string | null | undefined): any {
+    if (batch?.id) return query.eq('batch_id', batch.id);
+    const normalizedBatchName = (batchName || '').toString().trim();
+    return normalizedBatchName ? query.eq('batch_name', normalizedBatchName) : query;
+  }
 }

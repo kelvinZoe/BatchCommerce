@@ -1,19 +1,19 @@
 {
-  "name": "shakhis-commerce",
+  "name": "batch-commerce",
   "version": "1.0.0",
-  "description": "Shakhis Ventures Commerce Web App",
+  "description": "Batch Commerce Web App",
   "scripts": {
     "ng": "ng",
     "start": "ng serve --port 4300",
     "dev": "concurrently \"npm start --prefix ../server\" \"ng serve --port 4300\"",
-    "start:web": "npx serve -s dist/shakhis-commerce/browser -l 4300",
+    "start:web": "npx serve -s dist/batch-commerce/browser -l 4300",
     "build": "node ./scripts/generate-env.js && ng build --configuration production",
     "build:web": "npm run build",
     "watch": "ng build --watch --configuration development",
     "test": "node --test \"tests/**/*.test.js\"",
     "test:integration": "node --test \"tests/supabase-live.integration.test.js\""
   },
-  "author": "Shakhis Ventures",
+  "author": "Batch Commerce",
   "license": "MIT",
   "dependencies": {
     "@angular/animations": "^17.0.0",

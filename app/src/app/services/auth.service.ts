@@ -104,7 +104,6 @@ export class AuthService {
   private get sb() { return this.supa.client; }
 
   constructor(private supa: SupabaseService, private shopConfig: ShopConfigService) {
-    localStorage.removeItem('shakhis_session');
     void this.restoreSessionFromSupabase();
 
     // Only listen for auth state changes if Supabase is already initialized
@@ -388,15 +387,6 @@ export class AuthService {
       return 'supabase.co';
     }
   }
-  private buildLegacySyntheticEmail(identifier: string): string {
-    const normalized = (identifier || '').trim().toLowerCase();
-    if (normalized.includes('@')) {
-      return normalized;
-    }
-
-    return `${this.sanitizeEmailLocalPart(normalized)}@shakhis.com`;
-  }
-
   private normalizeShopSlug(value: string): string {
     const slug = String(value || '')
       .trim()
@@ -575,8 +565,7 @@ export class AuthService {
       : Array.from(new Set([
           resolvedEmail,
           this.buildSyntheticUserEmail(normalized),
-          `${this.sanitizeEmailLocalPart(normalized)}@${this.getInternalUserEmailDomain()}`,
-          this.buildLegacySyntheticEmail(normalized)
+          `${this.sanitizeEmailLocalPart(normalized)}@${this.getInternalUserEmailDomain()}`
         ].filter((value): value is string => !!value)));
 
     for (const email of candidates) {
@@ -1256,7 +1245,7 @@ export class AuthService {
   private clearSession() {
     this.currentUserSubject.next(null);
     this.permissionsSubject.next([]);
-    localStorage.removeItem('shakhis_session');
+    localStorage.removeItem('batchcommerce_session');
   }
 
   logout() {

@@ -21,13 +21,13 @@ function assertIncludesAll(source, values, label) {
 }
 
 test('pricing bands stay aligned across app, migration, and pricing docs', () => {
-  const dbService = read('app/src/app/services/database.service.ts');
+  const pricingService = read('app/src/app/services/pricing-data.service.ts');
   const overageMigration = read('supabase/migrations/20260629130000_allow_pricing_overages.sql');
   const pricingDoc = read('PRICING_MODEL.md');
 
-  assert.match(dbService, /starter:\s*\{\s*priceGhs:\s*150,\s*monthlyLimit:\s*40\s*\}/);
-  assert.match(dbService, /growth:\s*\{\s*priceGhs:\s*200,\s*monthlyLimit:\s*120\s*\}/);
-  assert.match(dbService, /pro:\s*\{\s*priceGhs:\s*300,\s*monthlyLimit:\s*null\s*\}/);
+  assert.match(pricingService, /starter:\s*\{\s*priceGhs:\s*150,\s*monthlyLimit:\s*40\s*\}/);
+  assert.match(pricingService, /growth:\s*\{\s*priceGhs:\s*200,\s*monthlyLimit:\s*120\s*\}/);
+  assert.match(pricingService, /pro:\s*\{\s*priceGhs:\s*300,\s*monthlyLimit:\s*null\s*\}/);
 
   assert.match(overageMigration, /WHEN 'starter' THEN 40/);
   assert.match(overageMigration, /WHEN 'growth' THEN 120/);
@@ -153,12 +153,105 @@ test('stock-sale mutation RPCs keep stock and sale rows atomic', () => {
   assert.match(normalized, /WHERE id = p_sale_id AND shop_id = p_shop_id AND status = 'cancelled' FOR UPDATE/i);
 });
 
+test('shipping workflow RPCs guard tenant transitions and keep handoffs transactional', () => {
+  const sql = read('supabase/migrations/20260710133000_add_shipping_workflow_rpcs.sql');
+  const normalized = compact(sql);
+
+  assertIncludesAll(sql, [
+    'CREATE OR REPLACE FUNCTION public.send_confirmed_arrivals_to_shipping',
+    'CREATE OR REPLACE FUNCTION public.send_confirmed_arrival_item_to_shipping',
+    'CREATE OR REPLACE FUNCTION public.send_paid_client_to_deliveries',
+    'SECURITY DEFINER',
+    'public.has_shop_membership(p_shop_id)',
+    'FOR UPDATE',
+    'public.shipping_fees',
+    'public.product_tracking',
+    'public.deliveries',
+    'public.shipping_payments',
+    'GRANT EXECUTE ON FUNCTION public.send_confirmed_arrivals_to_shipping',
+    'GRANT EXECUTE ON FUNCTION public.send_confirmed_arrival_item_to_shipping',
+    'GRANT EXECUTE ON FUNCTION public.send_paid_client_to_deliveries'
+  ], 'shipping workflow migration');
+
+  assert.match(normalized, /arrival_items .* SET status = 'sent_to_shipping'/i);
+  assert.match(normalized, /shipping_fees .* SET delivery_id = v_delivery_id/i);
+  assert.match(normalized, /batches SET delivery_status = 'pending'/i);
+});
+
+test('shipping batch totals use batch_id as the canonical upsert key', () => {
+  const sql = read('supabase/migrations/20260710140000_prefer_batch_id_for_shipping_totals.sql');
+  const dbService = read('app/src/app/services/database.service.ts');
+  const shippingService = read('app/src/app/services/shipping-data.service.ts');
+  const accessService = read('app/src/app/services/supabase-data-access.service.ts');
+
+  assertIncludesAll(sql, [
+    'UPDATE public.shipping_batches',
+    'SET batch_id = b.id',
+    'PARTITION BY shop_id, batch_id',
+    'shipping_batches_shop_batch_id_key UNIQUE (shop_id, batch_id)'
+  ], 'shipping totals migration');
+
+  assertIncludesAll(dbService, [
+    "const conflictTarget = batchId ? 'shop_id,batch_id' : 'shop_id,batch_name'",
+    'upsert(dbRow, { onConflict: conflictTarget })'
+  ], 'shipping total save');
+
+  assertIncludesAll(shippingService, [
+    'applyResolvedBatchFilter',
+    'batch_id, batch_name',
+    'batchId: row.batch_id'
+  ], 'shipping batch-id filters');
+
+  assertIncludesAll(accessService, [
+    'getBatchLookupByName',
+    "select('id, name')",
+    "query.eq('batch_id', batch.id)"
+  ], 'batch lookup helper');
+});
+
+test('delivery and damage paths backfill and prefer batch_id over batch_name', () => {
+  const sql = read('supabase/migrations/20260710143000_backfill_delivery_damage_batch_ids.sql');
+  const dbService = read('app/src/app/services/database.service.ts');
+  const dashboardService = read('app/src/app/services/dashboard-data.service.ts');
+  const models = read('app/src/app/models/index.ts');
+
+  assertIncludesAll(sql, [
+    'UPDATE public.deliveries',
+    'UPDATE public.damaged_items',
+    'UPDATE public.damage_order_allocations',
+    'delivery.batch_id IS NULL',
+    'damaged.batch_id IS NULL',
+    'allocation.batch_id IS NULL'
+  ], 'delivery damage batch backfill migration');
+
+  assertIncludesAll(dbService, [
+    'batchId: r.batch_id',
+    'doGetDeliveriesByBatch',
+    'applyResolvedBatchFilter',
+    'batch_id: batchId ?? batch?.id ?? null',
+    'batch_id: a.batchId || batch?.id || null'
+  ], 'database delivery damage batch-id paths');
+
+  assertIncludesAll(dashboardService, [
+    'shopBatchIds',
+    ".in('batch_id', shopBatchIds)",
+    ".is('batch_id', null).in('batch_name', shopBatchNames)"
+  ], 'dashboard damage allocation loader');
+
+  assertIncludesAll(models, [
+    'batchId?: number | null',
+    'batchName?: string'
+  ], 'delivery model');
+});
+
 test('data services prefer RPCs for high-risk mutations and keep compatibility fallbacks', () => {
   const source = [
     read('app/src/app/services/database.service.ts'),
     read('app/src/app/services/batch-data.service.ts'),
     read('app/src/app/services/product-data.service.ts'),
+    read('app/src/app/services/pricing-data.service.ts'),
     read('app/src/app/services/stock-sale-data.service.ts'),
+    read('app/src/app/services/shipping-workflow.service.ts'),
     read('app/src/app/services/supabase-data-access.service.ts')
   ].join('\n');
 
@@ -177,4 +270,86 @@ test('data services prefer RPCs for high-risk mutations and keep compatibility f
     'doDeleteStockSaleClientScoped',
     'isMissingRpcError'
   ], 'data services');
+});
+
+test('shipping workflow facade delegates live RPC-backed transitions to ShippingWorkflowService', () => {
+  const dbService = read('app/src/app/services/database.service.ts');
+  const workflowService = read('app/src/app/services/shipping-workflow.service.ts');
+
+  assertIncludesAll(dbService, [
+    'ShippingWorkflowService',
+    'this.shippingWorkflow.sendConfirmedArrivalsToShipping(batchName)',
+    'this.shippingWorkflow.sendConfirmedArrivalItemToShipping(arrivalItemId)',
+    'this.shippingWorkflow.sendPaidClientToDeliveries(batchName, clientId)'
+  ], 'database shipping workflow facade');
+
+  assertIncludesAll(workflowService, [
+    'export class ShippingWorkflowService',
+    "rpc('send_confirmed_arrivals_to_shipping'",
+    "rpc('send_confirmed_arrival_item_to_shipping'",
+    "rpc('send_paid_client_to_deliveries'"
+  ], 'shipping workflow service');
+
+  assert.doesNotMatch(dbService, /doSendConfirmedArrivalsToShippingClientScoped/);
+  assert.doesNotMatch(dbService, /doSendConfirmedArrivalItemToShippingClientScoped/);
+  assert.doesNotMatch(dbService, /doSendPaidClientToDeliveriesClientScoped/);
+});
+
+test('dashboard page delegates data loading to DashboardDataService', () => {
+  const dashboardPage = read('app/src/app/pages/dashboard/dashboard.component.ts');
+  const dashboardService = read('app/src/app/services/dashboard-data.service.ts');
+
+  assertIncludesAll(dashboardPage, [
+    'DashboardDataService',
+    'this.dashboardData.loadDashboardData()'
+  ], 'dashboard page');
+
+  assert.doesNotMatch(dashboardPage, /SupabaseService/);
+  assert.doesNotMatch(dashboardPage, /\.from\('/);
+  assert.match(dashboardService, /loadDashboardData\(\): Observable<DashboardDataBundle>/);
+  assert.match(dashboardService, /damage_order_allocations/);
+});
+
+test('order CRUD facade delegates to OrderDataService', () => {
+  const dbService = read('app/src/app/services/database.service.ts');
+  const orderService = read('app/src/app/services/order-data.service.ts');
+
+  assertIncludesAll(dbService, [
+    'OrderDataService',
+    'this.orders.getOrders()',
+    'this.orders.getOrdersByBatchPage',
+    'this.orders.createOrder(order)',
+    'this.orders.addOrderItem(item)',
+    'this.orders.deleteOrder(id)'
+  ], 'database order facade');
+
+  assertIncludesAll(orderService, [
+    'export class OrderDataService',
+    "this.pricing.assertCanCreateSalesRecord('order')",
+    'mapOrderRow',
+    'doGetOrderItems'
+  ], 'order data service');
+});
+
+test('shipping queue and ledger facade delegates to ShippingDataService', () => {
+  const dbService = read('app/src/app/services/database.service.ts');
+  const shippingService = read('app/src/app/services/shipping-data.service.ts');
+
+  assertIncludesAll(dbService, [
+    'ShippingDataService',
+    'this.shipping.getShippingQueueBatches()',
+    'this.shipping.getShippingQueuePageWithDamage',
+    'this.shipping.getShippingLedgerBatches()',
+    'this.shipping.getShippingLedger',
+    'this.shipping.saveClientPayments'
+  ], 'database shipping facade');
+
+  assertIncludesAll(shippingService, [
+    'export class ShippingDataService',
+    'ShippingLedgerRow',
+    'doGetShippingQueuePageWithDamage',
+    'doGetShippingLedger',
+    'doSaveClientPayments',
+    'damage_order_allocations'
+  ], 'shipping data service');
 });

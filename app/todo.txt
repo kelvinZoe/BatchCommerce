@@ -8,7 +8,7 @@ Here’s the TODO list I’d use, in the order we should tackle it:
 - Review tracked build/release artifacts and decide whether they should stay in git.
 - Remove or quarantine broken helper scripts like `app/fix.js`.
 - [done for current scripts/server] Make sure all secrets only live in env files or deployment dashboards.
-- [done] Remove the browser-side `shakhis_admin_api_secret` override path.
+- [done] Remove the browser-side legacy admin API secret override path.
 - [done] Remove default/hardcoded bootstrap user passwords from admin/user creation paths.
 
 **Phase 2: Canonical Architecture Cleanup**
@@ -126,11 +126,21 @@ Here’s the TODO list I’d use, in the order we should tackle it:
 - [done] Extract first `BatchDataService` slice for batch list/detail/create/update/open/close/delete and RPC-first cascade deletion.
 - [done] Extract `ProductDataService` for product/catalog CRUD, batch-product CRUD, price-impact preview, recalculation, and RPC-first product cascade deletion.
 - [done] Extract `StockSaleDataService` for stock availability reads, stock-sale paging/detail, RPC-first create/update/cancel/delete, close/finalize, and scoped stock fallback adjustments.
-- [next] Extract `OrderDataService`, `ShippingDataService`, `PricingDataService`, and `DashboardDataService`.
+- [done] Extract `PricingDataService` for plan bands, promo-code redemption, monthly sales-record usage, recommended tier, and create-record guards.
+- [done] Extract `DashboardDataService` for dashboard data loading and remove direct Supabase table access from the dashboard page.
+- [done] Extract `OrderDataService` for order reads, batch paging/search, order/item mutations, batch preview stats, and pricing-guarded order creation.
+- [done] Extract `ShippingDataService` for shipping queue/ledger reads, fee updates/totals, damage-aware queue paging, client shipping totals/items, and payment saves.
+- [done] Add guarded shipping workflow RPC migration for arrivals-to-shipping and paid-client shipping-to-deliveries transitions.
+- [done] Run `supabase/migrations/20260710133000_add_shipping_workflow_rpcs.sql` against the live project.
+- [done] Extract `ShippingWorkflowService` for the live RPC-backed arrivals-to-shipping and paid-client delivery handoff transitions.
+- [done] Convert shipping totals, queue reads, ledger reads, client shipping items, and client payment saves to prefer `batch_id` after resolving the UI batch name.
+- [done] Run `supabase/migrations/20260710140000_prefer_batch_id_for_shipping_totals.sql` against the live project.
+- [done] Convert deliveries and damage allocation paths to prefer `batch_id` while retaining `batch_name` display/fallback compatibility.
+- [done] Run `supabase/migrations/20260710143000_backfill_delivery_damage_batch_ids.sql` against the live project.
 - [next] Refactor large page components into route containers plus smaller feature components.
 - [next] Convert nested/manual subscriptions to `forkJoin`, `switchMap`, and `takeUntilDestroyed`.
-- [next] Remove dashboard direct Supabase table access by moving metric loading into `DashboardDataService`.
-- [next] Continue replacing legacy `batch_name` compatibility paths with `batch_id`.
+- [done] Remove dashboard direct Supabase table access by moving metric loading into `DashboardDataService`.
+- [next] Continue replacing remaining legacy `batch_name` compatibility paths with `batch_id` where practical.
 - [next] Split `AuthService` into session, shop context, permissions, users, roles, and verification/admin API services.
 - [next] Add lint/format scripts and CI checks for build, tests, and type quality.
 - [next] Harden the Express admin API with route modules, rate limiting, request size limits, structured errors, and audit logging.

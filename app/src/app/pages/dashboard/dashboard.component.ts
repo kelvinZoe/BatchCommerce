@@ -1,9 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { forkJoin } from 'rxjs';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
-import { SupabaseService } from '../../services/supabase.service';
+import { DashboardDataService } from '../../services/dashboard-data.service';
 import { ShopConfigService } from '../../services/shop-config.service';
 import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardComponentConfig } from '../../models';
 
@@ -1443,8 +1442,8 @@ export class DashboardComponent implements OnInit {
 
   constructor(
     private dbService: DatabaseService,
+    private dashboardData: DashboardDataService,
     private authService: AuthService,
-    private supabaseService: SupabaseService,
     private shopConfig: ShopConfigService
   ) {}
 
@@ -1452,22 +1451,6 @@ export class DashboardComponent implements OnInit {
     const name = this.authService.currentUser?.fullName?.split(' ')[0] || 'there';
     const shopName = this.shopConfig.shopName || 'your shop';
     return `Welcome back, ${name}. Here is the live operating picture for ${shopName}.`;
-  }
-
-  private get sb() {
-    return this.supabaseService.client;
-  }
-
-  private get activeShopId(): string | null {
-    return this.authService.currentUser?.shopId || null;
-  }
-
-  private scopeShopQuery(query: any) {
-    const shopId = this.activeShopId;
-    if (!shopId) {
-      throw new Error('Active shop context is required for dashboard data.');
-    }
-    return query.eq('shop_id', shopId);
   }
 
   can(component: keyof DashboardComponentConfig): boolean {
@@ -1494,28 +1477,8 @@ export class DashboardComponent implements OnInit {
   loadData() {
     this.loading = true;
 
-    let dashboardRequests;
-    try {
-      dashboardRequests = {
-        orders: this.dbService.getOrders(),
-        expenses: this.dbService.getExpenses(),
-        deliveries: this.dbService.getDeliveries(),
-        batches: this.dbService.getOrderBatches(),
-        damagedItems: this.scopeShopQuery(this.sb.from('damaged_items').select('*')),
-        stockSales: this.scopeShopQuery(this.sb.from('stock_sales').select('*')),
-        stockItems: this.scopeShopQuery(this.sb.from('stock_sale_items').select('*')),
-        arrivalItems: this.scopeShopQuery(this.sb.from('arrival_items').select('*')),
-        products: this.scopeShopQuery(this.sb.from('products').select('*'))
-      };
-    } catch (error) {
-      console.error('Error preparing dashboard data requests:', error);
-      this.loading = false;
-      return;
-    }
-
-    forkJoin(dashboardRequests).subscribe(
-      data => {
-        const dashboardData = data as any;
+    this.dashboardData.loadDashboardData().subscribe(
+      dashboardData => {
         this.orders = dashboardData.orders;
         this.expenses = dashboardData.expenses;
         this.deliveries = dashboardData.deliveries;
@@ -1528,39 +1491,11 @@ export class DashboardComponent implements OnInit {
         this.computeMonthlyTrend();
         this.computeExpenseTrend();
         this.computeExpenseBreakdown();
-        this.computeTopStockSales(dashboardData.stockSales.data || [], dashboardData.stockItems.data || []);
-        this.computeArrivals(this.batches, dashboardData.arrivalItems.data || [], dashboardData.products.data || []);
+        this.computeTopStockSales(dashboardData.stockSales, dashboardData.stockItems);
+        this.computeArrivals(this.batches, dashboardData.arrivalItems, dashboardData.products);
+        this.computeDamagedItems(dashboardData.damagedItems, dashboardData.damageAllocations, dashboardData.products);
         this.recentOrders = this.orders.slice(0, 5);
-
-        const shopBatchNames = this.batches
-          .map(batch => batch.name)
-          .filter((name): name is string => !!name);
-
-        const finalize = (damageAllocations: any[]) => {
-          this.computeDamagedItems(dashboardData.damagedItems.data || [], damageAllocations, dashboardData.products.data || []);
-          this.loading = false;
-        };
-
-        if (shopBatchNames.length === 0) {
-          finalize([]);
-          return;
-        }
-
-        Promise.resolve(
-          this.scopeShopQuery(
-            this.sb.from('damage_order_allocations').select('*').in('batch_name', shopBatchNames)
-          )
-        )
-          .then(({ data: damageAllocations, error }: any) => {
-            if (error) {
-              console.error('Error loading damage allocations:', error);
-            }
-            finalize(damageAllocations || []);
-          })
-          .catch((error: unknown) => {
-            console.error('Error loading damage allocations:', error);
-            finalize([]);
-          });
+        this.loading = false;
       },
       error => {
         console.error('Error loading dashboard data:', error);

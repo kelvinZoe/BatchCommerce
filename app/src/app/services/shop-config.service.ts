@@ -9,7 +9,7 @@ export interface ShopConfig {
   configuredAt?: string;
 }
 
-const STORAGE_KEY = 'shakhis_active_shop';
+const STORAGE_KEY = 'batchcommerce_active_shop';
 
 @Injectable({
   providedIn: 'root'
@@ -67,8 +67,7 @@ export class ShopConfigService {
   /** Clear saved config (factory reset) */
   clearConfig(): void {
     localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem('shakhis_session');
-    localStorage.removeItem('shakhis_auth');
+    localStorage.removeItem('batchcommerce_auth');
     this.configSubject.next(null);
   }
 

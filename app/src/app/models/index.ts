@@ -172,6 +172,7 @@ export interface Delivery {
   deliveryDate: string | null;
   status: DeliveryStatus;
   deliveryItemStatus?: DeliveryItemStatus;
+  batchId?: number | null;
   batchName?: string;
   notes?: string;
   createdAt?: string;

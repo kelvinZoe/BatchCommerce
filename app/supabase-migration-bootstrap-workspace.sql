@@ -1,5 +1,5 @@
 -- ============================================================
--- Shakhis Commerce - Workspace Bootstrap Helpers
+-- Batch Commerce - Workspace Bootstrap Helpers
 -- Adds a self-serve onboarding RPC for account + shop creation.
 -- Run this after the reset schema on the new Supabase project.
 -- ============================================================

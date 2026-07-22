@@ -491,7 +491,7 @@ export class ExcelService {
     wsDelivery['!cols'] = [{ wch: 4 }, { wch: 20 }, { wch: 25 }, { wch: 10 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, wsDelivery, 'Delivery');
 
-    XLSX.writeFile(wb, 'Shakhis_Import_Template.xlsx');
+    XLSX.writeFile(wb, 'Batch_Commerce_Import_Template.xlsx');
   }
 
   async getSheetRawData(workbook: any, sheetName: string): Promise<any[][]> {
