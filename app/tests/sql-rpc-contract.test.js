@@ -353,3 +353,33 @@ test('shipping queue and ledger facade delegates to ShippingDataService', () => 
     'damage_order_allocations'
   ], 'shipping data service');
 });
+
+test('all app-triggered authentication emails use the BatchCommerce Resend sender', () => {
+  const authService = read('app/src/app/services/auth.service.ts');
+  const adminServer = read('server/index.js');
+
+  assert.match(
+    adminServer,
+    /SYSTEM_EMAIL_FROM\s*=\s*'BatchCommerce Support <support@pharma-uci\.com>'/
+  );
+  assertIncludesAll(adminServer, [
+    "app.post('/public/register'",
+    "app.post('/public/password-reset'",
+    "app.post('/admin/resend-verification'",
+    'sendEmailWithResend',
+    'getEmailLogoUrl',
+    '/assets/BatchCommerce.png',
+    "type: 'signup'",
+    "type: 'recovery'"
+  ], 'admin email service');
+
+  assertIncludesAll(authService, [
+    '/public/register',
+    '/public/password-reset',
+    '/admin/resend-verification'
+  ], 'auth email client');
+  assert.doesNotMatch(
+    authService,
+    /auth\.(?:resend|resetPasswordForEmail|signUp|inviteUserByEmail)\s*\(/
+  );
+});

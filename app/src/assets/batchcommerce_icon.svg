@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Batch Commerce">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="40" x2="448" y2="472" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#142033"/>
+      <stop offset="0.55" stop-color="#123f42"/>
+      <stop offset="1" stop-color="#1fb6a6"/>
+    </linearGradient>
+    <linearGradient id="top" x1="160" y1="128" x2="352" y2="206" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff8e7"/>
+      <stop offset="1" stop-color="#bdf5e4"/>
+    </linearGradient>
+    <linearGradient id="mid" x1="118" y1="224" x2="394" y2="304" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1fb6a6"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <linearGradient id="low" x1="150" y1="338" x2="362" y2="398" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d89222"/>
+      <stop offset="1" stop-color="#f0bd62"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="116" fill="url(#bg)"/>
+  <path d="M104 333c27 73 82 110 152 110s125-37 152-110" fill="none" stroke="#fff8e7" stroke-opacity=".88" stroke-width="18" stroke-linecap="round"/>
+  <path d="M116 325h280" fill="none" stroke="#fff8e7" stroke-opacity=".42" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="184" cy="424" r="15" fill="#fff8e7"/>
+  <circle cx="328" cy="424" r="15" fill="#fff8e7"/>
+  <rect x="151" y="118" width="210" height="82" rx="28" fill="url(#top)"/>
+  <rect x="118" y="218" width="276" height="92" rx="30" fill="url(#mid)"/>
+  <rect x="151" y="338" width="210" height="70" rx="27" fill="url(#low)"/>
+  <g fill="#123f42" fill-opacity=".94">
+    <circle cx="151" cy="159" r="13"/><circle cx="361" cy="159" r="13"/>
+    <circle cx="118" cy="264" r="15"/><circle cx="394" cy="264" r="15"/>
+    <circle cx="151" cy="373" r="12"/><circle cx="361" cy="373" r="12"/>
+  </g>
+  <path d="M214 132v54M202 230v66M215 349v48" fill="none" stroke="#142033" stroke-opacity=".2" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 14"/>
+  <path d="M181 159h150M157 264h198M186 373h140" fill="none" stroke="#142033" stroke-opacity=".22" stroke-width="13" stroke-linecap="round"/>
+</svg>

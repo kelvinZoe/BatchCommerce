@@ -15,7 +15,7 @@ import { AuthService } from '../../services/auth.service';
     <div class="setup-page">
       <div class="setup-card">
         <div class="setup-header">
-          <img src="assets/batchcommerce_icon.png" alt="Logo" class="logo-icon" />
+          <img src="assets/batchcommerce_icon.svg" alt="Batch Commerce logo" class="logo-icon" />
           <h1>Get Started</h1>
           <p>Welcome aboard. Let’s create your account and set up your shop in a few quick steps.</p>
         </div>

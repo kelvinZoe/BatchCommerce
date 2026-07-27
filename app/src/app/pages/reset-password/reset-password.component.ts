@@ -13,7 +13,7 @@ import { firstValueFrom } from 'rxjs';
     <div class="reset-page">
       <div class="reset-card">
         <div class="reset-header">
-          <img src="assets/batchcommerce_icon.png" alt="Logo" class="logo-icon" />
+          <img src="assets/batchcommerce_icon.svg" alt="Batch Commerce logo" class="logo-icon" />
           <h1>Set New Password</h1>
           <p>Enter a new password for your account.</p>
         </div>

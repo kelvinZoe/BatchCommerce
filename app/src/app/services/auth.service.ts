@@ -730,25 +730,51 @@ export class AuthService {
       };
     }
 
-    const isolatedClient = this.buildIsolatedAuthClient();
-    const { error } = await isolatedClient.auth.resend({
-      type: 'signup',
-      email: normalizedEmail
-    });
-
-    if (error) {
+    const adminApiUrl = this.getNormalizedAdminApiUrl();
+    const shopId = this.activeShopId;
+    if (!adminApiUrl || !shopId) {
       return {
         success: false,
-        message: this.formatEmailVerificationError(error),
+        message: 'The BatchCommerce email service is not configured.',
         email: normalizedEmail
       };
     }
 
-    return {
-      success: true,
-      message: `Verification email sent to ${normalizedEmail}.`,
-      email: normalizedEmail
-    };
+    try {
+      const authHeader = await this.getAdminApiAuthorizationHeader();
+      const response = await fetch(`${adminApiUrl}/admin/resend-verification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authHeader
+        },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          shopId
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        return {
+          success: false,
+          message: payload?.detail || payload?.error || 'Could not send the verification email.',
+          email: normalizedEmail
+        };
+      }
+
+      return {
+        success: true,
+        message: payload?.message || `Verification email sent to ${normalizedEmail}.`,
+        email: normalizedEmail
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error?.message || 'Could not reach the BatchCommerce email service.',
+        email: normalizedEmail
+      };
+    }
   }
 
   sendPhoneVerificationOtp(phone: string, channel: 'sms' | 'whatsapp' = 'whatsapp'): Observable<PhoneVerificationResult> {
@@ -1031,46 +1057,10 @@ export class AuthService {
         };
       }
 
-      const { data, error } = await this.sb.auth.signUp({
-        email: normalizedEmail,
-        password,
-        options: {
-          data: {
-            full_name: normalizedFullName,
-            phone: normalizedPhone
-          }
-        }
-      });
-
-      if (error) {
-        const message = (error.message || '').toLowerCase();
-        if (message.includes('already registered')) {
-          return {
-            success: false,
-            message: 'This email is already registered. Please sign in instead.'
-          };
-        }
-
-        if (message.includes('rate limit') || message.includes('too many requests')) {
-          return {
-            success: false,
-            message: 'Too many verification emails were requested. Please wait a bit and try again.'
-          };
-        }
-
-        return {
-          success: false,
-          message: error.message || 'Could not create account'
-        };
-      }
-
-      const sessionCreated = !!data?.session;
       return {
-        success: true,
-        sessionCreated,
-        message: sessionCreated
-          ? ''
-          : 'Account created. Check your email, confirm it, then sign in to finish setting up your shop.'
+        success: false,
+        sessionCreated: false,
+        message: 'The BatchCommerce account and email service is not configured.'
       };
     } catch (err: any) {
       return { success: false, message: err?.message || 'Could not create account' };
@@ -1087,12 +1077,37 @@ export class AuthService {
       if (!this.isValidEmail(normalized)) {
         return { success: false, message: 'Enter a valid email address.' };
       }
-      const redirectTo = `${window.location.origin}/reset-password`;
-      const { error } = await this.sb.auth.resetPasswordForEmail(normalized, { redirectTo });
-      if (error) {
-        return { success: false, message: error.message || 'Could not send reset email.' };
+
+      const adminApiUrl = this.getNormalizedAdminApiUrl();
+      if (!adminApiUrl) {
+        return { success: false, message: 'The BatchCommerce email service is not configured.' };
       }
-      return { success: true, message: `Password reset link sent to ${normalized}. Check your inbox.` };
+
+      try {
+        const response = await fetch(`${adminApiUrl}/public/password-reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: normalized })
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          return {
+            success: false,
+            message: payload?.detail || payload?.error || 'Could not send reset email.'
+          };
+        }
+
+        return {
+          success: true,
+          message: payload?.message || `If an account exists for ${normalized}, a password reset link has been sent.`
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          message: error?.message || 'Could not reach the BatchCommerce email service.'
+        };
+      }
     })());
   }
 
@@ -1597,15 +1612,7 @@ export class AuthService {
     return nextPassword;
   }
 
-  private async doCreateUser(user: User, retryCount = 0): Promise<UserCreationResult> {
-    const maxRetries = 3;
-    const baseDelay = 1000;
-
-    if (retryCount > 0) {
-      const backoffDelay = baseDelay * Math.pow(2, retryCount - 1);
-      await this.delay(backoffDelay);
-    }
-
+  private async doCreateUser(user: User): Promise<UserCreationResult> {
     const email = this.normalizeEmail(user.email || '');
     const normalizedPhone = this.normalizePhoneNumber(user.phone || '');
 
@@ -1617,71 +1624,11 @@ export class AuthService {
       throw new Error('Enter a valid phone number like 0241234567 or +233241234567.');
     }
 
-    if (this.usesManagedPhoneIdentity) {
-      return this.createUserViaAdminApi(user, email, normalizedPhone);
+    if (!this.getNormalizedAdminApiUrl()) {
+      throw new Error('The BatchCommerce account and email service is not configured.');
     }
 
-    let authData: any = null;
-    let authError: any = null;
-    const password = this.requireNewUserPassword(user.password);
-    const isolatedClient = this.buildIsolatedAuthClient();
-    ({ data: authData, error: authError } = await isolatedClient.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: user.fullName, phone: normalizedPhone, username: user.username } }
-    }));
-
-    if (authError) {
-      const errorMsg = authError.message?.toLowerCase() || '';
-      const isRateLimited = errorMsg.includes('rate limit') || authError.status === 429;
-
-      if (isRateLimited && retryCount < maxRetries) {
-        console.warn(`Rate limited. Retrying in ${baseDelay * Math.pow(2, retryCount)}ms... (Attempt ${retryCount + 1}/${maxRetries})`);
-        return this.doCreateUser(user, retryCount + 1);
-      }
-
-      if (isRateLimited) {
-        throw new Error(
-          `Email rate limit exceeded. Too many signup requests were made for this project. ` +
-          `Wait a bit and try again.`
-        );
-      }
-
-      const formattedError: any = new Error(this.formatUserCreationError(authError));
-      formattedError.original = authError;
-      formattedError.code = authError.code;
-      throw formattedError;
-    }
-
-    if (!authData.user) {
-      throw new Error('Failed to create auth user');
-    }
-
-    const { data, error } = await this.sb.from('app_users').insert({
-      auth_id: authData.user.id,
-      username: user.username,
-      full_name: user.fullName,
-      phone: normalizedPhone,
-      email,
-      is_active: true
-    }).select('id').single();
-
-    if (error) {
-      const formattedError: any = new Error(this.formatUserCreationError(error));
-      formattedError.original = error;
-      throw formattedError;
-    }
-
-    const membershipStatus: MembershipStatus = authData.user?.email_confirmed_at ? 'active' : 'pending_verification';
-    await this.addUserToActiveShop(authData.user.id, data?.id ?? 0, user.roleId, user.isActive, membershipStatus);
-    return {
-      id: data?.id ?? 0,
-      membershipStatus,
-      verificationSent: membershipStatus === 'pending_verification',
-      verificationMessage: membershipStatus === 'pending_verification'
-        ? `Verification email sent to ${email}.`
-        : undefined
-    };
+    return this.createUserViaAdminApi(user, email, normalizedPhone);
   }
 
   updateUser(user: User): Observable<boolean> {

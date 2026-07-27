@@ -49,12 +49,14 @@ const {
   RESEND_API_KEY,
   EMAIL_FROM,
   RESEND_FROM_EMAIL,
+  EMAIL_LOGO_URL,
   APP_BASE_URL,
   AUTH_CALLBACK_URL,
   PORT = 3000
 } = process.env;
 
 const DEFAULT_PRODUCTION_APP_URL = 'https://batchcommerce.vercel.app';
+const SYSTEM_EMAIL_FROM = 'BatchCommerce Support <support@pharma-uci.com>';
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing required environment variables. See .env.example');
@@ -66,7 +68,12 @@ const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 function getResendFromEmail() {
-  return EMAIL_FROM || RESEND_FROM_EMAIL || '';
+  return SYSTEM_EMAIL_FROM;
+}
+
+function getEmailLogoUrl() {
+  const configured = String(EMAIL_LOGO_URL || '').trim();
+  return configured || `${DEFAULT_PRODUCTION_APP_URL}/assets/BatchCommerce.png`;
 }
 
 function getAppBaseUrl() {
@@ -293,10 +300,62 @@ async function generateVerificationLink(email, req) {
   return data?.properties?.action_link || '';
 }
 
+async function generatePasswordResetLink(email, req) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return '';
+  }
+
+  const callbackBaseUrl = resolveCallbackBaseUrl(req);
+  const redirectTo = callbackBaseUrl ? `${callbackBaseUrl}/reset-password` : '';
+  const { data, error } = await supa.auth.admin.generateLink({
+    type: 'recovery',
+    email: normalizedEmail,
+    options: redirectTo ? { redirectTo } : undefined
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Could not generate password reset link.');
+  }
+
+  return data?.properties?.action_link || '';
+}
+
+async function sendEmailWithResend({ to, subject, text, html }) {
+  if (!RESEND_API_KEY) {
+    throw new Error('Resend is not configured.');
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${RESEND_API_KEY}`
+    },
+    body: JSON.stringify({
+      from: getResendFromEmail(),
+      to: [to],
+      subject,
+      text,
+      html
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Resend request failed (${response.status}): ${errorText}`);
+  }
+
+  console.log(`Email sent via Resend from ${getResendFromEmail()} to ${to}`);
+  return true;
+}
+
 function buildEmailHtml({ safeName, safeLink, fallbackUrl, hasLink }) {
+  const safeLogoUrl = escapeHtml(getEmailLogoUrl());
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #0f172a; background: #f8fafc; padding: 24px;">
       <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px;">
+        <img src="${safeLogoUrl}" width="280" alt="BatchCommerce" style="display:block;width:280px;max-width:100%;height:auto;margin:0 0 22px;border:0;border-radius:10px;">
         <p style="margin: 0 0 8px; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: #475569;">BatchCommerce</p>
         <h2 style="margin: 0 0 12px; font-size: 24px; line-height: 1.3; color: #0f172a;">Verify Your Email</h2>
         <p style="margin: 0 0 12px;">Hello ${safeName},</p>
@@ -329,32 +388,46 @@ async function sendVerificationEmail({ email, fullName, verificationLink }) {
   ].filter(Boolean).join('\n');
   const html = buildEmailHtml({ safeName, safeLink, fallbackUrl, hasLink });
 
-  if (!RESEND_API_KEY || !getResendFromEmail()) {
-    return false;
-  }
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${RESEND_API_KEY}`
-    },
-    body: JSON.stringify({
-      from: getResendFromEmail(),
-      to: [email],
-      subject,
-      text: textBody,
-      html
-    })
+  return sendEmailWithResend({
+    to: email,
+    subject,
+    text: textBody,
+    html
   });
+}
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    throw new Error(`Resend request failed (${response.status}): ${errorText}`);
-  }
+async function sendPasswordResetEmail({ email, passwordResetLink }) {
+  const safeLink = escapeHtml(passwordResetLink);
+  const safeLogoUrl = escapeHtml(getEmailLogoUrl());
+  const subject = 'Reset your BatchCommerce password';
+  const text = [
+    'We received a request to reset your BatchCommerce password.',
+    '',
+    `Reset your password: ${passwordResetLink}`,
+    '',
+    'If you did not request this, you can safely ignore this email.'
+  ].join('\n');
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #102d2a; background: #fbf8ef; padding: 24px;">
+      <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #dce7e2; border-radius: 14px; padding: 28px;">
+        <img src="${safeLogoUrl}" width="280" alt="BatchCommerce" style="display:block;width:280px;max-width:100%;height:auto;margin:0 0 22px;border:0;border-radius:10px;">
+        <p style="margin: 0 0 8px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #158f82;">BatchCommerce Support</p>
+        <h2 style="margin: 0 0 14px; font-size: 25px; line-height: 1.3; color: #102d2a;">Reset your password</h2>
+        <p style="margin: 0 0 14px;">We received a request to reset your BatchCommerce password.</p>
+        <p style="margin: 22px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;background:#102d2a;color:#ffffff;text-decoration:none;border-radius:9px;font-weight:600;">Reset password</a></p>
+        <p style="margin: 0 0 10px; font-size: 13px; color: #47635f;">If the button does not work, copy and paste this link:</p>
+        <p style="margin: 0 0 18px; word-break: break-all; font-size: 13px;"><a href="${safeLink}" style="color:#0b685f;">${safeLink}</a></p>
+        <p style="margin: 0; color: #47635f;">If you did not request this, you can safely ignore this email.</p>
+      </div>
+    </div>
+  `;
 
-  console.log(`✅ Verification email sent via Resend to ${email}`);
-  return true;
+  return sendEmailWithResend({
+    to: email,
+    subject,
+    text,
+    html
+  });
 }
 
 async function createAuthAndAppUser({
@@ -785,6 +858,63 @@ app.post('/admin/user-availability', requireAdminAuth, async (req, res) => {
   }
 });
 
+app.post('/admin/resend-verification', requireAdminAuth, async (req, res) => {
+  try {
+    const { email, fullName = '', shopId } = req.body || {};
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+
+    if (!normalizedEmail || !shopId) {
+      return res.status(400).json({ error: 'email and shopId are required' });
+    }
+
+    const adminAccess = await ensureAdminAccessForShop(req, shopId);
+    if (!adminAccess.ok) {
+      return res.status(adminAccess.status).json(adminAccess.body);
+    }
+
+    const { data: targetUser, error: targetError } = await supa
+      .from('app_users')
+      .select('id, full_name, auth_id')
+      .eq('email', normalizedEmail)
+      .limit(1)
+      .maybeSingle();
+
+    if (targetError || !targetUser?.auth_id) {
+      return res.status(404).json({ error: 'User was not found in this shop.' });
+    }
+
+    const { data: targetMembership, error: membershipError } = await supa
+      .from('shop_memberships')
+      .select('id')
+      .eq('shop_id', shopId)
+      .eq('app_user_id', targetUser.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (membershipError || !targetMembership?.id) {
+      return res.status(404).json({ error: 'User was not found in this shop.' });
+    }
+
+    const verificationLink = await generateVerificationLink(normalizedEmail, req);
+    await sendVerificationEmail({
+      email: normalizedEmail,
+      fullName: fullName || targetUser.full_name,
+      verificationLink
+    });
+
+    return res.json({
+      success: true,
+      message: `Verification email sent to ${normalizedEmail}.`
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      error: 'verification_email_failed',
+      detail: err?.message || String(err)
+    });
+  }
+});
+
 app.post('/admin/update-shop-profile', requireAdminAuth, async (req, res) => {
   try {
     const { shopId, name, slug } = req.body || {};
@@ -882,6 +1012,31 @@ app.post('/public/register', async (req, res) => {
     console.error(err);
     return res.status(500).json({ error: 'server_error', detail: String(err) });
   }
+});
+
+app.post('/public/password-reset', async (req, res) => {
+  const normalizedEmail = String(req.body?.email || '').trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    return res.status(400).json({ error: 'email is required' });
+  }
+
+  try {
+    const passwordResetLink = await generatePasswordResetLink(normalizedEmail, req);
+    await sendPasswordResetEmail({
+      email: normalizedEmail,
+      passwordResetLink
+    });
+  } catch (err) {
+    // Do not reveal whether an email is registered. Log the operational error
+    // server-side while returning the same response for every valid request.
+    console.warn('Password reset email could not be sent:', err?.message || err);
+  }
+
+  return res.json({
+    success: true,
+    message: `If an account exists for ${normalizedEmail}, a password reset link has been sent.`
+  });
 });
 
 app.delete('/admin/delete-user/:authId', requireAdminAuth, async (req, res) => {

@@ -17,7 +17,7 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
           <span class="material-icons">menu</span>
         </button>
         <div class="mobile-brand">
-          <img src="assets/batchcommerce_icon.png" alt="Logo" />
+          <img src="assets/batchcommerce_icon.svg" alt="Batch Commerce logo" />
           <div>
             <strong>{{ shopConfig.shopName }}</strong>
             <small>{{ authService.currentUser?.roleName }}</small>
@@ -30,7 +30,7 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       <aside class="sidebar" [class.sidebar-open]="mobileSidebarOpen">
         <!-- Logo -->
         <div class="sidebar-logo">
-          <img src="assets/batchcommerce_icon.png" alt="Logo" class="sidebar-logo-img" />
+          <img src="assets/batchcommerce_icon.svg" alt="Batch Commerce logo" class="sidebar-logo-img" />
           <span class="sidebar-logo-text">{{ shopConfig.shopName }}</span>
         </div>
 

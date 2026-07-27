@@ -1,10 +1,23 @@
 {
   "name": "Batch Commerce",
   "short_name": "Batch",
-  "theme_color": "#2563eb",
-  "background_color": "#f8fafc",
+  "theme_color": "#103c37",
+  "background_color": "#fbf8ef",
   "display": "standalone",
   "scope": "./",
   "start_url": "./",
-  "icons": []
+  "icons": [
+    {
+      "src": "icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ]
 }

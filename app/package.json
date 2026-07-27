@@ -7,6 +7,7 @@
     "start": "ng serve --port 4300",
     "dev": "concurrently \"npm start --prefix ../server\" \"ng serve --port 4300\"",
     "start:web": "npx serve -s dist/batch-commerce/browser -l 4300",
+    "assets:brand": "node ./scripts/generate-brand-assets.mjs",
     "build": "node ./scripts/generate-env.js && ng build --configuration production",
     "build:web": "npm run build",
     "watch": "ng build --watch --configuration development",

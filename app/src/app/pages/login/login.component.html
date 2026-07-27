@@ -1,0 +1,186 @@
+<main class="login-page">
+  <section class="brand-story" aria-label="BatchCommerce introduction">
+    <div class="brand-story__wash" aria-hidden="true"></div>
+
+    <div class="brand-story__copy">
+      <p class="eyebrow">Your shop, in one clear view</p>
+      <h1>From first order<br />to final delivery.</h1>
+      <p class="brand-story__summary">
+        Keep products, batches, payments and fulfilment moving together—without
+        losing the human rhythm of your business.
+      </p>
+
+      <div class="workflow" aria-label="BatchCommerce workflow">
+        <span>Order</span>
+        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+        <span>Batch</span>
+        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+        <span>Deliver</span>
+      </div>
+    </div>
+
+    <div class="brand-story__art" aria-hidden="true">
+      <div class="art-orbit art-orbit--one"></div>
+      <div class="art-orbit art-orbit--two"></div>
+      <img src="assets/1.png" alt="" />
+    </div>
+
+    <p class="brand-story__note">
+      Built for social sellers, preorder shops and growing teams.
+    </p>
+  </section>
+
+  <section class="auth-panel" aria-label="Account access">
+    <div class="auth-card" *ngIf="!showForgotPassword; else resetPassword">
+      <header class="auth-card__header">
+        <p class="eyebrow">Secure workspace access</p>
+        <h2>{{ shopTitle }}</h2>
+        <p>Sign in to continue managing your shop.</p>
+      </header>
+
+      <form (ngSubmit)="onLogin()" autocomplete="on" novalidate>
+        <div class="field">
+          <label for="login-email">Email or username</label>
+          <div class="field-control">
+            <i class="bi bi-person" aria-hidden="true"></i>
+            <input
+              id="login-email"
+              type="text"
+              [(ngModel)]="email"
+              name="email"
+              autocomplete="username"
+              inputmode="email"
+              placeholder="you@example.com"
+              (input)="errorMessage = ''"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field__heading">
+            <label for="login-password">Password</label>
+            <button
+              type="button"
+              class="text-button"
+              (click)="showForgotPassword = true; errorMessage = ''"
+            >
+              Forgot password?
+            </button>
+          </div>
+
+          <div class="field-control">
+            <i class="bi bi-lock" aria-hidden="true"></i>
+            <input
+              id="login-password"
+              [type]="showPassword ? 'text' : 'password'"
+              [(ngModel)]="password"
+              name="password"
+              autocomplete="current-password"
+              placeholder="Enter your password"
+              (input)="errorMessage = ''"
+              required
+            />
+            <button
+              type="button"
+              class="password-toggle"
+              (click)="showPassword = !showPassword"
+              [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'"
+              [attr.aria-pressed]="showPassword"
+            >
+              <i [class]="showPassword ? 'bi bi-eye-slash' : 'bi bi-eye'" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="notice notice--error" role="alert" *ngIf="errorMessage">
+          <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+          <span>{{ errorMessage }}</span>
+        </div>
+
+        <button
+          id="login-submit"
+          type="submit"
+          class="primary-action"
+          [disabled]="loading"
+        >
+          <span *ngIf="loading" class="loading-spinner" aria-hidden="true"></span>
+          <span>{{ loading ? 'Signing you in…' : 'Sign in to BatchCommerce' }}</span>
+          <i *ngIf="!loading" class="bi bi-arrow-right" aria-hidden="true"></i>
+        </button>
+      </form>
+
+      <div class="auth-card__footer">
+        <span>New to BatchCommerce?</span>
+        <button type="button" class="create-shop" (click)="goToRegister()">
+          Create your shop
+          <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+
+    <ng-template #resetPassword>
+      <div class="auth-card">
+        <button
+          type="button"
+          class="back-button"
+          (click)="showForgotPassword = false; successMessage = ''; resetError = ''"
+        >
+          <i class="bi bi-arrow-left" aria-hidden="true"></i>
+          Back to sign in
+        </button>
+
+        <header class="auth-card__header auth-card__header--reset">
+          <div class="reset-mark"><i class="bi bi-envelope-arrow-up" aria-hidden="true"></i></div>
+          <p class="eyebrow">Account recovery</p>
+          <h2>Reset your password</h2>
+          <p>We’ll send a secure reset link to your email address.</p>
+        </header>
+
+        <div class="field">
+          <label for="reset-email">Email address</label>
+          <div class="field-control">
+            <i class="bi bi-envelope" aria-hidden="true"></i>
+            <input
+              id="reset-email"
+              type="email"
+              [(ngModel)]="resetEmail"
+              name="resetEmail"
+              autocomplete="email"
+              placeholder="you@example.com"
+              (input)="resetError = ''"
+            />
+          </div>
+        </div>
+
+        <div class="notice notice--success" role="status" *ngIf="successMessage">
+          <i class="bi bi-check-circle" aria-hidden="true"></i>
+          <span>{{ successMessage }}</span>
+        </div>
+
+        <div class="notice notice--error" role="alert" *ngIf="resetError">
+          <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+          <span>{{ resetError }}</span>
+        </div>
+
+        <button
+          id="reset-submit"
+          type="button"
+          class="primary-action"
+          (click)="sendReset()"
+          [disabled]="loading"
+        >
+          <span *ngIf="loading" class="loading-spinner" aria-hidden="true"></span>
+          <span>{{ loading ? 'Sending reset link…' : 'Send reset link' }}</span>
+          <i *ngIf="!loading" class="bi bi-send" aria-hidden="true"></i>
+        </button>
+      </div>
+    </ng-template>
+
+    <footer class="auth-meta">
+      <span>© {{ year }} BatchCommerce</span>
+      <span class="auth-meta__dot" aria-hidden="true"></span>
+      <span>Secure shop operations</span>
+    </footer>
+  </section>
+</main>

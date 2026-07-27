@@ -12,7 +12,7 @@ import { ShopConfigService } from '../../services/shop-config.service';
     <div class="auth-callback-page">
       <div class="callback-card">
         <div class="callback-header">
-          <img src="assets/batchcommerce_icon.png" alt="Logo" class="logo-icon" />
+          <img src="assets/batchcommerce_icon.svg" alt="Batch Commerce logo" class="logo-icon" />
           <h1>{{ statusTitle }}</h1>
           <p *ngIf="statusSubtitle">{{ statusSubtitle }}</p>
         </div>
