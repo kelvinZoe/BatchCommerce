@@ -1,4 +1,9 @@
 node_modules/
+web/node_modules/
+web/.next/
+web/coverage/
+web/.env.local
+web/tsconfig.tsbuildinfo
 dist/
 release/
 app/dist/

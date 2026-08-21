@@ -1,0 +1,29 @@
+.shell { min-height: 100dvh; color: #102d2a; background: #f5f3eb; }
+.header { min-height: 72px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #dce7e2; background: rgb(255 255 255 / 86%); backdrop-filter: blur(16px); }
+.brand { display: inline-flex; align-items: center; gap: 0.75rem; color: inherit; text-decoration: none; }
+.brandMark { width: 2.35rem; height: 2.35rem; display: grid; place-items: center; border-radius: 11px; color: #fff; background: #103c37; font-family: Georgia, serif; font-size: 0.8rem; }
+.brand > span:last-child, .accountCopy { display: grid; }
+.brand strong { font-family: Georgia, serif; font-size: 1.05rem; font-weight: 500; }
+.brand small, .accountCopy small { color: #66827d; font-size: 0.68rem; }
+.account { display: flex; align-items: center; gap: 0.65rem; }
+.avatar { width: 2.1rem; height: 2.1rem; display: grid; place-items: center; border-radius: 50%; color: #0b685f; background: #e5f5ef; font-size: 0.7rem; font-weight: 700; }
+.accountCopy strong { font-size: 0.78rem; font-weight: 600; }
+.logout { min-height: 2.35rem; padding: 0 0.75rem; display: inline-flex; align-items: center; gap: 0.4rem; border: 1px solid #dce7e2; border-radius: 10px; color: #365653; background: #fff; cursor: pointer; }
+.logout:disabled { cursor: wait; opacity: 0.65; }
+.logout svg { width: 1rem; height: 1rem; }
+.body { min-height: calc(100dvh - 73px); display: grid; grid-template-columns: 230px minmax(0, 1fr); }
+.sidebar { padding: 1.5rem 1rem; border-right: 1px solid #dce7e2; background: #fbf8ef; }
+.sidebar > p { margin: 0 0 0.75rem 0.65rem; color: #718a85; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.sidebar nav a { padding: 0.7rem 0.75rem; display: block; border-radius: 10px; color: #fff; background: #103c37; font-size: 0.84rem; font-weight: 600; text-decoration: none; }
+.migrationNote { margin-top: 2rem; padding: 1rem; border: 1px solid #d8e8e1; border-radius: 12px; background: #eef7f3; }
+.migrationNote span { color: #0b685f; font-size: 0.67rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.migrationNote p { margin: 0.45rem 0 0; color: #52716c; font-size: 0.75rem; line-height: 1.55; }
+.content { min-width: 0; padding: clamp(1.25rem, 3vw, 3rem); }
+@media (max-width: 720px) {
+  .header { padding-inline: 1rem; }
+  .accountCopy, .logout span, .brand small { display: none; }
+  .body { display: block; }
+  .sidebar { padding: 0.75rem 1rem; border-right: 0; border-bottom: 1px solid #dce7e2; }
+  .sidebar > p, .migrationNote { display: none; }
+  .sidebar nav a { width: fit-content; padding-inline: 1rem; }
+}
