@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
-  PricingPlanKey,
   PricingUsage,
   PromoCodeRedemptionResult,
   SubscriptionStatus
@@ -14,11 +13,7 @@ import { from, SupabaseDataAccessService } from './supabase-data-access.service'
   providedIn: 'root'
 })
 export class PricingDataService extends SupabaseDataAccessService {
-  private readonly pricingPlans: Record<PricingPlanKey, { priceGhs: number; monthlyLimit: number | null }> = {
-    starter: { priceGhs: 150, monthlyLimit: 40 },
-    growth: { priceGhs: 200, monthlyLimit: 120 },
-    pro: { priceGhs: 300, monthlyLimit: null }
-  };
+  private readonly monthlyPriceGhs = 70;
 
   constructor(supa: SupabaseService, authService: AuthService) {
     super(supa, authService);
@@ -37,7 +32,7 @@ export class PricingDataService extends SupabaseDataAccessService {
     if (usage.canCreateSalesRecord) return;
 
     if (!usage.promoActive && usage.status !== 'active') {
-      throw new Error('Your 2-month promo has ended. Activate a paid plan to continue creating sales records.');
+      throw new Error('Your 2-month promo has ended. Activate your GHS 70 monthly subscription to continue creating sales records.');
     }
   }
 
@@ -47,18 +42,8 @@ export class PricingDataService extends SupabaseDataAccessService {
     return { monthStart, monthEnd };
   }
 
-  private normalizePlan(value: any): PricingPlanKey {
-    return value === 'growth' || value === 'pro' ? value : 'starter';
-  }
-
   private normalizeSubscriptionStatus(value: any): SubscriptionStatus {
     return ['promo', 'active', 'past_due', 'suspended', 'cancelled'].includes(value) ? value : 'promo';
-  }
-
-  private getRecommendedPlan(usageCount: number): PricingPlanKey {
-    if (usageCount <= this.pricingPlans.starter.monthlyLimit!) return 'starter';
-    if (usageCount <= this.pricingPlans.growth.monthlyLimit!) return 'growth';
-    return 'pro';
   }
 
   private async redeemPromoCodeAsync(code: string): Promise<PromoCodeRedemptionResult> {
@@ -90,7 +75,6 @@ export class PricingDataService extends SupabaseDataAccessService {
       description: row.description ?? null,
       extraPromoDays: Number(row.extra_promo_days || 0),
       discountPercent: row.discount_percent ?? null,
-      planOverride: this.normalizePlan(row.plan_override) === row.plan_override ? row.plan_override : null,
       promoEndsAt: row.promo_ends_at ?? null
     };
   }
@@ -127,7 +111,7 @@ export class PricingDataService extends SupabaseDataAccessService {
     const { monthStart, monthEnd } = this.getMonthRange();
     const [{ data: shop, error: shopError }, usageCount] = await Promise.all([
       this.sb.from('shops')
-        .select('subscription_plan, subscription_status, promo_started_at, promo_ends_at')
+        .select('subscription_status, promo_started_at, promo_ends_at')
         .eq('id', shopId)
         .maybeSingle(),
       this.fetchMonthlySalesRecordCount(monthStart, monthEnd)
@@ -135,32 +119,19 @@ export class PricingDataService extends SupabaseDataAccessService {
 
     if (shopError) throw shopError;
 
-    const plan = this.normalizePlan((shop as any)?.subscription_plan);
     const status = this.normalizeSubscriptionStatus((shop as any)?.subscription_status);
-    const planConfig = this.pricingPlans[plan];
     const promoEndsAt = (shop as any)?.promo_ends_at || null;
     const promoActive = status === 'promo' && !!promoEndsAt && new Date(promoEndsAt).getTime() >= Date.now();
     const isActivePaid = status === 'active';
-    const remaining = planConfig.monthlyLimit === null
-      ? null
-      : Math.max(0, planConfig.monthlyLimit - usageCount);
-    const overageCount = planConfig.monthlyLimit === null
-      ? 0
-      : Math.max(0, usageCount - planConfig.monthlyLimit);
 
     return {
-      plan,
       status,
-      priceGhs: planConfig.priceGhs,
-      monthlyLimit: planConfig.monthlyLimit,
+      priceGhs: this.monthlyPriceGhs,
       usageCount,
-      remaining,
-      overageCount,
       promoStartedAt: (shop as any)?.promo_started_at || null,
       promoEndsAt,
       promoActive,
       canCreateSalesRecord: promoActive || isActivePaid,
-      recommendedPlan: this.getRecommendedPlan(usageCount),
       monthStart: monthStart.toISOString(),
       monthEnd: monthEnd.toISOString()
     };

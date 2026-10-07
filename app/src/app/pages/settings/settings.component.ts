@@ -57,7 +57,7 @@ import { firstValueFrom } from 'rxjs';
 
         <div class="billing-loading" *ngIf="loadingPricing">
           <span class="spinner"></span>
-          Loading plan usage...
+          Loading subscription details...
         </div>
 
         <div class="billing-error" *ngIf="pricingError">
@@ -70,24 +70,18 @@ import { firstValueFrom } from 'rxjs';
             <span class="billing-badge" [class.billing-badge-promo]="pricingUsage.promoActive">
               {{ pricingStatusLabel }}
             </span>
-            <div class="plan-name">{{ pricingUsage.plan | titlecase }}</div>
+            <div class="plan-name">BatchCommerce</div>
             <div class="plan-price">GHS {{ pricingUsage.priceGhs }}<span>/month</span></div>
             <p *ngIf="pricingUsage.promoActive">Promo ends {{ pricingUsage.promoEndsAt | date:'mediumDate' }}.</p>
-            <p *ngIf="!pricingUsage.promoActive && pricingUsage.status !== 'active'">Activate billing to keep creating sales records.</p>
+            <p *ngIf="!pricingUsage.promoActive && pricingUsage.status !== 'active'">Activate your subscription to keep creating sales records.</p>
           </div>
 
           <div class="usage-tile">
             <div class="usage-count">
               <strong>{{ pricingUsage.usageCount }}</strong>
-              <span>/ {{ pricingUsage.monthlyLimit === null ? 'Unlimited' : pricingUsage.monthlyLimit }}</span>
-            </div>
-            <div class="billing-meter" *ngIf="pricingUsage.monthlyLimit !== null">
-              <div class="billing-meter-fill" [style.width.%]="pricingUsagePercent"></div>
+              <span>/ Unlimited</span>
             </div>
             <p>{{ pricingUsageSummary }}</p>
-            <small *ngIf="pricingUsage.recommendedPlan !== pricingUsage.plan">
-              Recommended tier: <strong>{{ pricingUsage.recommendedPlan | titlecase }}</strong>
-            </small>
           </div>
         </div>
       </section>
@@ -649,21 +643,6 @@ import { firstValueFrom } from 'rxjs';
       line-height: 1;
     }
 
-    .billing-meter {
-      height: 10px;
-      border-radius: 999px;
-      background: #e2e8f0;
-      overflow: hidden;
-      margin-top: 12px;
-    }
-
-    .billing-meter-fill {
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, var(--primary-color, #6366f1), #22c55e);
-      transition: width 0.2s ease;
-    }
-
     .settings-layout {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
@@ -1187,18 +1166,9 @@ export class SettingsComponent {
     return this.pricingUsage.status.replace('_', ' ');
   }
 
-  get pricingUsagePercent(): number {
-    if (!this.pricingUsage?.monthlyLimit) return 0;
-    return Math.min(100, Math.round((this.pricingUsage.usageCount / this.pricingUsage.monthlyLimit) * 100));
-  }
-
   get pricingUsageSummary(): string {
     if (!this.pricingUsage) return '';
-    if (this.pricingUsage.monthlyLimit === null) return 'Unlimited records available.';
-    if (this.pricingUsage.overageCount > 0) {
-      return `${this.pricingUsage.overageCount} records over this plan range. Sales are still allowed.`;
-    }
-    return `${this.pricingUsage.remaining} records before this plan range is exceeded.`;
+    return 'Unlimited sales records. Your price stays GHS 70 per month.';
   }
 
   get currentUserDisplayName(): string {
@@ -1264,7 +1234,7 @@ export class SettingsComponent {
         this.loadingPricing = false;
       },
       error: err => {
-        this.pricingError = err?.message || 'Could not load plan usage.';
+        this.pricingError = err?.message || 'Could not load subscription details.';
         this.loadingPricing = false;
       }
     });

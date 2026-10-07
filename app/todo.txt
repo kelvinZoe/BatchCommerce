@@ -94,12 +94,13 @@ Here’s the TODO list I’d use, in the order we should tackle it:
 - [done] Run `supabase/migrations/20260629120000_enforce_single_owner_shop.sql` against the live project.
 - [done] Implement pricing model foundation: shop plan/promo fields, monthly sales-record usage, Settings usage card, and order/stock-sale creation guards.
 - [manual] Run `supabase/migrations/20260629124500_add_pricing_plan_usage.sql` against the live project.
-- [done] Allow paid overages and update bands to Starter 0-40, Growth 41-120, Pro 121+.
+- [done] Retire Starter/Growth/Pro and replace them with one unlimited GHS 70 monthly subscription.
+- [manual] Run `supabase/migrations/20260904130000_flat_monthly_subscription.sql` against the live project.
 - [manual] Run `supabase/migrations/20260629130000_allow_pricing_overages.sql` against the live project.
-- [done] Add a dedicated Subscription status page for plan, promo, usage, overage, and recommended tier visibility.
+- [done] Add a dedicated Subscription status page for flat price, promo, subscription status, and informational usage visibility.
 - [done] Add promo-code redemption foundation: promo code tables, one-use-per-shop redemption tracking, guarded RPC, and `/subscription` apply-code UI.
 - [manual] Run `supabase/migrations/20260630090000_add_promo_codes.sql` against the live project.
-- [backlog] Add payment collection/admin plan-management flow for activating paid plans after the promo.
+- [backlog] Add payment collection/admin subscription-management flow for activating the GHS 70 subscription after the promo.
 - [backlog] Add platform/admin promo-code management UI when we introduce a secure owner/admin surface for campaign creation.
 - [manual] Smoke test: register, bootstrap shop, create batch, add product, create client, create order, close batch.
 - [manual] Smoke test: buying list to arrivals to tracking to shipping to ledger to delivery.
@@ -126,7 +127,7 @@ Here’s the TODO list I’d use, in the order we should tackle it:
 - [done] Extract first `BatchDataService` slice for batch list/detail/create/update/open/close/delete and RPC-first cascade deletion.
 - [done] Extract `ProductDataService` for product/catalog CRUD, batch-product CRUD, price-impact preview, recalculation, and RPC-first product cascade deletion.
 - [done] Extract `StockSaleDataService` for stock availability reads, stock-sale paging/detail, RPC-first create/update/cancel/delete, close/finalize, and scoped stock fallback adjustments.
-- [done] Extract `PricingDataService` for plan bands, promo-code redemption, monthly sales-record usage, recommended tier, and create-record guards.
+- [done] Extract `PricingDataService` for flat subscription pricing, promo-code redemption, informational monthly sales-record usage, and create-record guards.
 - [done] Extract `DashboardDataService` for dashboard data loading and remove direct Supabase table access from the dashboard page.
 - [done] Extract `OrderDataService` for order reads, batch paging/search, order/item mutations, batch preview stats, and pricing-guarded order creation.
 - [done] Extract `ShippingDataService` for shipping queue/ledger reads, fee updates/totals, damage-aware queue paging, client shipping totals/items, and payment saves.

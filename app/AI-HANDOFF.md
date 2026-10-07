@@ -140,7 +140,7 @@ Phase 9 quality remediation has started:
 - `src/app/services/batch-data.service.ts` is the first Phase 9 domain extraction behind the `DatabaseService` facade. It owns batch list/detail/create/update/open/close/delete plus RPC-first cascade deletion; workflow-heavy buying/arrivals/shipping helpers still live in `DatabaseService` for now.
 - `src/app/services/product-data.service.ts` is the second Phase 9 extraction behind the facade. It owns product/catalog CRUD, batch-product CRUD, product cascade delete, price-impact preview, and batch-product price recalculation.
 - `src/app/services/stock-sale-data.service.ts` is the third Phase 9 extraction behind the facade. It owns stock availability reads, stock-sale paging/detail, RPC-first stock-sale create/update/cancel/delete, close/finalize, and scoped stock-adjustment compatibility fallbacks. `DatabaseService.createStockSale()` still runs the pricing/promo guard before delegating.
-- `src/app/services/pricing-data.service.ts` is the fourth Phase 9 extraction behind the facade. It owns pricing bands, promo-code redemption, monthly sales-record usage, recommended tier calculation, and create-record guard checks used by preorder orders and stock sales.
+- `src/app/services/pricing-data.service.ts` is the fourth Phase 9 extraction behind the facade. It owns the flat GHS 70 monthly subscription, promo-code redemption, informational monthly sales-record usage, and create-record guard checks used by preorder orders and stock sales.
 - `src/app/services/dashboard-data.service.ts` is the fifth Phase 9 extraction. It owns the dashboard data-loading bundle and removes direct Supabase table access from `dashboard.component.ts`; the page still owns visual metric calculations for now.
 - `src/app/services/order-data.service.ts` is the sixth Phase 9 extraction behind the facade. It owns order reads, batch paging/search, order/item mutations, batch preview stats, and pricing-guarded order creation. `DatabaseService` still keeps the broader order-to-buying workflow transition code for a later workflow/shipping extraction.
 - `src/app/services/shipping-data.service.ts` is the seventh Phase 9 extraction behind the facade. It owns Shipping/Shipping Ledger data reads, queue paging with damage enrichment, fee summaries/totals, client shipping item reads, and client payment saves.
@@ -159,14 +159,14 @@ Phase 9 quality remediation has started:
 Pricing model foundation is now implemented in code:
 
 - `supabase/migrations/20260629124500_add_pricing_plan_usage.sql` adds shop plan/promo fields and DB triggers for monthly sales-record checks.
-- `supabase/migrations/20260629130000_allow_pricing_overages.sql` changes paid tier limits into billing bands: Starter 0-40, Growth 41-120, Pro 121+, with active paid shops allowed to create overages.
+- `supabase/migrations/20260904130000_flat_monthly_subscription.sql` retires Starter/Growth/Pro, normalizes shops to the `standard` compatibility marker, disables promo plan overrides, and gives every active shop unlimited access for GHS 70 per month.
 - `supabase/migrations/20260630090000_add_promo_codes.sql` adds platform promo codes, one-use-per-shop redemption tracking, and the guarded `redeem_shop_promo_code` RPC.
 - A monthly sales record means one `orders` row or one `stock_sales` row.
-- `DatabaseService.getPricingUsage()` computes current monthly usage, promo status, remaining records, and recommended tier.
+- `DatabaseService.getPricingUsage()` computes informational monthly usage and promo/subscription status. Usage never changes the GHS 70 price or access level.
 - `DatabaseService.redeemPromoCode()` applies promo codes through the RPC, then `/subscription` refreshes usage after a successful redemption.
-- New preorder orders and new stock sales are guarded in the service layer before insert; Supabase triggers require promo/active status server-side but no longer block paid overages.
-- Settings shows a read-only Plan & Usage card.
-- `/subscription` is a dedicated subscription-status page that reuses the `settings` route permission and shows promo status, current band, monthly usage, overages, promo-code redemption, and next action guidance.
+- New preorder orders and new stock sales are guarded in the service layer before insert; Supabase triggers require promo/active status server-side, and every active paid shop has unlimited sales-record access.
+- Settings shows a read-only Subscription & Usage card for the flat price, status, promo expiry, and informational usage.
+- `/subscription` is a dedicated subscription-status page that reuses the `settings` route permission and shows the GHS 70 price, unlimited access, promo status, monthly usage, promo-code redemption, and next action guidance.
 - Remaining pricing work is payment collection/admin plan-management so a shop can become `active` after promo expiry, plus a secure platform/admin promo-code creation UI if campaign management should happen inside the app.
 
 ## Important Decisions Already Made

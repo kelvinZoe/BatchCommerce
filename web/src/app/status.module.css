@@ -1,0 +1,58 @@
+.page {
+  min-height: 100svh;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  text-align: center;
+  background: #fbf8ef;
+  color: #365653;
+}
+
+.page h1,
+.page p {
+  margin: 0;
+}
+
+.page h1 {
+  color: #102d2a;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 6vw, 4rem);
+  font-weight: 400;
+}
+
+.page a,
+.action {
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 10px;
+  background: #103c37;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.code {
+  color: #b47716;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spinner {
+  width: 1.4rem;
+  height: 1.4rem;
+  border: 2px solid rgb(16 60 55 / 22%);
+  border-top-color: #103c37;
+  border-radius: 50%;
+  animation: spin 650ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
