@@ -9,6 +9,7 @@ import {
   resolveWorkspaceForUser
 } from "@/lib/auth/session";
 import type { AuthActionState } from "@/lib/auth/types";
+import { getClientIp } from "@/lib/security/client-ip";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { loginSchema, updatePasswordSchema } from "../schemas/auth";
 import { resolveSignInIdentity } from "./identifier";
@@ -31,14 +32,23 @@ export async function signInAction(
   }
 
   const requestHeaders = await headers();
-  const clientKey =
-    requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    requestHeaders.get("x-real-ip") ||
-    "unknown";
-  const rateLimit = checkRateLimit(`sign-in:${clientKey}`, {
-    limit: 10,
-    windowMs: 15 * 60 * 1_000
-  });
+  const clientKey = getClientIp(requestHeaders);
+  let rateLimit;
+  try {
+    rateLimit = await checkRateLimit("sign-in", clientKey, {
+      limit: 10,
+      windowMs: 15 * 60 * 1_000
+    });
+  } catch (error) {
+    console.error("Sign-in rate-limit check failed", {
+      error: error instanceof Error ? error.message : "Unknown rate-limit error"
+    });
+    return {
+      status: "error",
+      message: "Sign-in is temporarily unavailable. Please try again.",
+      fields: { identifier: parsed.data.identifier }
+    };
+  }
   if (!rateLimit.allowed) {
     return {
       status: "error",

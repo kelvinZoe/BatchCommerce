@@ -125,7 +125,7 @@ async function createLiveTestContext(label, overrides = {}) {
           name: `Live Test ${token}`,
           slug: token,
           owner_device_id: `device-${token}`,
-          subscription_plan: overrides.subscriptionPlan || 'starter',
+          subscription_plan: 'standard',
           subscription_status: overrides.subscriptionStatus || 'active',
           promo_started_at: overrides.promoStartedAt || new Date().toISOString(),
           promo_ends_at: overrides.promoEndsAt || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
@@ -271,8 +271,7 @@ test('live Supabase test project accepts anon client initialization', { skip: di
 
 test('live promo-code redemption updates shop promo state once per shop', { skip: disabledReason }, async () => {
   const context = await createLiveTestContext('promo-redemption', {
-    subscriptionStatus: 'promo',
-    subscriptionPlan: 'starter'
+    subscriptionStatus: 'promo'
   });
 
   try {
@@ -284,7 +283,6 @@ test('live promo-code redemption updates shop promo state once per shop', { skip
           description: 'Live integration promo',
           extra_promo_days: 10,
           discount_percent: 25,
-          plan_override: 'growth',
           max_redemptions: 1
         })
         .select('id, code')
@@ -302,7 +300,7 @@ test('live promo-code redemption updates shop promo state once per shop', { skip
     );
 
     assert.equal(redemption.length, 1);
-    assert.equal(redemption[0].plan_override, 'growth');
+    assert.equal(redemption[0].plan_override, null);
     assert.equal(redemption[0].extra_promo_days, 10);
 
     const updatedShop = expectNoError(
@@ -314,7 +312,7 @@ test('live promo-code redemption updates shop promo state once per shop', { skip
       'read updated promo shop'
     );
 
-    assert.equal(updatedShop.subscription_plan, 'growth');
+    assert.equal(updatedShop.subscription_plan, 'standard');
     assert.equal(updatedShop.subscription_status, 'promo');
     assert.ok(new Date(updatedShop.promo_ends_at) > new Date(context.shop.promo_ends_at));
 
@@ -333,7 +331,6 @@ test('live promo-code redemption updates shop promo state once per shop', { skip
 test('live pricing guard blocks expired promo shops but allows active paid sales records', { skip: disabledReason }, async () => {
   const context = await createLiveTestContext('pricing-guard', {
     subscriptionStatus: 'promo',
-    subscriptionPlan: 'starter',
     promoEndsAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   });
 
@@ -365,14 +362,14 @@ test('live pricing guard blocks expired promo shops but allows active paid sales
       .single();
 
     assert.notEqual(blockedOrder.error, null, 'expired promo shop should be blocked from creating sales records');
-    assert.match(blockedOrder.error.message, /promo has ended|activate a paid plan/i);
+    assert.match(blockedOrder.error.message, /promo has ended|GHS 70 monthly subscription/i);
 
     expectNoError(
       await context.admin
         .from('shops')
         .update({
           subscription_status: 'active',
-          subscription_plan: 'starter'
+          subscription_plan: 'standard'
         })
         .eq('id', context.shop.id),
       'activate test shop'

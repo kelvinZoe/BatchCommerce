@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "db:types": "node scripts/generate-database-types.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

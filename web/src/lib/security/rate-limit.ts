@@ -1,4 +1,8 @@
-type RateLimitRecord = { count: number; resetAt: number };
+import "server-only";
+
+import { createHmac } from "node:crypto";
+import { getServerEnvironment } from "@/lib/env/server";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 export type RateLimitResult = {
   allowed: boolean;
@@ -6,33 +10,84 @@ export type RateLimitResult = {
   retryAfterSeconds: number;
 };
 
-const records = new Map<string, RateLimitRecord>();
-
-export function checkRateLimit(
-  key: string,
-  options: { limit: number; windowMs: number; now?: number }
-): RateLimitResult {
-  const now = options.now ?? Date.now();
-  if (records.size > 10_000) {
-    for (const [recordKey, value] of records) {
-      if (value.resetAt <= now) records.delete(recordKey);
-    }
+export class RateLimitUnavailableError extends Error {
+  constructor(message = "The shared rate limiter is unavailable.") {
+    super(message);
+    this.name = "RateLimitUnavailableError";
   }
-  const existing = records.get(key);
-  const record = !existing || existing.resetAt <= now
-    ? { count: 0, resetAt: now + options.windowMs }
-    : existing;
-
-  record.count += 1;
-  records.set(key, record);
-
-  return {
-    allowed: record.count <= options.limit,
-    remaining: Math.max(0, options.limit - record.count),
-    retryAfterSeconds: Math.max(1, Math.ceil((record.resetAt - now) / 1000))
-  };
 }
 
-export function resetRateLimitsForTesting() {
-  records.clear();
+export function hashRateLimitIdentifier(
+  secret: string,
+  scope: string,
+  identifier: string
+): string {
+  return createHmac("sha256", secret)
+    .update(scope)
+    .update("\0")
+    .update(identifier)
+    .digest("hex");
+}
+
+export async function checkRateLimit(
+  scope: string,
+  identifier: string,
+  options: { limit: number; windowMs: number }
+): Promise<RateLimitResult> {
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(scope)) {
+    throw new TypeError("Rate-limit scope is invalid.");
+  }
+  if (!identifier) {
+    throw new TypeError("Rate-limit identifier is required.");
+  }
+  if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 1_000) {
+    throw new TypeError("Rate-limit request limit is invalid.");
+  }
+  if (
+    !Number.isInteger(options.windowMs) ||
+    options.windowMs < 1_000 ||
+    options.windowMs > 24 * 60 * 60 * 1_000
+  ) {
+    throw new TypeError("Rate-limit window is invalid.");
+  }
+
+  const environment = getServerEnvironment();
+  const keyHash = hashRateLimitIdentifier(
+    environment.RATE_LIMIT_HMAC_SECRET,
+    scope,
+    identifier
+  );
+
+  const { data, error } = await createAdminSupabaseClient().rpc(
+    "consume_request_rate_limit",
+    {
+      p_scope: scope,
+      p_key_hash: keyHash,
+      p_limit: options.limit,
+      p_window_seconds: Math.ceil(options.windowMs / 1_000)
+    }
+  );
+
+  const result = data?.[0];
+  if (
+    error ||
+    !result ||
+    typeof result.allowed !== "boolean" ||
+    !Number.isInteger(result.remaining) ||
+    !Number.isInteger(result.retry_after_seconds)
+  ) {
+    if (error) {
+      console.error("Shared rate limiter RPC failed", {
+        scope,
+        error: error.message
+      });
+    }
+    throw new RateLimitUnavailableError();
+  }
+
+  return {
+    allowed: result.allowed,
+    remaining: Math.max(0, result.remaining),
+    retryAfterSeconds: Math.max(1, result.retry_after_seconds)
+  };
 }

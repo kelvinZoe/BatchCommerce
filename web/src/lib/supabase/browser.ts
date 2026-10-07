@@ -9,6 +9,11 @@ export function createBrowserSupabaseClient() {
 
   return createBrowserClient<Database>(
     environment.NEXT_PUBLIC_SUPABASE_URL,
-    environment.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    environment.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    {
+      auth: {
+        detectSessionInUrl: false
+      }
+    }
   );
 }

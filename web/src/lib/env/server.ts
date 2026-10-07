@@ -11,6 +11,7 @@ export function getServerEnvironment(): ServerEnvironment {
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
+    RATE_LIMIT_HMAC_SECRET: process.env.RATE_LIMIT_HMAC_SECRET,
     EMAIL_LOGO_URL: process.env.EMAIL_LOGO_URL,
     APP_BASE_URL: process.env.APP_BASE_URL
   });

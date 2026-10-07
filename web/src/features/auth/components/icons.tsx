@@ -22,3 +22,5 @@ export const CheckIcon = (props: IconProps) => <Icon {...props}><circle cx="12" 
 export const AlertIcon = (props: IconProps) => <Icon {...props}><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 17h.01" /></Icon>;
 export const KeyIcon = (props: IconProps) => <Icon {...props}><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8M16 7l2 2M14 9l2 2" /></Icon>;
 export const LogoutIcon = (props: IconProps) => <Icon {...props}><path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9" /></Icon>;
+export const PhoneIcon = (props: IconProps) => <Icon {...props}><path d="M7 3H4.5A1.5 1.5 0 0 0 3 4.5C3 13.6 10.4 21 19.5 21a1.5 1.5 0 0 0 1.5-1.5V17l-4-1-1.2 2.1a15 15 0 0 1-9.9-9.9L8 7 7 3Z" /></Icon>;
+export const StoreIcon = (props: IconProps) => <Icon {...props}><path d="M4 10v10h16V10M3 10l2-6h14l2 6" /><path d="M3 10a3 3 0 0 0 5 2 3 3 0 0 0 4 0 3 3 0 0 0 4 0 3 3 0 0 0 5-2M9 20v-5h6v5" /></Icon>;

@@ -1,25 +1,30 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { passwordResetRequestSchema } from "@/features/auth/schemas/auth";
 import { sendPasswordResetEmail } from "@/features/auth/server/password-reset-email";
+import { getClientIp } from "@/lib/security/client-ip";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
 const GENERIC_MESSAGE = (email: string) =>
   `If an account exists for ${email}, a password reset link has been sent.`;
 
-function requestClientKey(request: NextRequest): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown"
-  );
-}
-
 export async function POST(request: NextRequest) {
   const requestId = crypto.randomUUID();
-  const limit = checkRateLimit(`password-reset:${requestClientKey(request)}`, {
-    limit: 5,
-    windowMs: 15 * 60 * 1_000
-  });
+  let limit;
+  try {
+    limit = await checkRateLimit("password-reset", getClientIp(request.headers), {
+      limit: 5,
+      windowMs: 15 * 60 * 1_000
+    });
+  } catch (error) {
+    console.error("Password-reset rate-limit check failed", {
+      requestId,
+      error: error instanceof Error ? error.message : "Unknown rate-limit error"
+    });
+    return NextResponse.json(
+      { error: "Password reset is temporarily unavailable. Please try again.", requestId },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 
   if (!limit.allowed) {
     return NextResponse.json(
@@ -41,7 +46,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const delivery = await sendPasswordResetEmail(parsed.data.email, request.nextUrl.origin);
+    const delivery = await sendPasswordResetEmail(
+      parsed.data.email,
+      `password-reset/${requestId}`
+    );
     console.info("Password reset email accepted by Resend", {
       requestId,
       providerMessageId: delivery.providerMessageId

@@ -662,22 +662,16 @@ export interface StockSaleItem {
   subtotal: number;
 }
 
-export type PricingPlanKey = 'starter' | 'growth' | 'pro';
 export type SubscriptionStatus = 'promo' | 'active' | 'past_due' | 'suspended' | 'cancelled';
 
 export interface PricingUsage {
-  plan: PricingPlanKey;
   status: SubscriptionStatus;
   priceGhs: number;
-  monthlyLimit: number | null;
   usageCount: number;
-  remaining: number | null;
-  overageCount: number;
   promoStartedAt: string | null;
   promoEndsAt: string | null;
   promoActive: boolean;
   canCreateSalesRecord: boolean;
-  recommendedPlan: PricingPlanKey;
   monthStart: string;
   monthEnd: string;
 }
@@ -687,7 +681,6 @@ export interface PromoCodeRedemptionResult {
   description: string | null;
   extraPromoDays: number;
   discountPercent: number | null;
-  planOverride: PricingPlanKey | null;
   promoEndsAt: string | null;
 }
 

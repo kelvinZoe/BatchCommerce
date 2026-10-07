@@ -38,7 +38,13 @@ export type WorkspaceContext = {
 export type AuthActionState = {
   status: "idle" | "error" | "success";
   message: string;
-  fields?: { identifier?: string; email?: string };
+  fields?: {
+    identifier?: string;
+    email?: string;
+    fullName?: string;
+    phone?: string;
+    shopName?: string;
+  };
 };
 
 export const INITIAL_AUTH_STATE: AuthActionState = { status: "idle", message: "" };

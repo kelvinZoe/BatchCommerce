@@ -3,15 +3,7 @@ import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { DatabaseService } from '../../services/database.service';
-import { PricingPlanKey, PricingUsage, PromoCodeRedemptionResult } from '../../models';
-
-interface PlanBand {
-  key: PricingPlanKey;
-  name: string;
-  price: number;
-  range: string;
-  description: string;
-}
+import { PricingUsage, PromoCodeRedemptionResult } from '../../models';
 
 @Component({
   selector: 'app-subscription',
@@ -26,7 +18,7 @@ interface PlanBand {
           <span class="sub-kicker">Subscription health</span>
           <h1>Know exactly where your shop stands.</h1>
           <p>
-            Track your promo, paid status, monthly sales records, and the plan band your current activity belongs to.
+            One simple subscription gives every shop the same complete BatchCommerce experience.
           </p>
         </div>
         <button class="sub-refresh" type="button" (click)="loadUsage()" [disabled]="loading">
@@ -51,9 +43,9 @@ interface PlanBand {
       <ng-container *ngIf="usage">
         <section class="sub-status-grid">
           <article class="sub-status-card primary">
-            <span class="sub-label">Current plan</span>
-            <strong>{{ usage.plan | titlecase }}</strong>
-            <p>GHS {{ usage.priceGhs }} / month</p>
+            <span class="sub-label">Monthly subscription</span>
+            <strong>GHS {{ usage.priceGhs }}</strong>
+            <p>One flat fee every month.</p>
           </article>
 
           <article class="sub-status-card">
@@ -63,9 +55,9 @@ interface PlanBand {
           </article>
 
           <article class="sub-status-card">
-            <span class="sub-label">Recommended band</span>
-            <strong>{{ usage.recommendedPlan | titlecase }}</strong>
-            <p>{{ recommendationMessage }}</p>
+            <span class="sub-label">Access</span>
+            <strong>All features</strong>
+            <p>Unlimited sales records for shops of every size.</p>
           </article>
         </section>
 
@@ -81,11 +73,10 @@ interface PlanBand {
             </div>
           </div>
 
-          <div class="sub-gauge" [style.--usage-angle]="usageAngle + 'deg'">
-            <div class="sub-gauge-inner">
-              <span>{{ usagePercentLabel }}</span>
-              <small>{{ usage.monthlyLimit === null ? 'Unlimited' : 'of band' }}</small>
-            </div>
+          <div class="sub-flat-mark">
+            <span class="material-icons">all_inclusive</span>
+            <strong>No limits</strong>
+            <small>Same monthly price</small>
           </div>
         </section>
 
@@ -93,7 +84,7 @@ interface PlanBand {
           <div class="sub-promo-copy">
             <span class="sub-kicker">Promo code</span>
             <h2>Add a promotion</h2>
-            <p>Apply a code to extend the promo window or record a billing discount for this shop.</p>
+            <p>Apply a code to extend the promo window or record a discount on the flat subscription.</p>
             <div class="sub-promo-message success" *ngIf="promoCodeSuccess">
               <span class="material-icons">check_circle</span>
               <span>{{ promoCodeSuccess }}</span>
@@ -118,24 +109,6 @@ interface PlanBand {
               {{ applyingPromoCode ? 'Applying' : 'Apply code' }}
             </button>
           </form>
-        </section>
-
-        <section class="sub-plan-row">
-          <article
-            *ngFor="let plan of planBands"
-            class="sub-plan-card"
-            [class.active]="plan.key === usage.plan"
-            [class.recommended]="plan.key === usage.recommendedPlan">
-            <div class="sub-plan-top">
-              <span class="material-icons">{{ planIcon(plan.key) }}</span>
-              <span *ngIf="plan.key === usage.plan">Current</span>
-              <span *ngIf="plan.key !== usage.plan && plan.key === usage.recommendedPlan">Recommended</span>
-            </div>
-            <h3>{{ plan.name }}</h3>
-            <strong>GHS {{ plan.price }}<small>/mo</small></strong>
-            <p>{{ plan.range }}</p>
-            <em>{{ plan.description }}</em>
-          </article>
         </section>
 
         <section class="sub-next-card">
@@ -276,8 +249,7 @@ interface PlanBand {
       cursor: default;
     }
 
-    .sub-status-grid,
-    .sub-plan-row {
+    .sub-status-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
@@ -285,7 +257,6 @@ interface PlanBand {
     }
 
     .sub-status-card,
-    .sub-plan-card,
     .sub-usage-shell,
     .sub-promo-card,
     .sub-next-card,
@@ -363,26 +334,23 @@ interface PlanBand {
       font-size: 14px;
     }
 
-    .sub-gauge {
+    .sub-flat-mark {
       width: 170px;
       height: 170px;
       border-radius: 50%;
       display: grid;
       place-items: center;
+      align-content: center;
+      gap: 4px;
       justify-self: end;
-      background:
-        conic-gradient(var(--sub-green) 0deg, var(--sub-amber) var(--usage-angle), rgba(23,32,51,0.1) var(--usage-angle) 360deg);
+      color: #fff;
+      background: linear-gradient(145deg, var(--sub-green), #115e59);
+      box-shadow: 0 18px 38px rgba(15, 118, 110, 0.2);
+      text-align: center;
     }
 
-    .sub-gauge-inner {
-      width: 114px;
-      height: 114px;
-      display: grid;
-      place-items: center;
-      align-content: center;
-      border-radius: 50%;
-      background: var(--sub-paper);
-      text-align: center;
+    .sub-flat-mark .material-icons {
+      font-size: 34px;
     }
 
     .sub-promo-card {
@@ -490,79 +458,19 @@ interface PlanBand {
       background: rgba(254, 226, 226, 0.8);
     }
 
-    .sub-gauge-inner span {
+    .sub-flat-mark strong {
       font-family: Georgia, 'Times New Roman', serif;
-      font-size: 28px;
+      font-size: 22px;
       font-weight: 900;
       letter-spacing: -0.05em;
     }
 
-    .sub-gauge-inner small {
-      color: var(--sub-muted);
+    .sub-flat-mark small {
+      color: rgba(255, 255, 255, 0.74);
       font-size: 11px;
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-    }
-
-    .sub-plan-card {
-      position: relative;
-      padding: 17px;
-      overflow: hidden;
-    }
-
-    .sub-plan-card.active {
-      border-color: rgba(15, 118, 110, 0.5);
-    }
-
-    .sub-plan-card.recommended:not(.active) {
-      border-color: rgba(199, 121, 19, 0.48);
-    }
-
-    .sub-plan-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 26px;
-      color: var(--sub-green);
-      font-size: 10px;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-      .sub-plan-top .material-icons {
-      font-size: 20px;
-    }
-
-    .sub-plan-card h3 {
-      margin: 16px 0 6px;
-      font-family: Georgia, 'Times New Roman', serif;
-      font-size: 22px;
-    }
-
-    .sub-plan-card strong {
-      display: block;
-      font-size: 19px;
-    }
-
-    .sub-plan-card strong small {
-      color: var(--sub-muted);
-      font-size: 12px;
-    }
-
-    .sub-plan-card p {
-      margin: 10px 0;
-      color: var(--sub-green);
-      font-size: 13px;
-      font-weight: 900;
-    }
-
-    .sub-plan-card em {
-      color: var(--sub-muted);
-      font-size: 12px;
-      line-height: 1.5;
-      font-style: normal;
     }
 
     .sub-next-card {
@@ -653,13 +561,12 @@ interface PlanBand {
 
     @media (max-width: 980px) {
       .sub-status-grid,
-      .sub-plan-row,
       .sub-usage-shell,
       .sub-promo-card {
         grid-template-columns: 1fr;
       }
 
-      .sub-gauge {
+      .sub-flat-mark {
         justify-self: center;
       }
     }
@@ -687,14 +594,9 @@ interface PlanBand {
         grid-template-columns: 1fr;
       }
 
-      .sub-gauge {
+      .sub-flat-mark {
         width: 150px;
         height: 150px;
-      }
-
-      .sub-gauge-inner {
-        width: 100px;
-        height: 100px;
       }
     }
   `]
@@ -707,12 +609,6 @@ export class SubscriptionComponent implements OnInit {
   promoCodeSuccess = '';
   promoCodeError = '';
   applyingPromoCode = false;
-
-  readonly planBands: PlanBand[] = [
-    { key: 'starter', name: 'Starter', price: 150, range: '0-40 sales records', description: 'A practical base for smaller preorder and stock-sale operations.' },
-    { key: 'growth', name: 'Growth', price: 200, range: '41-120 sales records', description: 'For active sellers with regular drops and more frequent in-stock sales.' },
-    { key: 'pro', name: 'Pro', price: 300, range: '121+ sales records', description: 'For higher-volume teams that need room to keep moving without friction.' }
-  ];
 
   constructor(private db: DatabaseService) {}
 
@@ -765,9 +661,6 @@ export class SubscriptionComponent implements OnInit {
     if (result.discountPercent !== null) {
       return `${result.code} applied. ${result.discountPercent}% discount saved for billing.`;
     }
-    if (result.planOverride) {
-      return `${result.code} applied. Plan band updated to ${result.planOverride}.`;
-    }
     return `${result.code} applied.`;
   }
 
@@ -783,38 +676,17 @@ export class SubscriptionComponent implements OnInit {
       return `Free promo ends ${new Date(this.usage.promoEndsAt || '').toLocaleDateString()}.`;
     }
     if (this.usage.status === 'active') return 'Paid subscription is active.';
-    return 'Activate a paid plan to keep creating sales records.';
-  }
-
-  get recommendationMessage(): string {
-    if (!this.usage) return '';
-    if (this.usage.recommendedPlan === this.usage.plan) return 'Your current plan matches this month’s activity.';
-    return `This month’s activity fits ${this.usage.recommendedPlan}.`;
+    return 'Activate your GHS 70 monthly subscription to keep creating sales records.';
   }
 
   get usageSummary(): string {
     if (!this.usage) return '';
-    if (this.usage.monthlyLimit === null) return 'You are in the Pro band with no upper usage ceiling.';
-    if (this.usage.overageCount > 0) {
-      return `${this.usage.overageCount} records over the ${this.usage.plan} band. Sales are still allowed; use this as an upgrade signal.`;
-    }
-    return `${this.usage.remaining} records remain before you exceed this plan band.`;
-  }
-
-  get usageAngle(): number {
-    if (!this.usage?.monthlyLimit) return 360;
-    return Math.min(360, Math.round((this.usage.usageCount / this.usage.monthlyLimit) * 360));
-  }
-
-  get usagePercentLabel(): string {
-    if (!this.usage?.monthlyLimit) return '∞';
-    return `${Math.min(999, Math.round((this.usage.usageCount / this.usage.monthlyLimit) * 100))}%`;
+    return 'Usage is shown for your records only. It does not change your GHS 70 monthly price.';
   }
 
   get nextActionTitle(): string {
     if (!this.usage) return 'Review subscription';
     if (!this.usage.promoActive && this.usage.status !== 'active') return 'Activate billing';
-    if (this.usage.recommendedPlan !== this.usage.plan) return `Move toward ${this.usage.recommendedPlan}`;
     return 'No action needed';
   }
 
@@ -823,15 +695,6 @@ export class SubscriptionComponent implements OnInit {
     if (!this.usage.promoActive && this.usage.status !== 'active') {
       return 'The shop can view data, but new orders and stock sales need an active paid subscription.';
     }
-    if (this.usage.recommendedPlan !== this.usage.plan) {
-      return 'Overages are allowed, but this recommendation helps keep billing aligned with real usage.';
-    }
-    return 'Your current plan, status, and monthly usage are aligned.';
-  }
-
-  planIcon(plan: PricingPlanKey): string {
-    if (plan === 'pro') return 'rocket_launch';
-    if (plan === 'growth') return 'trending_up';
-    return 'storefront';
+    return 'Your subscription has no usage tiers or feature limits.';
   }
 }

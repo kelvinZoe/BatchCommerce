@@ -20,24 +20,28 @@ function assertIncludesAll(source, values, label) {
   }
 }
 
-test('pricing bands stay aligned across app, migration, and pricing docs', () => {
+test('flat subscription pricing stays aligned across app, migration, reset schema, and docs', () => {
   const pricingService = read('app/src/app/services/pricing-data.service.ts');
-  const overageMigration = read('supabase/migrations/20260629130000_allow_pricing_overages.sql');
+  const flatPricingMigration = read('supabase/migrations/20260904130000_flat_monthly_subscription.sql');
+  const resetSchema = read('app/supabase-migration-multishop-reset.sql');
   const pricingDoc = read('PRICING_MODEL.md');
 
-  assert.match(pricingService, /starter:\s*\{\s*priceGhs:\s*150,\s*monthlyLimit:\s*40\s*\}/);
-  assert.match(pricingService, /growth:\s*\{\s*priceGhs:\s*200,\s*monthlyLimit:\s*120\s*\}/);
-  assert.match(pricingService, /pro:\s*\{\s*priceGhs:\s*300,\s*monthlyLimit:\s*null\s*\}/);
+  assert.match(pricingService, /monthlyPriceGhs\s*=\s*70/);
+  assert.doesNotMatch(pricingService, /monthlyLimit|recommendedPlan|overageCount/);
 
-  assert.match(overageMigration, /WHEN 'starter' THEN 40/);
-  assert.match(overageMigration, /WHEN 'growth' THEN 120/);
-  assert.match(overageMigration, /WHEN 'pro' THEN NULL/);
+  assertIncludesAll(flatPricingMigration, [
+    "subscription_plan = 'standard'",
+    "ALTER COLUMN subscription_plan SET DEFAULT 'standard'",
+    "CHECK (subscription_plan = 'standard')",
+    'CHECK (plan_override IS NULL)',
+    'GHS 70 monthly subscription',
+    'Every active paid shop has the same unlimited access'
+  ], 'flat-pricing migration');
 
-  assert.match(pricingDoc, /GHS 150 \/ month/);
-  assert.match(pricingDoc, /GHS 200 \/ month/);
-  assert.match(pricingDoc, /GHS 300 \/ month/);
-  assert.match(pricingDoc, /41 - 120 monthly sales records/);
-  assert.match(pricingDoc, /121\+ monthly sales records/);
+  assert.match(resetSchema, /subscription_plan TEXT NOT NULL DEFAULT 'standard' CHECK \(subscription_plan = 'standard'\)/);
+  assert.match(pricingDoc, /GHS 70 per month/);
+  assert.match(pricingDoc, /There are no Starter, Growth, Pro/);
+  assert.doesNotMatch(pricingDoc, /GHS (150|200|300)/);
 });
 
 test('promo-code redemption RPC keeps commercial guardrails', () => {
@@ -54,6 +58,39 @@ test('promo-code redemption RPC keeps commercial guardrails', () => {
     'REVOKE ALL ON FUNCTION public.redeem_shop_promo_code(UUID, TEXT) FROM PUBLIC',
     'GRANT EXECUTE ON FUNCTION public.redeem_shop_promo_code(UUID, TEXT) TO authenticated'
   ], 'promo-code migration');
+});
+
+test('promo-code redemption RPC qualifies columns that collide with output variables', () => {
+  const sql = read('supabase/migrations/20260904120000_fix_promo_redemption_ambiguity.sql');
+
+  assertIncludesAll(sql, [
+    'CREATE OR REPLACE FUNCTION public.redeem_shop_promo_code',
+    'FROM public.promo_codes AS pc',
+    'FROM public.shops AS s',
+    'UPDATE public.shops AS s',
+    'ELSE s.promo_ends_at',
+    'UPDATE public.promo_codes AS pc',
+    "NOTIFY pgrst, 'reload schema'"
+  ], 'promo-code ambiguity fix');
+});
+
+test('shared authentication rate limiter is atomic and service-role only', () => {
+  const sql = read('supabase/migrations/20260904140000_add_shared_request_rate_limits.sql');
+
+  assertIncludesAll(sql, [
+    'CREATE SCHEMA IF NOT EXISTS private',
+    'CREATE TABLE IF NOT EXISTS private.request_rate_limits',
+    'PRIMARY KEY (scope, key_hash)',
+    'ALTER TABLE private.request_rate_limits ENABLE ROW LEVEL SECURITY',
+    'REVOKE ALL ON SCHEMA private FROM PUBLIC, anon, authenticated',
+    'CREATE OR REPLACE FUNCTION public.consume_request_rate_limit',
+    'SECURITY INVOKER',
+    'ON CONFLICT (scope, key_hash) DO UPDATE',
+    'REVOKE ALL ON FUNCTION public.consume_request_rate_limit(TEXT, TEXT, INTEGER, INTEGER)',
+    'FROM PUBLIC, anon, authenticated, service_role',
+    'GRANT EXECUTE ON FUNCTION public.consume_request_rate_limit(TEXT, TEXT, INTEGER, INTEGER)',
+    'TO service_role'
+  ], 'shared rate-limit migration');
 });
 
 test('product delete cascade RPC is tenant guarded and deletes all dependent product rows transactionally', () => {

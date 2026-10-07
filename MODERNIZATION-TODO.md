@@ -58,21 +58,28 @@ This is the active roadmap for replacing the Angular client without duplicating 
 ## Phase 2: Authentication, tenancy, and permissions
 
 - [x] Implement login and logout with Supabase cookie sessions.
-- [ ] Implement registration through the managed server path.
+- [x] Implement registration through the managed server path.
 - [x] Implement callback exchange for PKCE, token-hash, and legacy fragment links. Registration-triggered verification email remains with registration.
+- [x] Ensure callback parameters are consumed once by disabling the browser client's automatic URL detection in favor of the explicit compatibility handler.
 - [x] Implement forgot-password and reset-password flows through Resend.
+- [x] Replace process-local auth throttling with service-role-only shared Supabase counters and HMAC-protected client identifiers.
+- [x] Roll back a newly created, unconfirmed Auth identity when Resend definitively rejects initial verification-email delivery.
+- [ ] Add a generic, rate-limited resend path for expired or accepted-but-undelivered verification messages.
+- [ ] Require confirmed Auth email and final membership eligibility inside `bootstrap_shop_workspace`, not only in the Server Action.
+- [ ] Bind password updates to a verified recovery intent and revoke all refresh sessions after a reset.
 - [ ] Implement phone verification where still required.
-- [ ] Implement first-owner workspace setup and the single-owner-shop guard.
+- [x] Implement first-owner workspace setup and the single-owner-shop guard.
 - [x] Resolve active shop membership on the server and revalidate the active-shop cookie.
 - [x] Protect the workspace layout and migrated resource routes.
 - [x] Centralize RBAC metadata and typed CRUD operation checks.
 - [ ] Prove that application RBAC and database RLS agree for all roles.
 - [ ] Preserve existing Supabase users and sessions through the cutover plan.
+- [ ] Resolve the first fully valid workspace when an Auth user has multiple membership candidates.
 - [x] Harden base membership/permission helpers against inactive shops and app-user profiles in a forward migration.
 
 ## Phase 3: Database boundary remediation
 
-- [ ] Generate TypeScript database types from the live migration schema.
+- [x] Generate TypeScript database types from the linked live schema and add a repeatable atomic generator.
 - [ ] Add typed query and command result contracts.
 - [ ] Move remaining direct component database access behind feature data modules.
 - [ ] Replace remaining `batch_name` relationship logic with `batch_id`.
@@ -135,6 +142,7 @@ Each item above must satisfy the shared feature definition of done. Complex work
 - [ ] Add Playwright authentication, tenancy, RBAC, and workflow suites.
 - [ ] Add CI gates for format, lint, typecheck, tests, production build, migration checks, and dependency audit.
 - [ ] Add preview and staging environments that cannot use production test credentials accidentally.
+- [x] Document the isolated second-project Vercel staging setup and explicit no-cutover rollback boundary.
 - [ ] Add frontend and server exception monitoring.
 - [ ] Add structured logs, correlation IDs, RPC error context, and slow-query monitoring.
 - [ ] Add Resend delivery webhook/log handling without exposing message secrets.

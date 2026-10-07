@@ -5,7 +5,8 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { INITIAL_AUTH_STATE } from "@/lib/auth/types";
 import { signInAction } from "../server/actions";
-import { AlertIcon, ArrowLeftIcon, ArrowRightIcon, CheckIcon, EyeIcon, EyeOffIcon, LockIcon, MailIcon, SendIcon, UserIcon } from "./icons";
+import { AlertIcon, ArrowLeftIcon, ArrowRightIcon, CheckIcon, MailIcon, SendIcon, UserIcon } from "./icons";
+import { PasswordField } from "./password-field";
 import styles from "./auth.module.css";
 
 function SignInButton() {
@@ -16,19 +17,6 @@ function SignInButton() {
       <span>{pending ? "Signing you in…" : "Sign in to BatchCommerce"}</span>
       {!pending ? <ArrowRightIcon /> : null}
     </button>
-  );
-}
-
-function PasswordField() {
-  const [visible, setVisible] = useState(false);
-  return (
-    <div className={styles.fieldControl}>
-      <LockIcon className={styles.leadingIcon} />
-      <input id="login-password" name="password" type={visible ? "text" : "password"} autoComplete="current-password" placeholder="Enter your password" required />
-      <button className={styles.passwordToggle} type="button" onClick={() => setVisible((value) => !value)} aria-label={visible ? "Hide password" : "Show password"} aria-pressed={visible}>
-        {visible ? <EyeOffIcon /> : <EyeIcon />}
-      </button>
-    </div>
   );
 }
 
@@ -125,7 +113,11 @@ export function LoginForm({ initialNotice }: Readonly<{ initialNotice?: string }
             <label htmlFor="login-password">Password</label>
             <button type="button" className={styles.textButton} onClick={() => setForgot(true)}>Forgot password?</button>
           </div>
-          <PasswordField />
+          <PasswordField
+            id="login-password"
+            autoComplete="current-password"
+            placeholder="Enter your password"
+          />
         </div>
         {state.status === "error" ? <div ref={errorRef} tabIndex={-1} className={`${styles.notice} ${styles.noticeError}`} role="alert"><AlertIcon /><span>{state.message}</span></div> : null}
         <SignInButton />

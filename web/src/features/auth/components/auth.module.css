@@ -263,6 +263,32 @@
 .primaryLink, .secondaryLink { min-height: 3.25rem; display: flex; align-items: center; justify-content: center; border-radius: 13px; font-weight: 600; text-decoration: none; }
 .primaryLink { color: #fff; background: var(--ink); }
 .secondaryLink { border: 1px solid var(--line); color: var(--teal-deep); background: rgb(255 255 255 / 60%); }
+.identityPanel {
+  margin: -0.55rem 0 1.5rem;
+  padding: 0.78rem 0.9rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  border: 1px solid #b7ddca;
+  border-radius: 12px;
+  color: #176748;
+  background: #eaf8f1;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.identityPanel svg { width: 1rem; height: 1rem; flex: 0 0 1rem; margin-top: 0.08rem; }
+.secondaryActionButton {
+  width: 100%;
+  min-height: 3.25rem;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  color: var(--teal-deep);
+  background: rgb(255 255 255 / 60%);
+  font-weight: 600;
+  cursor: pointer;
+}
+.secondaryActionButton:hover { border-color: var(--teal); background: #fff; }
 
 @keyframes reveal { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes float-in { from { opacity: 0; transform: translate(5%, 5%) rotate(3deg); } to { opacity: 0.42; transform: translate(0) rotate(0); } }

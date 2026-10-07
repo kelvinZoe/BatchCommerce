@@ -1,24 +1,10 @@
 import "server-only";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { getServerEnvironment } from "@/lib/env/server";
+import { escapeHtml, getEmailBranding, sendResendEmail } from "./email";
 
-export const SYSTEM_EMAIL_FROM = "BatchCommerce Support <support@pharma-uci.com>";
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-export async function sendPasswordResetEmail(email: string, requestOrigin: string) {
-  const environment = getServerEnvironment();
-  if (!environment.RESEND_API_KEY) throw new Error("Resend is not configured.");
-
-  const appBaseUrl = (environment.APP_BASE_URL || requestOrigin).replace(/\/$/, "");
+export async function sendPasswordResetEmail(email: string, idempotencyKey: string) {
+  const { appBaseUrl, logoUrl } = getEmailBranding();
   const redirectTo = `${appBaseUrl}/auth/callback?next=${encodeURIComponent("/reset-password")}`;
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin.auth.admin.generateLink({
@@ -32,7 +18,6 @@ export async function sendPasswordResetEmail(email: string, requestOrigin: strin
   }
 
   const link = data.properties.action_link;
-  const logoUrl = environment.EMAIL_LOGO_URL || `${appBaseUrl}/assets/BatchCommerce.png`;
   const safeLink = escapeHtml(link);
   const safeLogoUrl = escapeHtml(logoUrl);
   const text = [
@@ -56,27 +41,11 @@ export async function sendPasswordResetEmail(email: string, requestOrigin: strin
       </div>
     </div>`;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${environment.RESEND_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from: SYSTEM_EMAIL_FROM,
-      to: [email],
-      subject: "Reset your BatchCommerce password",
-      text,
-      html
-    }),
-    cache: "no-store"
+  return sendResendEmail({
+    to: email,
+    subject: "Reset your BatchCommerce password",
+    text,
+    html,
+    idempotencyKey
   });
-
-  if (!response.ok) {
-    const providerMessage = await response.text().catch(() => "");
-    throw new Error(`Resend rejected password reset email (${response.status}): ${providerMessage}`);
-  }
-
-  const providerResult = (await response.json().catch(() => ({}))) as { id?: string };
-  return { providerMessageId: providerResult.id || null };
 }

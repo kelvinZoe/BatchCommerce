@@ -46,7 +46,7 @@ The typed catalog in `src/lib/auth/resources.ts` is the Next.js source of truth.
 | `shipping-data.service` | shipping fees/payments, deliveries, batches, customers, damage allocations | Feature query/command modules |
 | `shipping-workflow.service` | arrival-to-shipping and paid-client-to-delivery transitions | Retain transactional RPCs |
 | `stock-sale-data.service` | stock sales/items/products | Pilot feature; retain all mutation RPCs |
-| `pricing-data.service` | plans, usage, orders, stock sales, promo redemption | Server pricing module; retain redemption RPC |
+| `pricing-data.service` | flat subscription, usage, orders, stock sales, promo redemption | Server subscription module; retain redemption RPC and GHS 70 flat-price rule |
 | `dashboard-data.service` | dashboard aggregates and damage allocations | Server-side read model |
 | `database.service` | cross-feature legacy facade | Remove incrementally; no equivalent catch-all in Next.js |
 | `supabase-data-access.service` | batches | Replace with the owning feature query module |

@@ -258,7 +258,7 @@ CREATE TABLE shops (
   name TEXT NOT NULL UNIQUE,
   slug TEXT NOT NULL UNIQUE,
   owner_device_id TEXT,
-  subscription_plan TEXT NOT NULL DEFAULT 'starter' CHECK (subscription_plan IN ('starter', 'growth', 'pro')),
+  subscription_plan TEXT NOT NULL DEFAULT 'standard' CHECK (subscription_plan = 'standard'),
   subscription_status TEXT NOT NULL DEFAULT 'promo' CHECK (subscription_status IN ('promo', 'active', 'past_due', 'suspended', 'cancelled')),
   promo_started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   promo_ends_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '2 months'),
@@ -773,19 +773,6 @@ ALTER TABLE stock_sales
   ADD CONSTRAINT stock_sales_status_check
   CHECK (status IN ('open', 'closed', 'cancelled'));
 
-CREATE OR REPLACE FUNCTION shop_plan_limit(p_plan TEXT)
-RETURNS INTEGER
-LANGUAGE sql
-IMMUTABLE
-AS $$
-  SELECT CASE p_plan
-    WHEN 'starter' THEN 40
-    WHEN 'growth' THEN 120
-    WHEN 'pro' THEN NULL
-    ELSE 40
-  END;
-$$;
-
 CREATE OR REPLACE FUNCTION monthly_sales_record_count(
   p_shop_id UUID,
   p_month_start TIMESTAMPTZ DEFAULT date_trunc('month', now())
@@ -842,11 +829,10 @@ BEGIN
   END IF;
 
   IF COALESCE(v_shop.subscription_status, 'promo') <> 'active' THEN
-    RAISE EXCEPTION 'Your 2-month promo has ended. Activate a paid plan to continue creating sales records.';
+    RAISE EXCEPTION 'Your 2-month promo has ended. Activate your GHS 70 monthly subscription to continue creating sales records.';
   END IF;
 
-  -- Paid active shops may create overages. The app reports overage usage
-  -- and recommends the next tier instead of blocking sales operations.
+  -- Every active paid shop has the same unlimited access, regardless of size.
   RETURN NEW;
 END;
 $$;

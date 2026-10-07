@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { loginSchema, passwordResetRequestSchema, updatePasswordSchema } from "./auth";
+import {
+  loginSchema,
+  passwordResetRequestSchema,
+  registrationSchema,
+  updatePasswordSchema,
+  workspaceBootstrapResultSchema,
+  workspaceSetupSchema
+} from "./auth";
 
 describe("auth schemas", () => {
   it("normalizes password reset email addresses", () => {
@@ -26,5 +33,39 @@ describe("auth schemas", () => {
       updatePasswordSchema.safeParse({ password: "password", confirmPassword: "different" })
         .success
     ).toBe(false);
+  });
+
+  it("normalizes Ghana phone numbers during registration", () => {
+    const result = registrationSchema.parse({
+      fullName: "Ama Mensah",
+      email: " AMA@EXAMPLE.COM ",
+      phone: "024 000 0000",
+      password: "secure-password"
+    });
+
+    expect(result.email).toBe("ama@example.com");
+    expect(result.phone).toBe("+233240000000");
+  });
+
+  it("rejects incomplete workspace setup details", () => {
+    expect(
+      workspaceSetupSchema.safeParse({ fullName: "A", phone: "123", shopName: "" }).success
+    ).toBe(false);
+  });
+
+  it("validates the workspace bootstrap RPC contract", () => {
+    expect(
+      workspaceBootstrapResultSchema.safeParse({
+        appUserId: 1,
+        shopId: "8bcbb7ff-8c6a-483f-b70e-f87801833649",
+        shopName: "Ama's Boutique",
+        shopSlug: "amas-boutique",
+        roleId: 1,
+        roleName: "Admin",
+        membershipId: 1,
+        username: "ama",
+        email: "ama@example.com"
+      }).success
+    ).toBe(true);
   });
 });
