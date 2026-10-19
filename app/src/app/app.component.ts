@@ -1,6 +1,17 @@
-import { Component } from '@angular/core';
-import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/router';
+import { Component, DestroyRef, inject } from '@angular/core';
+import {
+  NavigationCancel,
+  NavigationEnd,
+  NavigationError,
+  NavigationStart,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet
+} from '@angular/router';
 import { CommonModule } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { filter } from 'rxjs';
 import { AuthService } from './services/auth.service';
 import { ShopConfigService } from './services/shop-config.service';
 import { ThemeService } from './services/theme.service';
@@ -11,6 +22,22 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
   standalone: true,
   imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive],
   template: `
+    <div
+      class="route-progress"
+      [class.route-progress-visible]="routeProgressVisible"
+      [class.route-progress-finishing]="routeProgressFinishing"
+      role="progressbar"
+      aria-label="Loading page"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      [attr.aria-valuenow]="routeProgress"
+      [attr.aria-hidden]="!routeProgressVisible"
+    >
+      <span class="route-progress-bar" [style.transform]="'scaleX(' + routeProgress / 100 + ')'">
+        <span class="route-progress-glint"></span>
+      </span>
+    </div>
+
     <div class="app-container" *ngIf="authService.isLoggedIn && shopConfig.isConfigured && !isAuthScreenRoute; else loginView">
       <header class="mobile-topbar">
         <button class="mobile-menu-btn" type="button" (click)="toggleSidebar()" [attr.aria-expanded]="mobileSidebarOpen">
@@ -90,6 +117,53 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
     </ng-template>
   `,
   styles: [`
+    .route-progress {
+      position: fixed;
+      inset: 0 0 auto;
+      z-index: 10000;
+      height: 3px;
+      overflow: hidden;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+
+    .route-progress-visible {
+      opacity: 1;
+    }
+
+    .route-progress-bar {
+      position: absolute;
+      inset: 0;
+      transform: scaleX(0);
+      transform-origin: left center;
+      background: linear-gradient(90deg, #0f766e 0%, #14b8a6 64%, #f5b43c 100%);
+      box-shadow: 0 0 10px rgba(20, 184, 166, 0.65), 0 0 4px rgba(245, 180, 60, 0.75);
+      transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+
+    .route-progress-finishing .route-progress-bar {
+      transition-duration: 150ms;
+    }
+
+    .route-progress-glint {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 72px;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.92));
+      transform: skewX(-18deg);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .route-progress,
+      .route-progress-bar {
+        transition-duration: 1ms;
+      }
+    }
+
     .app-container {
       display: flex;
       min-height: 100vh;
@@ -418,6 +492,13 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
 export class AppComponent {
   title = 'Commerce';
   mobileSidebarOpen = false;
+  routeProgress = 0;
+  routeProgressVisible = false;
+  routeProgressFinishing = false;
+
+  private readonly destroyRef = inject(DestroyRef);
+  private progressInterval?: ReturnType<typeof setInterval>;
+  private progressHideTimer?: ReturnType<typeof setTimeout>;
 
   mainNav = MAIN_NAV_ITEMS;
   adminNav = ADMIN_NAV_ITEMS;
@@ -429,6 +510,69 @@ export class AppComponent {
     private themeService: ThemeService
   ) {
     this.themeService.applyTheme();
+
+    this.router.events
+      .pipe(
+        filter(event =>
+          event instanceof NavigationStart ||
+          event instanceof NavigationEnd ||
+          event instanceof NavigationCancel ||
+          event instanceof NavigationError
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(event => {
+        if (event instanceof NavigationStart) {
+          this.startRouteProgress();
+          return;
+        }
+
+        this.completeRouteProgress();
+      });
+
+    this.destroyRef.onDestroy(() => this.clearRouteProgressTimers());
+  }
+
+  private startRouteProgress(): void {
+    this.clearRouteProgressTimers();
+    this.routeProgressFinishing = false;
+    this.routeProgress = 10;
+    this.routeProgressVisible = true;
+
+    this.progressInterval = setInterval(() => {
+      const remaining = 92 - this.routeProgress;
+      this.routeProgress = Math.min(92, this.routeProgress + Math.max(1, remaining * 0.14));
+    }, 180);
+  }
+
+  private completeRouteProgress(): void {
+    if (!this.routeProgressVisible) return;
+
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = undefined;
+    }
+
+    this.routeProgressFinishing = true;
+    this.routeProgress = 100;
+    this.progressHideTimer = setTimeout(() => {
+      this.routeProgressVisible = false;
+      this.routeProgressFinishing = false;
+      this.routeProgress = 0;
+      this.progressHideTimer = undefined;
+    }, 220);
+  }
+
+  private clearRouteProgressTimers(): void {
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = undefined;
+    }
+
+    if (this.progressHideTimer) {
+      clearTimeout(this.progressHideTimer);
+      this.progressHideTimer = undefined;
+    }
   }
 
   get userInitial(): string {
