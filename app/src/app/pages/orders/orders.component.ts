@@ -829,6 +829,8 @@ import {
   `]
 })
 export class OrdersComponent implements OnInit {
+  private readonly whatsappUrlCharacterBudget = 1900;
+
   // ── Tab state ──
   activeTab: 'batches' | 'orders' = 'batches';
 
@@ -1638,6 +1640,79 @@ export class OrdersComponent implements OnInit {
     return '';
   }
 
+  private buildWhatsappReceiptText(baseUrl: string): string {
+    const fullReceipt = this.buildReceiptText();
+    if (!fullReceipt || this.whatsappUrlLength(baseUrl, fullReceipt) <= this.whatsappUrlCharacterBudget) {
+      return fullReceipt;
+    }
+
+    const receipt = this.savedOrderReceipt
+      ? {
+          orderId: this.savedOrderReceipt.orderId,
+          batchName: this.savedOrderReceipt.batchName,
+          items: this.savedOrderReceipt.items,
+          total: this.savedOrderReceipt.total
+        }
+      : this.viewingOrder
+        ? {
+            orderId: this.viewingOrder.id,
+            batchName: this.selectedBatch?.name || '',
+            items: this.viewingOrder.items || [],
+            total: this.viewingOrder.totalAmount || 0
+          }
+        : null;
+
+    if (!receipt) return '';
+
+    const shopName = this.truncateWhatsappValue(this.shopConfig.shopName, 80);
+    const batchName = this.truncateWhatsappValue(receipt.batchName, 80);
+
+    for (let visibleItemCount = receipt.items.length; visibleItemCount >= 0; visibleItemCount--) {
+      const visibleItems = receipt.items.slice(0, visibleItemCount).map(item =>
+        `• ${this.truncateWhatsappValue(item.productName, 80)} x${item.quantity} - GHS ${item.subtotal.toFixed(2)}`
+      );
+      const omittedItemCount = receipt.items.length - visibleItemCount;
+      if (omittedItemCount > 0) {
+        visibleItems.push(`• +${omittedItemCount} more item${omittedItemCount === 1 ? '' : 's'}`);
+      }
+
+      const compactReceipt = [
+        `Order confirmed - ${shopName}`,
+        `Order ID: #${receipt.orderId}`,
+        batchName ? `Batch: ${batchName}` : '',
+        '',
+        `Items:`,
+        ...visibleItems,
+        '',
+        `Total: GHS ${receipt.total.toFixed(2)}`,
+        '',
+        `We will contact you once your items arrive.`
+      ].filter((line, index, lines) => line !== '' || (index > 0 && lines[index - 1] !== '')).join('\n');
+
+      if (this.whatsappUrlLength(baseUrl, compactReceipt) <= this.whatsappUrlCharacterBudget) {
+        return compactReceipt;
+      }
+    }
+
+    return [
+      `Order #${receipt.orderId} confirmed.`,
+      `${receipt.items.length} item${receipt.items.length === 1 ? '' : 's'}`,
+      `Total: GHS ${receipt.total.toFixed(2)}`,
+      shopName
+    ].join('\n');
+  }
+
+  private whatsappUrlLength(baseUrl: string, message: string): number {
+    return `${baseUrl}?text=${encodeURIComponent(message)}`.length;
+  }
+
+  private truncateWhatsappValue(value: string | null | undefined, maxLength: number): string {
+    const normalized = (value || '').trim().replace(/\s+/g, ' ');
+    return normalized.length <= maxLength
+      ? normalized
+      : `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+  }
+
   copyReceipt() {
     navigator.clipboard.writeText(this.buildReceiptText()).then(() => {
       this.copySuccess = true;
@@ -1646,11 +1721,15 @@ export class OrdersComponent implements OnInit {
   }
 
   sendWhatsappReceipt() {
-    const phone = this.savedOrderReceipt
-      ? (this.savedOrderReceipt.clientPhone || '').replace(/\s+/g, '').replace(/^\+/, '')
-      : (this.viewingOrder?.clientPhone || '').replace(/\s+/g, '').replace(/^\+/, '');
-    const text = encodeURIComponent(this.buildReceiptText());
-    const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+    const rawPhone = this.savedOrderReceipt
+      ? this.savedOrderReceipt.clientPhone || ''
+      : this.viewingOrder?.clientPhone || '';
+    const phone = this.authService.normalizePhoneNumber(rawPhone).replace(/\D/g, '');
+    const baseUrl = phone ? `https://wa.me/${phone}` : `https://wa.me/`;
+    const text = encodeURIComponent(this.buildWhatsappReceiptText(baseUrl));
+    const url = `${baseUrl}?text=${text}`;
+    console.log('[Orders] WhatsApp receipt URL:', url);
+    console.log('[Orders] WhatsApp receipt URL length:', url.length);
     window.open(url, '_blank');
   }
 
