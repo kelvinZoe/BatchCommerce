@@ -13,6 +13,7 @@ export interface ShippingLedgerRow {
   clientId: number | null;
   clientName: string;
   clientPhone?: string | null;
+  clientWhatsappUsername?: string | null;
   batchName: string | null;
   totalFee: number;
   paidAmount: number;
@@ -541,7 +542,7 @@ export class ShippingDataService extends SupabaseDataAccessService {
     if (term) {
       const { data: clients } = await this.scopeShopQuery(
         this.sb.from('customers').select('id')
-      ).or(`name.ilike.%${term}%,whatsapp_number.ilike.%${term}%`);
+      ).or(`name.ilike.%${term}%,whatsapp_number.ilike.%${term}%,whatsapp_username.ilike.%${term}%`);
       clientIdsByName = (clients || []).map((client: any) => Number(client.id)).filter(Boolean);
     }
 
@@ -579,13 +580,15 @@ export class ShippingDataService extends SupabaseDataAccessService {
     if (clientIds.length === 0) return [];
 
     const { data: clientRows } = await this.scopeShopQuery(
-      this.sb.from('customers').select('id, name, whatsapp_number')
+      this.sb.from('customers').select('id, name, whatsapp_number, whatsapp_username')
     ).in('id', clientIds);
     const clientMap: Record<number, string> = {};
     const phoneMap: Record<number, string> = {};
+    const usernameMap: Record<number, string> = {};
     (clientRows || []).forEach((client: any) => {
       clientMap[client.id] = client.name;
       phoneMap[client.id] = client.whatsapp_number || '';
+      usernameMap[client.id] = client.whatsapp_username || '';
     });
 
     const { data: payments } = await this.scopeShopQuery(
@@ -626,6 +629,7 @@ export class ShippingDataService extends SupabaseDataAccessService {
         clientId: row.clientId,
         clientName: clientMap[row.clientId] || `Client ${row.clientId}`,
         clientPhone: phoneMap[row.clientId] || '',
+        clientWhatsappUsername: usernameMap[row.clientId] || '',
         batchId: row.batchId,
         batchName: row.batchName,
         totalFee,

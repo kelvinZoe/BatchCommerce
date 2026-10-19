@@ -23,7 +23,7 @@ export class ProductDataService extends SupabaseDataAccessService {
   getProductCatalog(): Observable<ProductCatalog[]> {
     return from(
       this.scopeTable('products')
-        .select('id, name, description, image_url, is_active, stock, created_at, updated_at')
+        .select('*')
         .order('name')
     ).pipe(map(({ data }) => rowsToCamel<ProductCatalog>(data || [])));
   }
@@ -99,7 +99,7 @@ export class ProductDataService extends SupabaseDataAccessService {
     const fromIndex = (page - 1) * pageSize;
     const toIndex = fromIndex + pageSize - 1;
     let query = this.scopeTable('products')
-      .select('id, name, description, image_url, is_active, stock, created_at, updated_at', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .order('name');
 
     if (searchTerm) {
@@ -126,6 +126,23 @@ export class ProductDataService extends SupabaseDataAccessService {
 
   deleteProductCatalog(productId: number): Observable<boolean> {
     return from(this.doDeleteProductCatalog(productId));
+  }
+
+  getOrderableProducts(batchId: number): Observable<BatchProduct[]> {
+    return from(this.doGetOrderableProducts(batchId));
+  }
+
+  ensureBatchProductForOrder(batchId: number, productId: number): Observable<BatchProduct> {
+    return from(
+      this.sb.rpc('ensure_batch_product_for_order', {
+        p_shop_id: this.requireActiveShopId(),
+        p_batch_id: batchId,
+        p_product_id: productId
+      })
+    ).pipe(map(({ data, error }) => {
+      if (error) throw error;
+      return toCamel(data) as BatchProduct;
+    }));
   }
 
   getBatchProducts(batchId: number): Observable<BatchProduct[]> {
@@ -268,6 +285,9 @@ export class ProductDataService extends SupabaseDataAccessService {
 
     const pricingRow = {
       ...baseRow,
+      preorder_price: product.preorderPrice || 0,
+      preorder_discount_min_qty: product.preorderDiscountMinQty || 0,
+      preorder_discount_price: product.preorderDiscountPrice || 0,
       stock_price: product.stockPrice || 0,
       stock_discount_min_qty: product.stockDiscountMinQty || 0,
       stock_discount_price: product.stockDiscountPrice || 0
@@ -280,6 +300,22 @@ export class ProductDataService extends SupabaseDataAccessService {
 
     if (!this.isMissingColumnOrTableError(withPricing.error)) {
       throw withPricing.error;
+    }
+
+    const legacyPricingRow = {
+      ...baseRow,
+      preorder_price: product.preorderPrice || 0,
+      stock_price: product.stockPrice || 0,
+      stock_discount_min_qty: product.stockDiscountMinQty || 0,
+      stock_discount_price: product.stockDiscountPrice || 0
+    };
+    const legacyPricing = await this.sb.from('products').insert(legacyPricingRow).select('id').single();
+    if (!legacyPricing.error) {
+      return legacyPricing.data?.id ?? 0;
+    }
+
+    if (!this.isMissingColumnOrTableError(legacyPricing.error)) {
+      throw legacyPricing.error;
     }
 
     const fallback = await this.sb.from('products').insert(baseRow).select('id').single();
@@ -302,6 +338,9 @@ export class ProductDataService extends SupabaseDataAccessService {
 
     const pricingRow = {
       ...baseRow,
+      preorder_price: product.preorderPrice || 0,
+      preorder_discount_min_qty: product.preorderDiscountMinQty || 0,
+      preorder_discount_price: product.preorderDiscountPrice || 0,
       stock_price: product.stockPrice || 0,
       stock_discount_min_qty: product.stockDiscountMinQty || 0,
       stock_discount_price: product.stockDiscountPrice || 0
@@ -316,8 +355,59 @@ export class ProductDataService extends SupabaseDataAccessService {
       return false;
     }
 
+    const legacyPricingRow = {
+      ...baseRow,
+      preorder_price: product.preorderPrice || 0,
+      stock_price: product.stockPrice || 0,
+      stock_discount_min_qty: product.stockDiscountMinQty || 0,
+      stock_discount_price: product.stockDiscountPrice || 0
+    };
+    const legacyPricing = await this.scopeShopQuery(this.sb.from('products').update(legacyPricingRow)).eq('id', productId);
+    if (!legacyPricing.error) {
+      return true;
+    }
+
+    if (!this.isMissingColumnOrTableError(legacyPricing.error)) {
+      return false;
+    }
+
     const fallback = await this.scopeShopQuery(this.sb.from('products').update(baseRow)).eq('id', productId);
     return !fallback.error;
+  }
+
+  private async doGetOrderableProducts(batchId: number): Promise<BatchProduct[]> {
+    const [{ data: productRows, error: productError }, { data: batchRows, error: batchError }] = await Promise.all([
+      this.scopeShopQuery(this.sb.from('products').select('*'))
+        .eq('is_active', true)
+        .order('name'),
+      this.scopeShopQuery(this.sb.from('batch_products').select('*'))
+        .eq('batch_id', batchId)
+    ]);
+
+    if (productError) throw productError;
+    if (batchError) throw batchError;
+
+    const batchProductByProductId = new Map<number, any>();
+    (batchRows || []).forEach((row: any) => batchProductByProductId.set(Number(row.product_id), row));
+
+    return (productRows || []).map((product: any) => {
+      const batchProduct = batchProductByProductId.get(Number(product.id));
+      return {
+        id: batchProduct?.id,
+        batchId,
+        productId: Number(product.id),
+        productName: product.name || '',
+        description: product.description || '',
+        imageUrl: product.image_url || '',
+        preorderPrice: Number(batchProduct?.preorder_price ?? product.preorder_price ?? 0),
+        preorderDiscountMinQty: Number(batchProduct?.preorder_discount_min_qty ?? product.preorder_discount_min_qty ?? 0),
+        preorderDiscountPrice: Number(batchProduct?.preorder_discount_price ?? product.preorder_discount_price ?? 0),
+        stockPrice: Number(batchProduct?.stock_price ?? product.stock_price ?? 0),
+        stockDiscountMinQty: Number(batchProduct?.stock_discount_min_qty ?? product.stock_discount_min_qty ?? 0),
+        stockDiscountPrice: Number(batchProduct?.stock_discount_price ?? product.stock_discount_price ?? 0),
+        inStockQty: Number(batchProduct?.in_stock_qty ?? product.stock ?? 0)
+      } as BatchProduct;
+    });
   }
 
   private async doDeleteProductCatalog(productId: number): Promise<boolean> {

@@ -437,6 +437,8 @@ CREATE TABLE products (
   stock INTEGER NOT NULL DEFAULT 0,
   purchase_price NUMERIC(12,2) NOT NULL DEFAULT 0,
   preorder_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  preorder_discount_min_qty INTEGER NOT NULL DEFAULT 0,
+  preorder_discount_price NUMERIC(12,2) NOT NULL DEFAULT 0,
   stock_price NUMERIC(12,2) NOT NULL DEFAULT 0,
   stock_discount_min_qty INTEGER NOT NULL DEFAULT 0,
   stock_discount_price NUMERIC(12,2) NOT NULL DEFAULT 0,
@@ -473,6 +475,7 @@ CREATE TABLE customers (
   name TEXT NOT NULL,
   phone TEXT DEFAULT '',
   whatsapp_number TEXT DEFAULT '',
+  whatsapp_username TEXT NOT NULL DEFAULT '',
   address TEXT DEFAULT '',
   notes TEXT DEFAULT '',
   created_by BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
@@ -1664,6 +1667,79 @@ CREATE POLICY "Authenticated can insert audit_log"
   ON audit_log
   FOR INSERT TO authenticated
   WITH CHECK (has_shop_membership(shop_id));
+
+-- Create a batch-product workflow row only when a catalogue product is first ordered.
+CREATE OR REPLACE FUNCTION ensure_batch_product_for_order(
+  p_shop_id UUID,
+  p_batch_id BIGINT,
+  p_product_id BIGINT
+)
+RETURNS batch_products
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  v_product products%ROWTYPE;
+  v_batch_product batch_products%ROWTYPE;
+BEGIN
+  IF NOT has_shop_membership(p_shop_id) THEN
+    RAISE EXCEPTION 'You do not have access to this shop.' USING ERRCODE = '42501';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM batches AS batch
+    WHERE batch.id = p_batch_id
+      AND batch.shop_id = p_shop_id
+      AND batch.status = 'open'
+  ) THEN
+    RAISE EXCEPTION 'The selected batch is unavailable or closed.' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT product.* INTO v_product
+  FROM products AS product
+  WHERE product.id = p_product_id
+    AND product.shop_id = p_shop_id
+    AND product.is_active = TRUE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'The selected product is unavailable.' USING ERRCODE = 'P0001';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_shop_id::TEXT || ':' || p_batch_id::TEXT || ':' || p_product_id::TEXT, 0)
+  );
+
+  SELECT batch_product.* INTO v_batch_product
+  FROM batch_products AS batch_product
+  WHERE batch_product.shop_id = p_shop_id
+    AND batch_product.batch_id = p_batch_id
+    AND batch_product.product_id = p_product_id
+  ORDER BY batch_product.id
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    RETURN v_batch_product;
+  END IF;
+
+  INSERT INTO batch_products (
+    shop_id, batch_id, product_id,
+    preorder_price, preorder_discount_min_qty, preorder_discount_price,
+    stock_price, stock_discount_min_qty, stock_discount_price, in_stock_qty
+  ) VALUES (
+    p_shop_id, p_batch_id, p_product_id,
+    v_product.preorder_price, v_product.preorder_discount_min_qty, v_product.preorder_discount_price,
+    v_product.stock_price, v_product.stock_discount_min_qty, v_product.stock_discount_price, v_product.stock
+  )
+  RETURNING * INTO v_batch_product;
+
+  RETURN v_batch_product;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION ensure_batch_product_for_order(UUID, BIGINT, BIGINT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION ensure_batch_product_for_order(UUID, BIGINT, BIGINT) TO authenticated;
 
 -- ============================================================
 -- END OF SCHEMA

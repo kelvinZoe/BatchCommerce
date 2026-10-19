@@ -398,7 +398,7 @@ interface PendingPriceUpdate {
       <!-- ══ ADD / EDIT PRODUCT CATALOG MODAL ══ -->
       <app-modal-shell
         *ngIf="showProductModal"
-        size="sm"
+        size="lg"
         [title]="editingProduct ? 'Edit Product' : 'Add Product'"
         [subtitle]="editingProduct ? 'Update product information' : 'Add a new product to your catalog'"
         [icon]="editingProduct ? 'edit_square' : 'add_business'"
@@ -422,6 +422,27 @@ interface PendingPriceUpdate {
             <label class="pp-label">Current Stock</label>
             <input class="pp-input" type="number" [(ngModel)]="productFormData.stock"
                    min="0" placeholder="0" (focus)="clearProductFieldIfZero('stock', $event)" />
+          </div>
+          <div class="pp-section-divider">
+            <span class="pp-section-label">Default Preorder Pricing</span>
+          </div>
+          <div class="pp-form-row">
+            <div class="pp-form-group">
+              <label class="pp-label">Preorder Price (GHS)</label>
+              <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="productFormData.preorderPrice" min="0" (focus)="clearProductFieldIfZero('preorderPrice', $event)" /></div>
+            </div>
+            <div class="pp-form-group">
+              <label class="pp-label">Discount from qty</label>
+              <input class="pp-input" type="number" [(ngModel)]="productFormData.preorderDiscountMinQty" min="0" placeholder="0 = no discount" (focus)="clearProductFieldIfZero('preorderDiscountMinQty', $event)" />
+            </div>
+            <div class="pp-form-group">
+              <label class="pp-label">Discount Price (GHS)</label>
+              <div class="pp-input-prefix"><span>GHS</span><input class="pp-input pp-input-prefixed" type="number" [(ngModel)]="productFormData.preorderDiscountPrice" min="0" (focus)="clearProductFieldIfZero('preorderDiscountPrice', $event)" /></div>
+            </div>
+            <div class="pp-discount-warning" *ngIf="productFormData.preorderDiscountPrice > productFormData.preorderPrice">
+              <span class="material-icons">warning</span>
+              <span>The preorder discount price cannot exceed the regular preorder price.</span>
+            </div>
           </div>
           <div class="pp-section-divider">
             <span class="pp-section-label">Available Stock Pricing</span>
@@ -1025,6 +1046,7 @@ export class ProductsComponent implements OnInit {
   }
 
   get productModalButtons(): ModalButtonConfig[] {
+    const preorderPriceInvalid = this.productFormData.preorderDiscountPrice > this.productFormData.preorderPrice;
     const stockPriceInvalid = this.productFormData.stockDiscountPrice > this.productFormData.stockPrice;
 
     return [
@@ -1033,7 +1055,7 @@ export class ProductsComponent implements OnInit {
         buttonName: this.editingProduct ? 'Update Product' : 'Add Product',
         color: 'base_color',
         action: 'confirm',
-        disabled: this.savingProduct || !this.productFormData.name.trim() || stockPriceInvalid,
+        disabled: this.savingProduct || !this.productFormData.name.trim() || preorderPriceInvalid || stockPriceInvalid,
         loading: this.savingProduct
       }
     ];
@@ -1114,6 +1136,9 @@ export class ProductsComponent implements OnInit {
     name: '',
     description: '',
     stock: 0,
+    preorderPrice: 0,
+    preorderDiscountMinQty: 0,
+    preorderDiscountPrice: 0,
     stockPrice: 0,
     stockDiscountMinQty: 0,
     stockDiscountPrice: 0
@@ -1903,6 +1928,9 @@ export class ProductsComponent implements OnInit {
         name: product.name,
         description: product.description || '',
         stock: product.stock || 0,
+        preorderPrice: product.preorderPrice || 0,
+        preorderDiscountMinQty: product.preorderDiscountMinQty || 0,
+        preorderDiscountPrice: product.preorderDiscountPrice || 0,
         stockPrice: product.stockPrice || 0,
         stockDiscountMinQty: product.stockDiscountMinQty || 0,
         stockDiscountPrice: product.stockDiscountPrice || 0
@@ -1912,6 +1940,9 @@ export class ProductsComponent implements OnInit {
         name: '',
         description: '',
         stock: 0,
+        preorderPrice: 0,
+        preorderDiscountMinQty: 0,
+        preorderDiscountPrice: 0,
         stockPrice: 0,
         stockDiscountMinQty: 0,
         stockDiscountPrice: 0
@@ -1927,6 +1958,9 @@ export class ProductsComponent implements OnInit {
       name: '',
       description: '',
       stock: 0,
+      preorderPrice: 0,
+      preorderDiscountMinQty: 0,
+      preorderDiscountPrice: 0,
       stockPrice: 0,
       stockDiscountMinQty: 0,
       stockDiscountPrice: 0
@@ -1960,6 +1994,9 @@ export class ProductsComponent implements OnInit {
       name: this.productFormData.name.trim(),
       description: this.productFormData.description || '',
       stock: this.productFormData.stock || 0,
+      preorderPrice: Number(this.productFormData.preorderPrice || 0),
+      preorderDiscountMinQty: Number(this.productFormData.preorderDiscountMinQty || 0),
+      preorderDiscountPrice: Number(this.productFormData.preorderDiscountPrice || 0),
       stockPrice: Number(this.productFormData.stockPrice || 0),
       stockDiscountMinQty: Number(this.productFormData.stockDiscountMinQty || 0),
       stockDiscountPrice: Number(this.productFormData.stockDiscountPrice || 0)

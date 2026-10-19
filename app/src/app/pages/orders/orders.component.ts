@@ -1,9 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
 import { ShopConfigService } from '../../services/shop-config.service';
+import { WhatsappLinkService } from '../../services/whatsapp-link.service';
 import {
   BatchListSectionComponent,
   BatchSectionBodyDirective,
@@ -360,10 +362,10 @@ import {
                   <app-searchable-select
                     [items]="batchProducts"
                     labelKey="productName"
-                    valueKey="id"
+                    valueKey="productId"
                     placeholder="Select product…"
                     searchPlaceholder="Type to search…"
-                    [(ngModel)]="item.batchProductId"
+                    [(ngModel)]="item.productId"
                     (ngModelChange)="onAddItemProductSelect(i, $event)">
                   </app-searchable-select>
                 </div>
@@ -437,6 +439,10 @@ import {
                   <input class="ord-input" type="text" [(ngModel)]="newClientForm.phone" placeholder="0XX XXX XXXX" />
                 </div>
               </div>
+              <div class="ord-form-group">
+                <label class="ord-label">WhatsApp Username <span class="ord-optional">(optional)</span></label>
+                <input class="ord-input" type="text" [(ngModel)]="newClientForm.whatsappUsername" placeholder="e.g. @customer.name" />
+              </div>
               <button class="ord-btn ord-btn-ghost ord-btn-sm" (click)="saveNewClient()" [disabled]="savingClient || !newClientForm.name.trim()">
                 <span *ngIf="savingClient" class="ord-spinner"></span>
                 Save Client
@@ -451,10 +457,10 @@ import {
                 <app-searchable-select
                   [items]="batchProducts"
                   labelKey="productName"
-                  valueKey="id"
+                  valueKey="productId"
                   placeholder="Select product…"
                   searchPlaceholder="Type to search…"
-                  [(ngModel)]="item.batchProductId"
+                  [(ngModel)]="item.productId"
                   (ngModelChange)="onItemProductSelect(i, $event)">
                 </app-searchable-select>
               </div>
@@ -879,6 +885,7 @@ export class OrdersComponent implements OnInit {
     orderId: number;
     clientName: string;
     clientPhone: string;
+    clientWhatsappUsername: string;
     batchName: string;
     items: { productName: string; quantity: number; unitPrice: number; subtotal: number }[];
     total: number;
@@ -904,7 +911,7 @@ export class OrdersComponent implements OnInit {
 
   // New client inline form
   showAddClientForm = false;
-  newClientForm = { name: '', phone: '' };
+  newClientForm = { name: '', phone: '', whatsappUsername: '' };
   savingClient = false;
 
   // Create order form
@@ -933,7 +940,8 @@ export class OrdersComponent implements OnInit {
   constructor(
     private dbService: DatabaseService,
     public authService: AuthService,
-    public shopConfig: ShopConfigService
+    public shopConfig: ShopConfigService,
+    private whatsappLinks: WhatsappLinkService
   ) {}
 
   ngOnInit() {
@@ -1302,7 +1310,7 @@ export class OrdersComponent implements OnInit {
   }
 
   loadBatchProducts(batchId: number) {
-    this.dbService.getBatchProducts(batchId).subscribe(products => {
+    this.dbService.getOrderableProducts(batchId).subscribe(products => {
       this.batchProducts = products;
     });
   }
@@ -1320,7 +1328,7 @@ export class OrdersComponent implements OnInit {
       items: [this.blankItem()]
     };
     this.showAddClientForm = false;
-    this.newClientForm = { name: '', phone: '' };
+    this.newClientForm = { name: '', phone: '', whatsappUsername: '' };
     this.showOrderModal = true;
   }
 
@@ -1356,10 +1364,11 @@ export class OrdersComponent implements OnInit {
     this.addItemsRows = [];
   }
 
-  onItemProductSelect(i: number, batchProductId: any) {
-    const bp = this.batchProducts.find(p => p.id === batchProductId);
+  onItemProductSelect(i: number, productId: any) {
+    const bp = this.batchProducts.find(p => p.productId === Number(productId));
     if (bp) {
       this.orderForm.items[i].productId = bp.productId;
+      this.orderForm.items[i].batchProductId = bp.id || null;
       this.orderForm.items[i].productName = bp.productName || '';
       this.recalcItem(i); // recalcItem will set the correct price tier
     }
@@ -1367,7 +1376,7 @@ export class OrdersComponent implements OnInit {
 
   recalcItem(i: number) {
     const item = this.orderForm.items[i];
-    const bp = this.batchProducts.find(p => p.id === item.batchProductId);
+    const bp = this.batchProducts.find(p => p.productId === item.productId);
     if (bp) {
       const discountActive = bp.preorderDiscountMinQty > 0 && item.quantity >= bp.preorderDiscountMinQty;
       item.unitPrice = discountActive ? (bp.preorderDiscountPrice || bp.preorderPrice) : (bp.preorderPrice || 0);
@@ -1377,7 +1386,7 @@ export class OrdersComponent implements OnInit {
 
   getDiscountInfo(i: number): { hasDiscount: boolean; active: boolean; minQty: number; price: number } | null {
     const item = this.orderForm.items[i];
-    const bp = this.batchProducts.find(p => p.id === item.batchProductId);
+    const bp = this.batchProducts.find(p => p.productId === item.productId);
     if (!bp || !bp.preorderDiscountMinQty) return null;
     return {
       hasDiscount: true,
@@ -1425,10 +1434,11 @@ export class OrdersComponent implements OnInit {
     }
   }
 
-  onAddItemProductSelect(i: number, batchProductId: any) {
-    const bp = this.batchProducts.find(p => p.id === batchProductId);
+  onAddItemProductSelect(i: number, productId: any) {
+    const bp = this.batchProducts.find(p => p.productId === Number(productId));
     if (bp) {
       this.addItemsRows[i].productId = bp.productId;
+      this.addItemsRows[i].batchProductId = bp.id || null;
       this.addItemsRows[i].productName = bp.productName || '';
       this.recalcAddItem(i);
     }
@@ -1436,7 +1446,7 @@ export class OrdersComponent implements OnInit {
 
   recalcAddItem(i: number) {
     const item = this.addItemsRows[i];
-    const bp = this.batchProducts.find(p => p.id === item.batchProductId);
+    const bp = this.batchProducts.find(p => p.productId === item.productId);
     if (bp) {
       const discountActive = bp.preorderDiscountMinQty > 0 && item.quantity >= bp.preorderDiscountMinQty;
       item.unitPrice = discountActive ? (bp.preorderDiscountPrice || bp.preorderPrice) : (bp.preorderPrice || 0);
@@ -1444,24 +1454,51 @@ export class OrdersComponent implements OnInit {
     item.subtotal = +(item.quantity * item.unitPrice).toFixed(2);
   }
 
-  saveAddedItems() {
+  private async attachBatchProductsToItems<T extends { productId: number | null; batchProductId: number | null }>(items: T[]): Promise<T[]> {
+    const batchId = this.selectedBatch?.id;
+    if (!batchId) throw new Error('Select a batch before adding products.');
+
+    const missingProductIds = Array.from(new Set(
+      items.filter(item => item.productId && !item.batchProductId).map(item => Number(item.productId))
+    ));
+
+    const ensuredRows = await Promise.all(
+      missingProductIds.map(productId => firstValueFrom(this.dbService.ensureBatchProductForOrder(batchId, productId)))
+    );
+    const ensuredByProductId = new Map(ensuredRows.map(row => [row.productId, row]));
+
+    for (const ensured of ensuredRows) {
+      const optionIndex = this.batchProducts.findIndex(option => option.productId === ensured.productId);
+      if (optionIndex >= 0) {
+        this.batchProducts[optionIndex] = { ...this.batchProducts[optionIndex], id: ensured.id };
+      }
+    }
+
+    return items.map(item => {
+      if (item.batchProductId) return item;
+      const ensured = ensuredByProductId.get(Number(item.productId));
+      if (!ensured?.id) throw new Error('A selected product could not be attached to this batch.');
+      return { ...item, batchProductId: ensured.id };
+    });
+  }
+
+  async saveAddedItems() {
     if (!this.viewingOrder?.id || this.savingAddItems) return;
     if (!this.canAddItemsToViewingOrder) return;
-    const validItems = this.addItemsRows.filter(i => i.productId);
+    let validItems = this.addItemsRows.filter(i => i.productId);
     if (!validItems.length) return;
     this.savingAddItems = true;
-    const orderId = this.viewingOrder.id!;
-    const saves = validItems.map(item =>
-      this.dbService.addOrderItem({
-        orderId,
-        productId: item.productId!,
-        batchProductId: item.batchProductId || undefined,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        subtotal: item.subtotal
-      }).toPromise()
-    );
-    Promise.all(saves).then(() => {
+    try {
+      validItems = await this.attachBatchProductsToItems(validItems);
+      const orderId = this.viewingOrder.id!;
+      await Promise.all(validItems.map(item => firstValueFrom(this.dbService.addOrderItem({
+          orderId,
+          productId: item.productId!,
+          batchProductId: item.batchProductId!,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal
+        }))));
       const newItems: any[] = validItems.map(i => ({
         productName: i.productName,
         quantity: i.quantity,
@@ -1478,15 +1515,30 @@ export class OrdersComponent implements OnInit {
       this.isAddingItemsToOrder = false;
       this.addItemsRows = [];
       this.loadOrders();
-    });
+    } catch (err: any) {
+      this.savingAddItems = false;
+      alert(err?.message || 'Failed to add products to this order.');
+    }
   }
 
-  saveOrder() {
+  async saveOrder() {
     if (!this.orderForm.clientId || this.savingOrder) return;
     if (!this.canCreateOrderInSelectedBatch) return;
     this.savingOrder = true;
 
-    const newItems = this.orderForm.items.filter(i => i.productId);
+    let newItems = this.orderForm.items.filter(i => i.productId);
+    if (!newItems.length) {
+      this.savingOrder = false;
+      alert('Add at least one product to the order.');
+      return;
+    }
+    try {
+      newItems = await this.attachBatchProductsToItems(newItems);
+    } catch (err: any) {
+      this.savingOrder = false;
+      alert(err?.message || 'Failed to prepare the selected products for this batch.');
+      return;
+    }
     const savedClient = this.clients.find(c => c.id === this.orderForm.clientId);
 
     // Check if this client already has an order in the selected batch
@@ -1531,7 +1583,8 @@ export class OrdersComponent implements OnInit {
           this.savedOrderReceipt = {
             orderId: existingOrder.id!,
             clientName: savedClient?.name || existingOrder.clientName || 'Customer',
-            clientPhone: savedClient?.phone || (savedClient as any)?.whatsappNumber || existingOrder.clientPhone || '',
+            clientPhone: savedClient?.whatsappNumber || savedClient?.phone || existingOrder.clientPhone || '',
+            clientWhatsappUsername: savedClient?.whatsappUsername || existingOrder.clientWhatsappUsername || '',
             batchName: this.selectedBatch?.name || '',
             items: mergedItems.map(i => ({ productName: (i as any).productName || '', quantity: i.quantity, unitPrice: i.unitPrice, subtotal: i.subtotal })),
             total: mergedItems.reduce((s, i) => s + (i.subtotal || 0), 0),
@@ -1569,7 +1622,8 @@ export class OrdersComponent implements OnInit {
               this.savedOrderReceipt = {
                 orderId,
                 clientName: savedClient?.name || 'Customer',
-                clientPhone: savedClient?.phone || (savedClient as any)?.whatsappNumber || '',
+                clientPhone: savedClient?.whatsappNumber || savedClient?.phone || '',
+                clientWhatsappUsername: savedClient?.whatsappUsername || '',
                 batchName: this.selectedBatch?.name || '',
                 items: savedItems,
                 total: order.totalAmount || 0,
@@ -1724,13 +1778,27 @@ export class OrdersComponent implements OnInit {
     const rawPhone = this.savedOrderReceipt
       ? this.savedOrderReceipt.clientPhone || ''
       : this.viewingOrder?.clientPhone || '';
-    const phone = this.authService.normalizePhoneNumber(rawPhone).replace(/\D/g, '');
-    const baseUrl = phone ? `https://wa.me/${phone}` : `https://wa.me/`;
-    const text = encodeURIComponent(this.buildWhatsappReceiptText(baseUrl));
-    const url = `${baseUrl}?text=${text}`;
-    console.log('[Orders] WhatsApp receipt URL:', url);
-    console.log('[Orders] WhatsApp receipt URL length:', url.length);
-    window.open(url, '_blank');
+    const username = this.savedOrderReceipt
+      ? this.savedOrderReceipt.clientWhatsappUsername || ''
+      : this.viewingOrder?.clientWhatsappUsername || '';
+    let message = this.buildReceiptText();
+    let link = this.whatsappLinks.buildChatLink(rawPhone, username, message);
+
+    if (link.includesMessage && link.url.length > this.whatsappUrlCharacterBudget) {
+      const baseUrl = link.url.split('?text=')[0];
+      message = this.buildWhatsappReceiptText(baseUrl);
+      link = this.whatsappLinks.buildChatLink(rawPhone, username, message);
+    }
+
+    console.log('[Orders] WhatsApp receipt URL:', link.url);
+    console.log('[Orders] WhatsApp receipt URL length:', link.url.length);
+    window.open(link.url, '_blank');
+
+    if (link.usesUsername) {
+      navigator.clipboard.writeText(message).then(() => {
+        alert('The receipt has been copied. Paste it into the WhatsApp username chat.');
+      });
+    }
   }
 
   // ────────────────────────────────────────────────────
@@ -1803,7 +1871,8 @@ export class OrdersComponent implements OnInit {
     const client: Client = {
       name: this.newClientForm.name.trim(),
       phone: this.newClientForm.phone.trim(),
-      whatsappNumber: this.newClientForm.phone.trim()
+      whatsappNumber: this.newClientForm.phone.trim(),
+      whatsappUsername: this.whatsappLinks.normalizeUsername(this.newClientForm.whatsappUsername)
     };
     this.dbService.createClient(client).subscribe(id => {
       this.savingClient = false;
@@ -1812,7 +1881,7 @@ export class OrdersComponent implements OnInit {
         this.clients = [...this.clients, newClient];
         this.orderForm.clientId = id;
         this.showAddClientForm = false;
-        this.newClientForm = { name: '', phone: '' };
+        this.newClientForm = { name: '', phone: '', whatsappUsername: '' };
       }
     });
   }

@@ -95,6 +95,10 @@ import { TableComponent, TableColumn, TableMetadata, ActionOption } from '../../
             </div>
           </div>
           <div class="cl-form-group">
+            <label class="cl-label">WhatsApp Username <span class="cl-optional">(optional)</span></label>
+            <input class="cl-input" type="text" [(ngModel)]="formData.whatsappUsername" placeholder="e.g. @customer.name" />
+          </div>
+          <div class="cl-form-group">
             <label class="cl-label">Delivery Address</label>
             <textarea class="cl-input cl-textarea" [(ngModel)]="formData.address" placeholder="Enter delivery address…"></textarea>
           </div>
@@ -187,7 +191,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
   paginatedClients: Client[] = [];
 
   editingClient: Client | null = null;
-  formData: Client = { name: '', phone: '', whatsappNumber: '', address: '', notes: '' };
+  formData: Client = { name: '', phone: '', whatsappNumber: '', whatsappUsername: '', address: '', notes: '' };
   pendingDeleteClient: Client | null = null;
 
   selectedClientIds = new Set<number>();
@@ -271,6 +275,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
       { key: 'name', label: 'Name', type: 'string', searchable: true },
       { key: 'phone', label: 'Phone', type: 'string' },
       { key: 'whatsappNumber', label: 'WhatsApp', type: 'string' },
+      { key: 'whatsappUsername', label: 'Username', type: 'string' },
       { key: 'address', label: 'Address', type: 'string', searchable: true },
       { key: 'notes', label: 'Notes', type: 'string' }
     ];
@@ -396,7 +401,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   openAddModal() {
     this.editingClient = null;
-    this.formData = { name: '', phone: '', whatsappNumber: '', address: '', notes: '' };
+    this.formData = { name: '', phone: '', whatsappNumber: '', whatsappUsername: '', address: '', notes: '' };
     this.showAddEditModal = true;
   }
 
