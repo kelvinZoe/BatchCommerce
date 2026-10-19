@@ -53,7 +53,7 @@ export class ClientDataService extends SupabaseDataAccessService {
     nameSearchTerm = '',
     addressSearchTerm = ''
   ): Observable<{ total: number; contactable: number; addressed: number }> {
-    let query = this.scopeTable('customers', 'id, whatsapp_number, address').order('name');
+    let query = this.scopeTable('customers', 'id, whatsapp_number, whatsapp_username, address').order('name');
 
     const trimmedName = nameSearchTerm.trim();
     const trimmedAddress = addressSearchTerm.trim();
@@ -71,7 +71,10 @@ export class ClientDataService extends SupabaseDataAccessService {
         const rows = data || [];
         return {
           total: rows.length,
-          contactable: rows.filter((row: any) => String(row.whatsapp_number || '').trim().length > 0).length,
+          contactable: rows.filter((row: any) =>
+            String(row.whatsapp_number || '').trim().length > 0
+            || String(row.whatsapp_username || '').trim().length > 0
+          ).length,
           addressed: rows.filter((row: any) => String(row.address || '').trim().length > 0).length,
         };
       })
@@ -87,7 +90,7 @@ export class ClientDataService extends SupabaseDataAccessService {
   searchClients(term: string): Observable<Client[]> {
     return from(
       this.scopeShopQuery(this.sb.from('customers').select('*'))
-        .or(`name.ilike.%${term}%,whatsapp_number.ilike.%${term}%`)
+        .or(`name.ilike.%${term}%,whatsapp_number.ilike.%${term}%,whatsapp_username.ilike.%${term}%`)
         .order('name')
     ).pipe(map(({ data }) => (data || []).map((r: any) => this.normalizeClient(toCamel(r) as Client))));
   }
@@ -96,8 +99,11 @@ export class ClientDataService extends SupabaseDataAccessService {
     const row = {
       shop_id: this.activeShopId,
       name: client.name,
-      whatsapp_number: client.phone || client.whatsappNumber || '',
-      address: client.address || ''
+      phone: client.phone || '',
+      whatsapp_number: client.whatsappNumber || client.phone || '',
+      whatsapp_username: this.normalizeWhatsappUsername(client.whatsappUsername),
+      address: client.address || '',
+      notes: client.notes || ''
     };
     return from(
       this.sb.from('customers').insert(row).select('id').single()
@@ -107,8 +113,11 @@ export class ClientDataService extends SupabaseDataAccessService {
   updateClient(client: Client): Observable<boolean> {
     const row = {
       name: client.name,
-      whatsapp_number: client.phone || client.whatsappNumber || '',
-      address: client.address || ''
+      phone: client.phone || '',
+      whatsapp_number: client.whatsappNumber || client.phone || '',
+      whatsapp_username: this.normalizeWhatsappUsername(client.whatsappUsername),
+      address: client.address || '',
+      notes: client.notes || ''
     };
     return from(
       this.scopeShopQuery(this.sb.from('customers').update(row)).eq('id', client.id)
@@ -134,11 +143,15 @@ export class ClientDataService extends SupabaseDataAccessService {
   }
 
   private normalizeClient(client: Client): Client {
-    const phone = client.phone || client.whatsappNumber || '';
     return {
       ...client,
-      phone,
-      whatsappNumber: phone
+      phone: client.phone || '',
+      whatsappNumber: client.whatsappNumber || client.phone || '',
+      whatsappUsername: this.normalizeWhatsappUsername(client.whatsappUsername)
     };
+  }
+
+  private normalizeWhatsappUsername(value: string | null | undefined): string {
+    return (value || '').trim().replace(/^@+/, '').toLowerCase();
   }
 }

@@ -29,7 +29,7 @@ export class OrderDataService extends SupabaseDataAccessService {
   getOrders(): Observable<Order[]> {
     return from(
       this.scopeTable('orders')
-        .select('*, customers(name, whatsapp_number), order_items(id, product_id, batch_product_id, quantity, unit_price, subtotal, products(name))')
+        .select('*, customers(name, whatsapp_number, whatsapp_username), order_items(id, product_id, batch_product_id, quantity, unit_price, subtotal, products(name))')
         .order('created_at', { ascending: false })
     ).pipe(map(({ data }) => (data || []).map((row: any) => this.mapOrderRow(row))));
   }
@@ -37,7 +37,7 @@ export class OrderDataService extends SupabaseDataAccessService {
   getOrdersByBatch(batchId: number): Observable<Order[]> {
     return from(
       this.scopeTable('orders')
-        .select('*, customers(name, whatsapp_number), order_items(id, product_id, batch_product_id, quantity, unit_price, subtotal, products(name))')
+        .select('*, customers(name, whatsapp_number, whatsapp_username), order_items(id, product_id, batch_product_id, quantity, unit_price, subtotal, products(name))')
         .eq('batch_id', batchId)
         .order('created_at', { ascending: false })
     ).pipe(map(({ data }) => (data || []).map((row: any) => this.mapOrderRow(row))));
@@ -84,7 +84,7 @@ export class OrderDataService extends SupabaseDataAccessService {
   getOrder(id: number): Observable<Order | null> {
     return from(
       this.scopeTable('orders')
-        .select('*, customers(name, whatsapp_number)')
+        .select('*, customers(name, whatsapp_number, whatsapp_username)')
         .eq('id', id).single()
     ).pipe(map(({ data }) => {
       if (!data) return null;
@@ -92,6 +92,7 @@ export class OrderDataService extends SupabaseDataAccessService {
         ...toCamel(data),
         clientName: (data as any).customers?.name,
         clientPhone: (data as any).customers?.whatsapp_number,
+        clientWhatsappUsername: (data as any).customers?.whatsapp_username,
         items: [],
         paymentStatus: 'paid',
         totalAmount: 0
@@ -131,7 +132,7 @@ export class OrderDataService extends SupabaseDataAccessService {
   findOrderByClientBatch(clientId: number, batchId: number): Observable<Order | null> {
     return from(
       this.scopeTable('orders')
-        .select('*, customers(name, whatsapp_number), order_items(id, product_id, batch_product_id, quantity, unit_price, subtotal, products(name))')
+        .select('*, customers(name, whatsapp_number, whatsapp_username), order_items(id, product_id, batch_product_id, quantity, unit_price, subtotal, products(name))')
         .eq('customer_id', clientId)
         .eq('batch_id', batchId)
         .limit(1)
@@ -202,6 +203,7 @@ export class OrderDataService extends SupabaseDataAccessService {
       ...toCamel(row),
       clientName: row.customers?.name,
       clientPhone: row.customers?.whatsapp_number,
+      clientWhatsappUsername: row.customers?.whatsapp_username,
       paymentStatus: 'paid',
       totalAmount: (row.order_items || []).reduce((sum: number, item: any) => sum + Number(item.subtotal || 0), 0),
       items: (row.order_items || []).map((item: any) => ({
@@ -223,7 +225,7 @@ export class OrderDataService extends SupabaseDataAccessService {
     const toIndex = fromIndex + pageSize - 1;
     let dataQuery = this.scopeShopQuery(
       this.sb.from('orders')
-        .select('*, customers(name, whatsapp_number), order_items(id, product_id, batch_product_id, quantity, unit_price, subtotal, products(name))')
+        .select('*, customers(name, whatsapp_number, whatsapp_username), order_items(id, product_id, batch_product_id, quantity, unit_price, subtotal, products(name))')
     )
       .eq('batch_id', batchId);
 
@@ -241,7 +243,7 @@ export class OrderDataService extends SupabaseDataAccessService {
       const { data: matchedClients } = await this.scopeShopQuery(
         this.sb.from('customers')
           .select('id')
-          .or(`name.ilike.${term},whatsapp_number.ilike.${term}`)
+          .or(`name.ilike.${term},whatsapp_number.ilike.${term},whatsapp_username.ilike.${term}`)
       );
       const clientIds = (matchedClients || []).map((client: any) => client.id);
 

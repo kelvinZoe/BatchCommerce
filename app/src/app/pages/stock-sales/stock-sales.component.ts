@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
+import { WhatsappLinkService } from '../../services/whatsapp-link.service';
 import { SearchableSelectComponent } from '../../components/searchable-select/searchable-select.component';
 import { DateFilterComponent } from '../../components/date-filter/date-filter.component';
 import { Client, StockProduct, StockSale, StockSaleItem, StockSalesPermissionConfig } from '../../models';
@@ -207,6 +208,7 @@ interface CartItem {
                 <div class="ss-client-phone" *ngIf="selectedClientPhone">
                   <span class="material-icons">whatsapp</span> {{ selectedClientPhone }}
                 </div>
+                <div class="ss-client-phone" *ngIf="selectedClientUsername">&#64;{{ selectedClientUsername }}</div>
               </div>
 
               <div *ngIf="customerMode==='new'" class="ss-form-row">
@@ -215,6 +217,9 @@ interface CartItem {
                 </div>
                 <div class="ss-form-group">
                   <input class="ss-input" type="text" placeholder="WhatsApp number" [(ngModel)]="newClientPhone" />
+                </div>
+                <div class="ss-form-group">
+                  <input class="ss-input" type="text" placeholder="WhatsApp username, e.g. @customer" [(ngModel)]="newClientUsername" />
                 </div>
                 <button class="ss-btn ss-btn-sm ss-btn-ghost"
                         [disabled]="!newClientName.trim() || savingClient"
@@ -339,7 +344,7 @@ interface CartItem {
                   {{ receiptCopied ? 'Copied!' : 'Copy Receipt' }}
                 </button>
                 <button class="ss-btn ss-btn-ghost ss-btn-sm ss-btn-whatsapp"
-                        *ngIf="receiptPhone"
+                        *ngIf="receiptPhone || receiptUsername"
                         (click)="sendWhatsApp()">
                   <span class="material-icons">whatsapp</span> Send Receipt
                 </button>
@@ -607,8 +612,10 @@ export class StockSalesComponent implements OnInit {
   customerMode     = 'walkin';   // 'walkin' | 'existing' | 'new'
   selectedClientId: number | null = null;
   selectedClientPhone = '';
+  selectedClientUsername = '';
   newClientName    = '';
   newClientPhone   = '';
+  newClientUsername = '';
   savedClientId: number | null = null;
   savedClientName  = '';
 
@@ -621,7 +628,8 @@ export class StockSalesComponent implements OnInit {
 
   constructor(
     private db: DatabaseService,
-    public authService: AuthService
+    public authService: AuthService,
+    private whatsappLinks: WhatsappLinkService
   ) {}
 
   ngOnInit() {
@@ -646,6 +654,12 @@ export class StockSalesComponent implements OnInit {
   get receiptPhone(): string {
     if (this.customerMode === 'existing') return this.selectedClientPhone;
     if (this.customerMode === 'new')      return this.newClientPhone;
+    return '';
+  }
+
+  get receiptUsername(): string {
+    if (this.customerMode === 'existing') return this.selectedClientUsername;
+    if (this.customerMode === 'new') return this.newClientUsername;
     return '';
   }
 
@@ -750,8 +764,10 @@ export class StockSalesComponent implements OnInit {
     this.customerMode     = 'walkin';
     this.selectedClientId = null;
     this.selectedClientPhone = '';
+    this.selectedClientUsername = '';
     this.newClientName    = '';
     this.newClientPhone   = '';
+    this.newClientUsername = '';
     this.savedClientId    = null;
     this.savedClientName  = '';
     this.clientSaved      = false;
@@ -782,19 +798,26 @@ export class StockSalesComponent implements OnInit {
     this.customerMode     = mode;
     this.selectedClientId = null;
     this.selectedClientPhone = '';
+    this.selectedClientUsername = '';
     this.clientSaved      = false;
   }
 
   onClientSelected(id: number | null) {
     this.selectedClientId = id;
     const c = this.clients.find(x => x.id === Number(id));
-    this.selectedClientPhone = c?.phone || c?.whatsappNumber || '';
+    this.selectedClientPhone = c?.whatsappNumber || c?.phone || '';
+    this.selectedClientUsername = c?.whatsappUsername || '';
   }
 
   saveNewClient() {
     if (!this.newClientName.trim()) return;
     this.savingClient = true;
-    this.db.createClient({ name: this.newClientName.trim(), phone: this.newClientPhone.trim(), whatsappNumber: this.newClientPhone.trim() })
+    this.db.createClient({
+      name: this.newClientName.trim(),
+      phone: this.newClientPhone.trim(),
+      whatsappNumber: this.newClientPhone.trim(),
+      whatsappUsername: this.whatsappLinks.normalizeUsername(this.newClientUsername)
+    })
       .subscribe(id => {
         this.savedClientId   = id;
         this.savedClientName = this.newClientName.trim();
@@ -1001,10 +1024,14 @@ export class StockSalesComponent implements OnInit {
   }
 
   sendWhatsApp() {
-    const phone = (this.receiptPhone || '').replace(/\D/g, '');
-    const text  = encodeURIComponent(this.buildReceiptText(undefined, this.cart));
-    const url   = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
-    window.open(url, '_blank');
+    const message = this.buildReceiptText(undefined, this.cart);
+    const link = this.whatsappLinks.buildChatLink(this.receiptPhone, this.receiptUsername, message);
+    window.open(link.url, '_blank');
+    if (link.usesUsername) {
+      navigator.clipboard.writeText(message).then(() => {
+        alert('The receipt has been copied. Paste it into the WhatsApp username chat.');
+      });
+    }
   }
 
   // ── Detail / Receipt modal ───────────────────────────────

@@ -178,6 +178,14 @@ export class DatabaseService extends SupabaseDataAccessService {
     return this.products.deleteProductCatalog(productId);
   }
 
+  getOrderableProducts(batchId: number): Observable<BatchProduct[]> {
+    return this.products.getOrderableProducts(batchId);
+  }
+
+  ensureBatchProductForOrder(batchId: number, productId: number): Observable<BatchProduct> {
+    return this.products.ensureBatchProductForOrder(batchId, productId);
+  }
+
   getBatchProducts(batchId: number): Observable<BatchProduct[]> {
     return this.products.getBatchProducts(batchId);
   }

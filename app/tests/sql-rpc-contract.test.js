@@ -93,6 +93,55 @@ test('shared authentication rate limiter is atomic and service-role only', () =>
   ], 'shared rate-limit migration');
 });
 
+test('catalog-first orders lazily create tenant-safe batch product rows and preserve WhatsApp usernames', () => {
+  const migration = read('supabase/migrations/20261019120000_catalog_first_orders_and_whatsapp_usernames.sql');
+  const ordersComponent = read('app/src/app/pages/orders/orders.component.ts');
+  const productService = read('app/src/app/services/product-data.service.ts');
+  const clientService = read('app/src/app/services/client-data.service.ts');
+  const whatsappService = read('app/src/app/services/whatsapp-link.service.ts');
+
+  assertIncludesAll(migration, [
+    'ADD COLUMN IF NOT EXISTS whatsapp_username',
+    'ADD COLUMN IF NOT EXISTS preorder_discount_min_qty',
+    'ADD COLUMN IF NOT EXISTS preorder_discount_price',
+    'WITH latest_batch_pricing AS',
+    'UPDATE public.products AS product',
+    'CREATE OR REPLACE FUNCTION public.ensure_batch_product_for_order',
+    'public.has_shop_membership(p_shop_id)',
+    "batch.status = 'open'",
+    'pg_advisory_xact_lock',
+    'FROM public.batch_products AS batch_product',
+    'FOR UPDATE',
+    'REVOKE ALL ON FUNCTION public.ensure_batch_product_for_order',
+    'GRANT EXECUTE ON FUNCTION public.ensure_batch_product_for_order'
+  ], 'catalog-first order migration');
+
+  assertIncludesAll(productService, [
+    'getOrderableProducts(batchId',
+    'ensureBatchProductForOrder(batchId',
+    "this.sb.rpc('ensure_batch_product_for_order'"
+  ], 'product data service');
+
+  assertIncludesAll(ordersComponent, [
+    'this.dbService.getOrderableProducts(batchId)',
+    'attachBatchProductsToItems',
+    'this.dbService.ensureBatchProductForOrder',
+    'valueKey="productId"',
+    'clientWhatsappUsername'
+  ], 'orders component');
+
+  assertIncludesAll(clientService, [
+    'whatsapp_username',
+    'normalizeWhatsappUsername'
+  ], 'client data service');
+
+  assertIncludesAll(whatsappService, [
+    'https://wa.me/${normalizedUsername}',
+    'includesMessage: false',
+    'normalizeUsername'
+  ], 'WhatsApp link service');
+});
+
 test('product delete cascade RPC is tenant guarded and deletes all dependent product rows transactionally', () => {
   const sql = read('supabase/migrations/20260710120000_add_product_delete_cascade_rpc.sql');
   const normalized = compact(sql);

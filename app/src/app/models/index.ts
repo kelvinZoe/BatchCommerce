@@ -20,6 +20,9 @@ export interface ProductCatalog {
   imageUrl?: string;
   isActive?: boolean;
   stock?: number;
+  preorderPrice?: number;
+  preorderDiscountMinQty?: number;
+  preorderDiscountPrice?: number;
   stockPrice?: number;
   stockDiscountMinQty?: number;
   stockDiscountPrice?: number;
@@ -52,6 +55,7 @@ export interface Client {
   name: string;
   phone: string;
   whatsappNumber?: string;
+  whatsappUsername?: string;
   address?: string;
   notes?: string;
   createdAt?: string;
@@ -117,6 +121,7 @@ export interface Order {
   clientId: number;
   clientName?: string;
   clientPhone?: string;
+  clientWhatsappUsername?: string;
   items: OrderItem[];
   totalAmount: number;
   deliveryFee?: number;

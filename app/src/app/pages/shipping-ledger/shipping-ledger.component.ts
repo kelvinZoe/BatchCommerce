@@ -16,6 +16,7 @@ import {
 } from '../../components/table/table.component';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
+import { WhatsappLinkService } from '../../services/whatsapp-link.service';
 import { OrderBatch } from '../../models';
 
 interface LedgerRow {
@@ -23,6 +24,7 @@ interface LedgerRow {
   clientId: number | null;
   clientName: string;
   clientPhone?: string | null;
+  clientWhatsappUsername?: string | null;
   batchName: string | null;
   totalFee: number;
   paidAmount: number;
@@ -138,6 +140,7 @@ interface LedgerRow {
               <div class="sl-modal-phone" *ngIf="modalClientPhone">
                 <span class="material-icons" style="font-size:13px;vertical-align:middle;margin-right:2px">phone</span>{{ modalClientPhone }}
               </div>
+              <div class="sl-modal-phone" *ngIf="modalClientUsername">&#64;{{ modalClientUsername }}</div>
             </div>
           </div>
           <button class="sl-modal-close" (click)="closeItemsModal()"><span class="material-icons">close</span></button>
@@ -167,7 +170,7 @@ interface LedgerRow {
         </div>
 
         <div class="sl-modal-footer">
-          <button class="sl-modal-btn sl-modal-btn-wa" (click)="sendWhatsappMessage()" [disabled]="!modalClientPhone">
+          <button class="sl-modal-btn sl-modal-btn-wa" (click)="sendWhatsappMessage()" [disabled]="!modalClientPhone && !modalClientUsername">
             <span class="material-icons" style="font-size:15px">chat</span> WhatsApp
           </button>
           <button class="sl-modal-btn sl-modal-btn-copy" (click)="copyLedgerMessage()">
@@ -353,7 +356,8 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
 
   constructor(
     private db: DatabaseService,
-    public authService: AuthService
+    public authService: AuthService,
+    private whatsappLinks: WhatsappLinkService
   ) {
     this.initLedgerColumns();
   }
@@ -759,15 +763,18 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
   async sendWhatsappMessage() {
     const row = this.modalRow;
     if (!row) return;
-    const phone = (row.clientPhone || '').replace(/\D/g, '');
-    if (!phone) {
-      alert('No WhatsApp number for this client');
+    if (!row.clientPhone && !row.clientWhatsappUsername) {
+      alert('No WhatsApp contact for this client');
       return;
     }
     const items = await this.ensureClientItems(row);
     const body = this.buildLedgerMessage(row, items);
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(body)}`;
-    window.open(url, '_blank');
+    const link = this.whatsappLinks.buildChatLink(row.clientPhone, row.clientWhatsappUsername, body);
+    window.open(link.url, '_blank');
+    if (link.usesUsername) {
+      await navigator.clipboard.writeText(body);
+      alert('The message has been copied. Paste it into the WhatsApp username chat.');
+    }
   }
 
   // Modal state for items
@@ -775,6 +782,7 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
   modalClientId: number | null = null;
   modalClientName = '';
   modalClientPhone = '';
+  modalClientUsername = '';
   modalBatchName: string | null = null;
   modalRow: LedgerRow | null = null;
   modalRowKey = '';
@@ -787,6 +795,7 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
     this.modalBatchName = r.batchName ?? null;
     this.modalClientName = r.clientName || 'Client';
     this.modalClientPhone = r.clientPhone || '';
+    this.modalClientUsername = r.clientWhatsappUsername || '';
     const key = this.modalRowKey;
     if (this.clientItems[key]) {
       this.modalItems = this.clientItems[key];
@@ -810,6 +819,7 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
     this.modalRowKey = '';
     this.modalClientName = '';
     this.modalClientPhone = '';
+    this.modalClientUsername = '';
     this.modalItems = [];
   }
 
