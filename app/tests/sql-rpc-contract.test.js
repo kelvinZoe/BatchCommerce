@@ -92,6 +92,21 @@ test('custom roles can grant dashboard access and select dashboard sections', ()
   ], 'roles dashboard editor');
 });
 
+test('active shop members can read shared batch headers across workflow pages', () => {
+  const migration = read('supabase/migrations/20261023140000_allow_members_to_read_shop_batches.sql');
+
+  assertIncludesAll(migration, [
+    'DROP POLICY IF EXISTS "Role can view batches" ON public.batches',
+    'CREATE POLICY "Active shop members can read batches"',
+    'FOR SELECT',
+    'TO authenticated',
+    'USING (public.has_shop_membership(shop_id))',
+    'GRANT SELECT ON public.batches TO authenticated'
+  ], 'shared batch visibility migration');
+
+  assert.doesNotMatch(migration, /FOR (INSERT|UPDATE|DELETE)[\s\S]*has_shop_membership/i);
+});
+
 test('promo-code redemption RPC keeps commercial guardrails', () => {
   const sql = read('supabase/migrations/20260630090000_add_promo_codes.sql');
 
