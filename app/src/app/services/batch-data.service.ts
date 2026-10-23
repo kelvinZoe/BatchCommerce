@@ -93,8 +93,14 @@ export class BatchDataService extends SupabaseDataAccessService {
 
   reopenOrderBatch(batchId: number): Observable<boolean> {
     return from(
-      this.scopeShopQuery(this.sb.from('batches').update({ status: 'open', closed_at: null })).eq('id', batchId)
-    ).pipe(map(({ error }) => !error));
+      this.sb.rpc('reopen_order_batch_safely', {
+        p_shop_id: this.requireActiveShopId(),
+        p_batch_id: batchId
+      })
+    ).pipe(map(({ data, error }) => {
+      if (error) throw error;
+      return data === true;
+    }));
   }
 
   deleteOrderBatch(id: number): Observable<boolean> {

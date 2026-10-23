@@ -13,7 +13,7 @@ import { from, SupabaseDataAccessService } from './supabase-data-access.service'
   providedIn: 'root'
 })
 export class PricingDataService extends SupabaseDataAccessService {
-  private readonly monthlyPriceGhs = 70;
+  private readonly monthlyPriceGhs = 100;
 
   constructor(supa: SupabaseService, authService: AuthService) {
     super(supa, authService);
@@ -28,12 +28,11 @@ export class PricingDataService extends SupabaseDataAccessService {
   }
 
   async assertCanCreateSalesRecord(_recordLabel: 'order' | 'stock sale'): Promise<void> {
-    const usage = await this.fetchPricingUsage();
-    if (usage.canCreateSalesRecord) return;
-
-    if (!usage.promoActive && usage.status !== 'active') {
-      throw new Error('Your 2-month promo has ended. Activate your GHS 70 monthly subscription to continue creating sales records.');
-    }
+    const shopId = this.requireActiveShopId();
+    const { data, error } = await this.sb.rpc('can_shop_create_sales_record', { p_shop_id: shopId });
+    if (error) throw new Error(error.message || 'Could not confirm subscription access.');
+    if (data === true) return;
+    throw new Error('Your BatchCommerce access has ended. Renew your GHS 100 monthly subscription to continue creating sales records.');
   }
 
   private getMonthRange(date = new Date()) {
@@ -109,31 +108,40 @@ export class PricingDataService extends SupabaseDataAccessService {
     }
 
     const { monthStart, monthEnd } = this.getMonthRange();
-    const [{ data: shop, error: shopError }, usageCount] = await Promise.all([
+    const [{ data: shop, error: shopError }, { data: summaryData, error: summaryError }, usageCount] = await Promise.all([
       this.sb.from('shops')
         .select('subscription_status, promo_started_at, promo_ends_at')
         .eq('id', shopId)
         .maybeSingle(),
+      this.sb.rpc('get_shop_subscription_summary', { p_shop_id: shopId }),
       this.fetchMonthlySalesRecordCount(monthStart, monthEnd)
     ]);
 
     if (shopError) throw shopError;
+    if (summaryError) throw summaryError;
 
     const status = this.normalizeSubscriptionStatus((shop as any)?.subscription_status);
     const promoEndsAt = (shop as any)?.promo_ends_at || null;
-    const promoActive = status === 'promo' && !!promoEndsAt && new Date(promoEndsAt).getTime() >= Date.now();
-    const isActivePaid = status === 'active';
+    const summary = Array.isArray(summaryData) ? summaryData[0] : summaryData;
+    const accessState = summary?.access_state || 'blocked';
+    const promoActive = accessState === 'promo';
 
     return {
       status,
+      accessState,
       priceGhs: this.monthlyPriceGhs,
       usageCount,
       promoStartedAt: (shop as any)?.promo_started_at || null,
       promoEndsAt,
       promoActive,
-      canCreateSalesRecord: promoActive || isActivePaid,
+      canCreateSalesRecord: !!summary?.can_create_sales_record,
       monthStart: monthStart.toISOString(),
-      monthEnd: monthEnd.toISOString()
+      monthEnd: monthEnd.toISOString(),
+      accessEndsAt: summary?.access_ends_at || null,
+      graceEndsAt: summary?.grace_ends_at || null,
+      daysRemaining: Number(summary?.days_remaining || 0),
+      pendingDiscountPercent: summary?.pending_discount_percent ?? null,
+      nextAmountMinor: Number(summary?.next_amount_minor ?? 10000)
     };
   }
 }

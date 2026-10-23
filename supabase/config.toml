@@ -1,0 +1,7 @@
+project_id = "batchcommerce"
+
+[functions.paystack-webhook]
+verify_jwt = false
+
+[functions.subscription-reminders]
+verify_jwt = false

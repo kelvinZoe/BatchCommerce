@@ -4,7 +4,7 @@ BatchCommerce uses one flat monthly subscription for every shop.
 
 ## Price
 
-**GHS 70 per month**
+**GHS 100 per month**
 
 The price does not change with sales volume, team size, or feature usage. There are no Starter, Growth, Pro, usage-band, or feature-tier accounts.
 
@@ -19,7 +19,7 @@ Every active subscriber receives:
 
 BatchCommerce records payments that merchants often collect manually through cash, Mobile Money, or bank transfers. Percentage and per-order pricing would encourage merchants to move transactions outside the system or under-report activity.
 
-A GHS 70 flat subscription provides:
+A GHS 100 flat subscription provides:
 
 - Predictable cost for merchants.
 - Predictable recurring revenue for BatchCommerce.
@@ -29,7 +29,7 @@ A GHS 70 flat subscription provides:
 
 ## New-shop promotion
 
-New shop owners receive two months of free access. After the promotion expires, the shop must have `subscription_status = 'active'` to create new preorder orders or stock sales.
+New shop owners receive one month of free access. After the promotion expires, a current paid entitlement or its three-day grace period is required to create new preorder orders or stock sales. Shops created before this change keep their existing promotion expiry date.
 
 Promotion guardrails remain:
 
@@ -43,11 +43,11 @@ Promotion guardrails remain:
 Promo codes may:
 
 - Extend a shop's promotional access by a configured number of days.
-- Record a discount percentage against the GHS 70 subscription for a future billing workflow.
+- Apply a discount percentage to one successful GHS 100 renewal.
 - Enforce activation windows and maximum redemption counts.
 - Be redeemed only once per shop.
 
-Promo codes cannot change a shop's account level because account tiers no longer exist. Code creation remains restricted to database or platform administrators until a secure platform-admin interface is introduced.
+Discounts never stack. A redeemed discount is reserved for one payment attempt and consumed only when that payment succeeds. Promo codes cannot change a shop's account level because account tiers no longer exist. Code creation is restricted to the protected platform-admin console.
 
 ## Usage reporting
 
@@ -62,10 +62,14 @@ Order items, stock-sale line items, products, clients, buying-list rows, arrival
 
 ## Implementation rules
 
-- `subscription_status` determines access after the promotion ends.
+- The entitlement ledger and promo dates determine access. `subscription_status` remains an explicit suspension/cancellation control and compatibility field.
 - `promo_ends_at` determines the free-access expiry date.
-- Every active subscription costs GHS 70 per month and has unlimited usage.
+- Every active subscription costs GHS 100 per month and has unlimited usage.
+- A successful payment adds one calendar month after the later of today, the promo end, or the latest non-revoked entitlement end.
+- A three-day grace period follows free or paid access. Existing data remains readable after grace, but new orders and stock sales are blocked.
+- Paystack payment success is accepted only after server-side reference, status, currency, and amount verification. Browser redirects never activate access by themselves.
+- Manual MoMo references require platform-admin approval and use the same idempotent entitlement-granting function.
 - The legacy `subscription_plan` database field is retained temporarily as a compatibility marker and is constrained to `standard`.
 - The legacy promo `plan_override` field is retained temporarily for API compatibility and is constrained to `NULL`.
-- Settings and Subscription show status, the GHS 70 price, promotional expiry, and informational monthly usage without tier recommendations.
-- Payment collection and subscription activation remain separate follow-up work. Until automated payments exist, authorized administrators activate a paid subscription by updating `subscription_status` to `active`.
+- Subscription shows the current access window, next charge, Paystack checkout, manual MoMo fallback, promo code, and payment history.
+- `/platform-admin` provides audited shop access, payment review, and promo-code controls to platform administrators.

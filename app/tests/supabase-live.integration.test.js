@@ -362,7 +362,7 @@ test('live pricing guard blocks expired promo shops but allows active paid sales
       .single();
 
     assert.notEqual(blockedOrder.error, null, 'expired promo shop should be blocked from creating sales records');
-    assert.match(blockedOrder.error.message, /promo has ended|GHS 70 monthly subscription/i);
+    assert.match(blockedOrder.error.message, /access has ended|GHS 100 monthly subscription/i);
 
     expectNoError(
       await context.admin
@@ -373,6 +373,26 @@ test('live pricing guard blocks expired promo shops but allows active paid sales
         })
         .eq('id', context.shop.id),
       'activate test shop'
+    );
+
+    const entitlementStart = new Date();
+    const entitlementEnd = new Date(entitlementStart);
+    entitlementEnd.setUTCMonth(entitlementEnd.getUTCMonth() + 1);
+    expectNoError(
+      await context.admin
+        .from('subscription_entitlements')
+        .insert({
+          shop_id: context.shop.id,
+          source: 'admin',
+          source_reference: `live-test:${context.token}`,
+          starts_at: entitlementStart.toISOString(),
+          ends_at: entitlementEnd.toISOString(),
+          grace_ends_at: new Date(entitlementEnd.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          note: 'Live integration test entitlement'
+        })
+        .select('id')
+        .single(),
+      'create active subscription entitlement'
     );
 
     const paidOrder = expectNoError(
@@ -391,6 +411,95 @@ test('live pricing guard blocks expired promo shops but allows active paid sales
     );
 
     assert.ok(paidOrder.id);
+  } finally {
+    await context.destroy();
+  }
+});
+
+test('live subscription payment application is idempotent and extends access once', { skip: disabledReason }, async () => {
+  const context = await createLiveTestContext('subscription-payment', {
+    subscriptionStatus: 'past_due',
+    promoEndsAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  try {
+    const reference = `bc_test_${context.token.replace(/-/g, '')}`;
+    const payment = expectNoError(
+      await context.admin.rpc('create_subscription_payment', {
+        p_shop_id: context.shop.id,
+        p_source: 'paystack',
+        p_reference: reference,
+        p_submitted_by: context.cleanup.authUserId,
+        p_payer_email: context.email
+      }),
+      'create subscription payment'
+    );
+
+    const first = expectNoError(
+      await context.admin.rpc('apply_subscription_payment', {
+        p_payment_id: payment.id,
+        p_provider_transaction_id: `paystack-${context.token}`,
+        p_channel: 'mobile_money',
+        p_paid_at: new Date().toISOString()
+      }),
+      'apply subscription payment'
+    );
+    const second = expectNoError(
+      await context.admin.rpc('apply_subscription_payment', {
+        p_payment_id: payment.id,
+        p_provider_transaction_id: `paystack-${context.token}`,
+        p_channel: 'mobile_money',
+        p_paid_at: new Date().toISOString()
+      }),
+      'replay subscription payment'
+    );
+
+    assert.equal(first.id, second.id, 'replayed payment should return the original entitlement');
+    const { count, error: countError } = await context.admin
+      .from('subscription_entitlements')
+      .select('id', { count: 'exact', head: true })
+      .eq('payment_id', payment.id);
+    assert.equal(countError, null);
+    assert.equal(count, 1);
+
+    const summary = expectNoError(
+      await context.user.rpc('get_shop_subscription_summary', { p_shop_id: context.shop.id }),
+      'read active subscription summary'
+    );
+    assert.equal(summary[0].access_state, 'active');
+    assert.equal(summary[0].can_create_sales_record, true);
+  } finally {
+    await context.destroy();
+  }
+});
+
+test('live subscription summary allows the three-day grace window', { skip: disabledReason }, async () => {
+  const context = await createLiveTestContext('subscription-grace', {
+    subscriptionStatus: 'past_due',
+    promoEndsAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  try {
+    const end = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    expectNoError(
+      await context.admin.from('subscription_entitlements').insert({
+        shop_id: context.shop.id,
+        source: 'admin',
+        source_reference: `grace-test:${context.token}`,
+        starts_at: new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        ends_at: end.toISOString(),
+        grace_ends_at: new Date(end.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        note: 'Live grace test'
+      }).select('id').single(),
+      'create grace entitlement'
+    );
+
+    const summary = expectNoError(
+      await context.user.rpc('get_shop_subscription_summary', { p_shop_id: context.shop.id }),
+      'read grace subscription summary'
+    );
+    assert.equal(summary[0].access_state, 'grace');
+    assert.equal(summary[0].can_create_sales_record, true);
   } finally {
     await context.destroy();
   }

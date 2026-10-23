@@ -8,7 +8,7 @@ import {
   OrdersPermissionConfig, BuyingListPermissionConfig, ArrivalsPermissionConfig,
   ShippingPermissionConfig, ShippingLedgerPermissionConfig, StockSalesPermissionConfig,
   ManageBatchesPermissionConfig, RolesPermissionConfig, UsersPermissionConfig,
-  MembershipStatus
+  MembershipStatus, MAIN_NAV_ITEMS, ADMIN_NAV_ITEMS
 } from '../models';
 import { SupabaseService } from './supabase.service';
 import { ShopConfigService } from './shop-config.service';
@@ -96,6 +96,7 @@ export class AuthService {
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   private permissionsSubject = new BehaviorSubject<Permission[]>([]);
   private sessionRestorePromise: Promise<void> | null = null;
+  private restoredAuthUserId: string | null = null;
   private readonly emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
   currentUser$ = this.currentUserSubject.asObservable();
@@ -112,8 +113,10 @@ export class AuthService {
       this.sb.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_OUT' || !session) {
           this.clearSession();
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          void this.restoreSessionFromSupabase(true);
+        } else if (event === 'SIGNED_IN') {
+          void this.restoreSessionFromSupabase(this.restoredAuthUserId !== session.user.id);
+        } else if (event === 'TOKEN_REFRESHED') {
+          void this.restoreSessionFromSupabase();
         }
       });
     }
@@ -125,7 +128,10 @@ export class AuthService {
 
   private restoreSessionFromSupabase(force = false): Promise<void> {
     if (!this.supa.isReady) return Promise.resolve();
-    if (this.sessionRestorePromise && !force) return this.sessionRestorePromise;
+    if (this.sessionRestorePromise) return this.sessionRestorePromise;
+    if (!force && this.currentUser && this.restoredAuthUserId === this.currentUser.authId) {
+      return Promise.resolve();
+    }
 
     this.sessionRestorePromise = (async () => {
       const { data, error } = await this.sb.auth.getSession();
@@ -904,6 +910,12 @@ export class AuthService {
     return this.currentUser?.roleName === 'Admin';
   }
 
+  getDefaultAuthenticatedRoute(): string {
+    const firstAccessibleItem = [...MAIN_NAV_ITEMS, ...ADMIN_NAV_ITEMS]
+      .find(item => this.canView(item.resource));
+    return firstAccessibleItem?.route || '/access-denied';
+  }
+
   // ─── Login ──────────────────────────────────────────
   login(email: string, password: string): Observable<LoginResult> {
     return from(this.doLogin(email, password));
@@ -1253,11 +1265,13 @@ export class AuthService {
 
   // ─── Session helpers ────────────────────────────────
   private setSession(user: User, permissions: Permission[]) {
+    this.restoredAuthUserId = user.authId || null;
     this.currentUserSubject.next(user);
     this.permissionsSubject.next(permissions);
   }
 
   private clearSession() {
+    this.restoredAuthUserId = null;
     this.currentUserSubject.next(null);
     this.permissionsSubject.next([]);
     localStorage.removeItem('batchcommerce_session');

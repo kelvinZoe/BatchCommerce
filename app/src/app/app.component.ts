@@ -16,11 +16,13 @@ import { AuthService } from './services/auth.service';
 import { ShopConfigService } from './services/shop-config.service';
 import { ThemeService } from './services/theme.service';
 import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
+import { SubscriptionBannerComponent } from './components/subscription-banner/subscription-banner.component';
+import { BillingDataService } from './services/billing-data.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, SubscriptionBannerComponent],
   template: `
     <div
       class="route-progress"
@@ -38,7 +40,7 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       </span>
     </div>
 
-    <div class="app-container" *ngIf="authService.isLoggedIn && shopConfig.isConfigured && !isAuthScreenRoute; else loginView">
+    <div class="app-container" *ngIf="authService.isLoggedIn && shopConfig.isConfigured && !isAuthScreenRoute && !isPlatformAdminRoute; else loginView">
       <header class="mobile-topbar">
         <button class="mobile-menu-btn" type="button" (click)="toggleSidebar()" [attr.aria-expanded]="mobileSidebarOpen">
           <span class="material-icons">menu</span>
@@ -93,6 +95,12 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
               <span class="sidebar-item-label">{{ item.label }}</span>
             </a>
           </ng-container>
+
+          <a *ngIf="platformAdmin"
+             routerLink="/platform-admin" routerLinkActive="active" class="sidebar-item platform-console-link" (click)="closeSidebar()">
+            <span class="material-icons">shield</span>
+            <span class="sidebar-item-label">Platform Console</span>
+          </a>
         </nav>
 
         <div class="sidebar-bottom">
@@ -108,6 +116,7 @@ import { ADMIN_NAV_ITEMS, AppResource, MAIN_NAV_ITEMS } from './models';
       </aside>
 
       <main class="main-content">
+        <app-subscription-banner></app-subscription-banner>
         <router-outlet></router-outlet>
       </main>
     </div>
@@ -502,12 +511,14 @@ export class AppComponent {
 
   mainNav = MAIN_NAV_ITEMS;
   adminNav = ADMIN_NAV_ITEMS;
+  platformAdmin = false;
 
   constructor(
     public authService: AuthService,
     public shopConfig: ShopConfigService,
     private router: Router,
-    private themeService: ThemeService
+    private themeService: ThemeService,
+    private billing: BillingDataService
   ) {
     this.themeService.applyTheme();
 
@@ -531,6 +542,11 @@ export class AppComponent {
       });
 
     this.destroyRef.onDestroy(() => this.clearRouteProgressTimers());
+
+    void this.authService.ensureSessionLoaded()
+      .then(() => this.authService.isLoggedIn ? this.billing.isPlatformAdmin() : false)
+      .then(isPlatformAdmin => this.platformAdmin = isPlatformAdmin)
+      .catch(() => this.platformAdmin = false);
   }
 
   private startRouteProgress(): void {
@@ -582,6 +598,10 @@ export class AppComponent {
   get isAuthScreenRoute(): boolean {
     const route = this.router.url.split('?')[0];
     return route === '/setup' || route === '/login' || route === '/verify-phone';
+  }
+
+  get isPlatformAdminRoute(): boolean {
+    return this.router.url.split('?')[0].startsWith('/platform-admin');
   }
 
   canView(resource: AppResource): boolean {

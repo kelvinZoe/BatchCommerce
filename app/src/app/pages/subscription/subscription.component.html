@@ -1,0 +1,67 @@
+<main class="billing-page">
+  <section class="billing-hero">
+    <div class="hero-copy">
+      <span class="eyebrow">Workspace billing</span>
+      <h1>One month.<br><em>Every feature.</em></h1>
+      <p>Renew only when you are ready. Your remaining days are always preserved.</p>
+    </div>
+    <div class="price-seal"><span>Flat monthly fee</span><strong><small>GHS</small> 100</strong><p>No tiers. No usage charges.</p></div>
+  </section>
+
+  <div class="notice error" *ngIf="error"><span class="material-icons">error_outline</span><span>{{ error }}</span></div>
+  <div class="notice success" *ngIf="success"><span class="material-icons">check_circle</span><span>{{ success }}</span></div>
+  <div class="notice verifying" *ngIf="verifyingPayment"><span class="material-icons spin">sync</span><span>Confirming your payment with Paystack…</span></div>
+  <section class="loading-shell" *ngIf="loading && !overview"><span></span><span></span><span></span></section>
+
+  <ng-container *ngIf="overview">
+    <section class="status-board">
+      <article class="state-card" [attr.data-state]="summary?.accessState">
+        <div class="state-topline"><span class="state-dot"></span><span>{{ stateLabel }}</span></div>
+        <h2>{{ summary?.canCreateSalesRecord ? 'Your shop is moving.' : 'Sales are paused.' }}</h2><p>{{ stateCopy }}</p>
+      </article>
+      <article class="date-card"><span class="card-label">Current access ends</span><strong>{{ dateLabel(summary?.accessEndsAt) }}</strong><p *ngIf="summary?.daysRemaining">{{ summary?.daysRemaining }} day{{ summary?.daysRemaining === 1 ? '' : 's' }} remaining</p><p *ngIf="summary?.accessState === 'grace'">Grace ends {{ dateLabel(summary?.graceEndsAt) }}</p></article>
+      <article class="discount-card"><span class="card-label">Next renewal</span><strong>GHS {{ nextChargeGhs | number:'1.2-2' }}</strong><p *ngIf="summary?.pendingDiscountPercent; else standardPrice">{{ summary?.pendingDiscountPercent }}% promo reserved for one payment.</p><ng-template #standardPrice><p>One calendar month from your latest access date.</p></ng-template></article>
+    </section>
+
+    <section class="renewal-grid">
+      <article class="checkout-card">
+        <div class="section-heading"><span class="section-number">01</span><div><span class="eyebrow">Instant renewal</span><h2>Pay securely online</h2></div></div>
+        <p>Use Mobile Money or card. Access is added only after Paystack confirms the exact amount.</p>
+        <div class="checkout-total"><span>Due today</span><strong>GHS {{ nextChargeGhs | number:'1.2-2' }}</strong></div>
+        <button class="primary-action" type="button" (click)="payOnline()" [disabled]="!canMakePayments || onlinePaymentLoading"><span class="material-icons" [class.spin]="onlinePaymentLoading">{{ onlinePaymentLoading ? 'sync' : (nextChargeGhs === 0 ? 'redeem' : 'lock') }}</span>{{ onlinePaymentLoading ? 'Preparing renewal…' : (nextChargeGhs === 0 ? 'Apply free renewal' : 'Pay with Paystack') }}</button>
+        <small *ngIf="!canMakePayments">Your role can view billing but cannot make payments.</small>
+      </article>
+      <article class="manual-card">
+        <div class="section-heading"><span class="section-number">02</span><div><span class="eyebrow">Manual fallback</span><h2>Already sent MoMo?</h2></div></div>
+        <p>Send the exact amount, then submit the network reference for review.</p>
+        <div class="momo-destination" *ngIf="manualPaymentConfigured; else momoMissing"><span>{{ overview.config.manualPayment.network }}</span><strong>{{ overview.config.manualPayment.number }}</strong><small>{{ overview.config.manualPayment.accountName }}</small></div>
+        <ng-template #momoMissing><div class="momo-missing">Manual MoMo details have not been configured yet.</div></ng-template>
+        <button class="secondary-action" type="button" (click)="showManualForm = !showManualForm" [disabled]="!canMakePayments || !manualPaymentConfigured || nextChargeGhs === 0">{{ showManualForm ? 'Close form' : 'Submit payment reference' }}</button>
+      </article>
+    </section>
+
+    <form class="manual-form" *ngIf="showManualForm" (ngSubmit)="submitManualPayment()">
+      <div class="form-intro"><span class="material-icons">receipt_long</span><div><h2>Manual payment details</h2><p>We verify the transaction before adding access.</p></div></div>
+      <label><span>Sender name</span><input name="senderName" [(ngModel)]="manualPayment.senderName" required autocomplete="name"></label>
+      <label><span>Sender MoMo number</span><input name="senderPhone" [(ngModel)]="manualPayment.senderPhone" required inputmode="tel" placeholder="024 000 0000"></label>
+      <label><span>Network</span><select name="network" [(ngModel)]="manualPayment.network"><option value="mtn">MTN</option><option value="telecel">Telecel</option><option value="airteltigo">AirtelTigo</option></select></label>
+      <label><span>Transaction reference</span><input name="transactionReference" [(ngModel)]="manualPayment.transactionReference" required autocomplete="off"></label>
+      <label><span>Payment date</span><input name="paidAt" type="datetime-local" [(ngModel)]="manualPayment.paidAt" required></label>
+      <button class="primary-action" type="submit" [disabled]="manualSubmitting"><span class="material-icons" [class.spin]="manualSubmitting">{{ manualSubmitting ? 'sync' : 'send' }}</span>{{ manualSubmitting ? 'Submitting…' : 'Send for review' }}</button>
+    </form>
+
+    <section class="promo-strip">
+      <div><span class="material-icons">local_activity</span><div><span class="eyebrow">Have a code?</span><h2>Apply a promotion</h2><p *ngIf="promoMessage">{{ promoMessage }}</p></div></div>
+      <form (ngSubmit)="applyPromoCode()"><input name="promoCode" [(ngModel)]="promoCode" placeholder="PROMO CODE" autocomplete="off"><button type="submit" [disabled]="applyingPromoCode || !promoCode.trim()">{{ applyingPromoCode ? 'Applying…' : 'Apply' }}</button></form>
+    </section>
+
+    <section class="history-card">
+      <div class="history-heading"><div><span class="eyebrow">Payment ledger</span><h2>Renewal history</h2></div><button type="button" (click)="loadOverview()" [disabled]="loading"><span class="material-icons" [class.spin]="loading">refresh</span></button></div>
+      <div class="history-table" *ngIf="overview.payments.length; else emptyHistory">
+        <div class="history-row history-labels"><span>Payment</span><span>Date</span><span>Amount</span><span>Status</span></div>
+        <div class="history-row" *ngFor="let payment of overview.payments; trackBy: trackPayment"><span><strong>{{ paymentLabel(payment) }}</strong><small>{{ payment.providerReference || payment.manualReference }}</small></span><span>{{ dateLabel(payment.paidAt || payment.createdAt) }}</span><span>GHS {{ amountGhs(payment) | number:'1.2-2' }}</span><span><mark [attr.data-status]="payment.status">{{ payment.status.replace('_', ' ') }}</mark></span></div>
+      </div>
+      <ng-template #emptyHistory><div class="empty-history"><span class="material-icons">history</span><p>Your completed and pending renewals will appear here.</p></div></ng-template>
+    </section>
+  </ng-container>
+</main>

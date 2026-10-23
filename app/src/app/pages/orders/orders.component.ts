@@ -223,25 +223,28 @@ import {
     </div>
 
     <!-- ══════════════════════════════════════════════════ -->
-    <!-- CREATE ORDER MODAL                                -->
+    <!-- CREATE / EDIT / VIEW ORDER MODAL                  -->
     <!-- ══════════════════════════════════════════════════ -->
     <div class="ord-modal-overlay" *ngIf="showOrderModal" (click)="closeOrderModal()">
       <div class="ord-modal ord-modal-lg" (click)="$event.stopPropagation()">
         <div class="ord-modal-header">
           <div class="ord-modal-header-icon" [class.ord-mhi-success]="!!savedOrderReceipt">
-            <span class="material-icons">{{ savedOrderReceipt ? 'check_circle' : 'receipt_long' }}</span>
+            <span class="material-icons">{{ savedOrderReceipt ? 'check_circle' : (editingOrder ? 'edit_note' : 'receipt_long') }}</span>
           </div>
           <div class="ord-modal-header-text">
             <div class="ord-modal-title">{{
+              savedOrderReceipt?.updated ? 'Order Updated' :
               savedOrderReceipt ? 'Order Confirmed!' :
-              (viewingOrder ? 'Order #' + viewingOrder.id : 'New Order')
+              (viewingOrder ? 'Order #' + viewingOrder.id : (editingOrder ? 'Edit Order #' + editingOrder.id : 'New Order'))
             }}</div>
             <div class="ord-modal-sub">{{
-              savedOrderReceipt && savedOrderReceipt.addedToExisting
+              savedOrderReceipt?.updated
+                ? 'The customer, notes and items have been saved'
+                : savedOrderReceipt && savedOrderReceipt.addedToExisting
                 ? 'Items added to existing Order #' + savedOrderReceipt.orderId
                 : savedOrderReceipt
                   ? 'Order #' + savedOrderReceipt.orderId + ' has been placed successfully'
-                  : viewingOrder ? 'Order details' : 'Add a new order to ' + selectedBatch?.name
+                  : viewingOrder ? 'Order details' : editingOrder ? 'Update this order in ' + selectedBatch?.name : 'Add a new order to ' + selectedBatch?.name
             }}</div>
           </div>
           <button class="ord-modal-close" (click)="closeOrderModal()">
@@ -259,6 +262,10 @@ import {
                 <div *ngIf="savedOrderReceipt.addedToExisting" class="ord-receipt-merged-badge">
                   <span class="material-icons">merge_type</span>
                   Items added to existing order
+                </div>
+                <div *ngIf="savedOrderReceipt.updated" class="ord-receipt-merged-badge ord-receipt-updated-badge">
+                  <span class="material-icons">edit_note</span>
+                  Order details updated
                 </div>
                 <div class="ord-receipt-row">
                   <span class="ord-receipt-label">Order ID</span>
@@ -406,8 +413,17 @@ import {
             </ng-container>
           </ng-container>
 
-          <!-- ── CREATE MODE ── -->
-          <ng-container *ngIf="!viewingOrder && !savedOrderReceipt">
+          <div class="ord-loading-note" *ngIf="editingOrderLoading">Loading the latest order details…</div>
+
+          <!-- ── CREATE / EDIT MODE ── -->
+          <ng-container *ngIf="!viewingOrder && !savedOrderReceipt && !editingOrderLoading">
+            <div class="ord-edit-notice" *ngIf="editingOrder">
+              <span class="material-icons">edit_note</span>
+              <div>
+                <strong>Editing Order #{{ editingOrder.id }}</strong>
+                <span>Changes are saved together, so the order will never be left half-updated.</span>
+              </div>
+            </div>
             <!-- Client select -->
             <div class="ord-form-group">
               <label class="ord-label">Client <span class="ord-required">*</span></label>
@@ -546,10 +562,10 @@ import {
               <span class="material-icons">add</span>
               Add Items
             </button>
-            <button *ngIf="!viewingOrder && !savedOrderReceipt && canCreateOrderInSelectedBatch" class="ord-btn ord-btn-primary"
-                    (click)="saveOrder()" [disabled]="savingOrder || !orderForm.clientId">
+            <button *ngIf="!viewingOrder && !savedOrderReceipt && (editingOrder ? canEditOrderInSelectedBatch : canCreateOrderInSelectedBatch)" class="ord-btn ord-btn-primary"
+                    (click)="saveOrder()" [disabled]="savingOrder || editingOrderLoading || !orderForm.clientId">
               <span *ngIf="savingOrder" class="ord-spinner"></span>
-              Create Order
+              {{ editingOrder ? 'Save Changes' : 'Create Order' }}
             </button>
           </ng-container>
         </div>
@@ -764,6 +780,11 @@ import {
     /* ── Add client inline ── */
     .ord-add-client-toggle { margin: -6px 0 12px; }
     .ord-add-client-form { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+    .ord-edit-notice { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--primary-color, #6366f1) 26%, #fff); border-radius: 10px; background: color-mix(in srgb, var(--primary-color, #6366f1) 7%, #fff); color: #334155; }
+    .ord-edit-notice .material-icons { color: var(--primary-color, #6366f1); font-size: 20px; }
+    .ord-edit-notice div { display: flex; flex-direction: column; gap: 2px; }
+    .ord-edit-notice strong { color: #0f172a; font-size: 13px; }
+    .ord-edit-notice span:not(.material-icons) { font-size: 12px; line-height: 1.45; color: #64748b; }
 
     /* ── Order item row ── */
     .ord-item-row { display: grid; grid-template-columns: 1fr 100px 140px 110px 28px; gap: 8px; align-items: end; margin-bottom: 8px; }
@@ -817,6 +838,7 @@ import {
     .ord-receipt-footer-note { text-align: center; font-size: 11px; color: #64748b; margin: 4px 0 2px; }
     .ord-receipt-copy-note { text-align: center; font-size: 11px; color: #94a3b8; }
     .ord-receipt-merged-badge { display: flex; align-items: center; gap: 5px; justify-content: center; background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 600; margin-bottom: 10px; font-family: inherit; }
+    .ord-receipt-updated-badge { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
     .ord-btn-whatsapp { background: #25d366; color: #fff; }
     .ord-btn-whatsapp:hover:not(:disabled) { background: #1ebe5d; }
     .ord-btn-secondary { background: var(--primary-color, #6366f1); color: #fff; }
@@ -879,6 +901,8 @@ export class OrdersComponent implements OnInit {
   // ── Order modal ──
   showOrderModal = false;
   viewingOrder: Order | null = null;
+  editingOrder: Order | null = null;
+  editingOrderLoading = false;
   orderViewLoading = false;
   savingOrder = false;
   savedOrderReceipt: {
@@ -890,6 +914,7 @@ export class OrdersComponent implements OnInit {
     items: { productName: string; quantity: number; unitPrice: number; subtotal: number }[];
     total: number;
     addedToExisting?: boolean;
+    updated?: boolean;
   } | null = null;
   copySuccess = false;
   // ── Add items to existing order ──
@@ -918,7 +943,7 @@ export class OrdersComponent implements OnInit {
   orderForm: {
     clientId: number | null;
     notes: string;
-    items: { batchProductId: number | null; productId: number | null; productName: string; quantity: number; unitPrice: number; subtotal: number; }[];
+    items: { id?: number; batchProductId: number | null; productId: number | null; productName: string; quantity: number; unitPrice: number; subtotal: number; }[];
   } = {
     clientId: null,
     notes: '',
@@ -1017,6 +1042,11 @@ export class OrdersComponent implements OnInit {
       && this.authService.canPerformOrdersOperation('canCreateOrder');
   }
 
+  get canEditOrderInSelectedBatch(): boolean {
+    return this.selectedBatch?.status === 'open'
+      && this.authService.canPerformOrdersOperation('canEditOrder');
+  }
+
   get canAddItemsToViewingOrder(): boolean {
     if (!this.viewingOrder || !this.selectedBatch) return false;
     if (!this.authService.canPerformOrdersOperation('canAddItemsToOrder')) return false;
@@ -1073,6 +1103,15 @@ export class OrdersComponent implements OnInit {
     const actions: ActionOption[] = [
       { id: 'view', label: 'View order', icon: 'eye', color: 'black' }
     ];
+
+    if (this.canEditOrderInSelectedBatch) {
+      actions.push({
+        id: 'edit',
+        label: 'Edit order',
+        icon: 'edit',
+        color: 'black'
+      });
+    }
 
     if (this.authService.canPerformOrdersOperation('canDeleteOrder')) {
       actions.push({
@@ -1253,6 +1292,11 @@ export class OrdersComponent implements OnInit {
       return;
     }
 
+    if (event.action.id === 'edit') {
+      this.openEditOrderModal(event.item.order as Order);
+      return;
+    }
+
     if (event.action.id === 'delete') {
       this.deleteOrder(event.item.order as Order);
     }
@@ -1321,6 +1365,8 @@ export class OrdersComponent implements OnInit {
   openCreateOrderModal() {
     if (!this.canCreateOrderInSelectedBatch) return;
     this.viewingOrder = null;
+    this.editingOrder = null;
+    this.editingOrderLoading = false;
     this.orderViewLoading = false;
     this.orderForm = {
       clientId: null,
@@ -1333,6 +1379,8 @@ export class OrdersComponent implements OnInit {
   }
 
   viewOrder(order: Order) {
+    this.editingOrder = null;
+    this.editingOrderLoading = false;
     this.viewingOrder = order;
     this.orderViewLoading = true;
     this.copySuccess = false;
@@ -1354,9 +1402,58 @@ export class OrdersComponent implements OnInit {
     });
   }
 
+  openEditOrderModal(order: Order) {
+    if (!order.id || !this.canEditOrderInSelectedBatch) return;
+    this.viewingOrder = null;
+    this.savedOrderReceipt = null;
+    this.copySuccess = false;
+    this.isAddingItemsToOrder = false;
+    this.addItemsRows = [];
+    this.editingOrder = order;
+    this.editingOrderLoading = true;
+    this.orderForm = {
+      clientId: order.clientId,
+      notes: order.notes || '',
+      items: []
+    };
+    this.showAddClientForm = false;
+    this.newClientForm = { name: '', phone: '', whatsappUsername: '' };
+    this.showOrderModal = true;
+
+    this.dbService.getOrderItems(order.id).subscribe({
+      next: items => {
+        if (!this.editingOrder || this.editingOrder.id !== order.id) return;
+        this.orderForm = {
+          clientId: order.clientId,
+          notes: order.notes || '',
+          items: items.length
+            ? items.map(item => ({
+                id: item.id,
+                batchProductId: item.batchProductId || null,
+                productId: item.productId,
+                productName: item.productName || '',
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                subtotal: item.subtotal
+              }))
+            : [this.blankItem()]
+        };
+        this.editingOrderLoading = false;
+      },
+      error: () => {
+        this.editingOrderLoading = false;
+        this.editingOrder = null;
+        this.showOrderModal = false;
+        alert('Could not load the latest order details. Please try again.');
+      }
+    });
+  }
+
   closeOrderModal() {
     this.showOrderModal = false;
     this.viewingOrder = null;
+    this.editingOrder = null;
+    this.editingOrderLoading = false;
     this.orderViewLoading = false;
     this.savedOrderReceipt = null;
     this.copySuccess = false;
@@ -1523,6 +1620,10 @@ export class OrdersComponent implements OnInit {
 
   async saveOrder() {
     if (!this.orderForm.clientId || this.savingOrder) return;
+    if (this.editingOrder) {
+      await this.saveEditedOrder();
+      return;
+    }
     if (!this.canCreateOrderInSelectedBatch) return;
     this.savingOrder = true;
 
@@ -1530,6 +1631,11 @@ export class OrdersComponent implements OnInit {
     if (!newItems.length) {
       this.savingOrder = false;
       alert('Add at least one product to the order.');
+      return;
+    }
+    if (new Set(newItems.map(item => item.productId)).size !== newItems.length) {
+      this.savingOrder = false;
+      alert('Each product can appear only once in an order. Combine duplicate products into one row.');
       return;
     }
     try {
@@ -1639,6 +1745,73 @@ export class OrdersComponent implements OnInit {
         });
       }
     });
+  }
+
+  private async saveEditedOrder() {
+    if (!this.editingOrder?.id || !this.orderForm.clientId || !this.canEditOrderInSelectedBatch) return;
+    this.savingOrder = true;
+
+    let items = this.orderForm.items.filter(item => item.productId);
+    if (!items.length) {
+      this.savingOrder = false;
+      alert('An order must contain at least one product.');
+      return;
+    }
+    if (new Set(items.map(item => item.productId)).size !== items.length) {
+      this.savingOrder = false;
+      alert('Each product can appear only once in an order. Combine duplicate products into one row.');
+      return;
+    }
+
+    try {
+      items = await this.attachBatchProductsToItems(items);
+      const orderId = this.editingOrder.id;
+      const clientId = this.orderForm.clientId;
+      const notes = this.orderForm.notes.trim();
+      const updatedOrder: Order = {
+        ...this.editingOrder,
+        id: orderId,
+        clientId,
+        notes,
+        paymentStatus: this.editingOrder.paymentStatus || 'paid',
+        items: items.map(item => ({
+          id: item.id,
+          productId: item.productId!,
+          batchProductId: item.batchProductId || undefined,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal
+        })),
+        totalAmount: items.reduce((sum, item) => sum + item.subtotal, 0)
+      };
+
+      const savedId = await firstValueFrom(this.dbService.updateOrder(updatedOrder));
+      if (!savedId) throw new Error('The order was not updated.');
+
+      const savedClient = this.clients.find(client => client.id === clientId);
+      this.savedOrderReceipt = {
+        orderId,
+        clientName: savedClient?.name || this.editingOrder.clientName || 'Customer',
+        clientPhone: savedClient?.whatsappNumber || savedClient?.phone || this.editingOrder.clientPhone || '',
+        clientWhatsappUsername: savedClient?.whatsappUsername || this.editingOrder.clientWhatsappUsername || '',
+        batchName: this.selectedBatch?.name || '',
+        items: items.map(item => ({
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal
+        })),
+        total: updatedOrder.totalAmount,
+        updated: true
+      };
+      this.editingOrder = null;
+      this.savingOrder = false;
+      this.loadOrders();
+    } catch (error: any) {
+      this.savingOrder = false;
+      alert(error?.message || 'Failed to update the order. Please try again.');
+    }
   }
 
   // ────────────────────────────────────────────────────
@@ -1941,8 +2114,24 @@ export class OrdersComponent implements OnInit {
   reopenBatch() {
     if (!this.selectedBatch || !confirm(`Reopen batch "${this.selectedBatch.name}"?`)) return;
     if (!this.authService.canPerformOrdersOperation('canReopenBatch')) return;
-    this.dbService.reopenOrderBatch(this.selectedBatch.id!).subscribe(() => {
-      this.selectedBatch = { ...this.selectedBatch!, status: 'open' };
+    this.dbService.reopenOrderBatch(this.selectedBatch.id!).subscribe({
+      next: reopened => {
+        if (!reopened) return;
+        this.selectedBatch = {
+          ...this.selectedBatch!,
+          status: 'open',
+          orderStatus: 'pending',
+          buyingStatus: 'pending',
+          deliveryStatus: 'not_sent',
+          arrivalsSent: false,
+          stockApplied: false,
+          closedAt: null
+        };
+        this.loadOrders();
+      },
+      error: (error: any) => {
+        alert(error?.message || 'This batch cannot be reopened because its workflow has already progressed.');
+      }
     });
   }
 

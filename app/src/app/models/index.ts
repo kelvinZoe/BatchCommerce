@@ -343,6 +343,7 @@ export const PRODUCT_OPERATIONS: {
 /** Orders page operation permissions */
 export interface OrdersPermissionConfig {
   canCreateOrder: boolean;           // Create new orders
+  canEditOrder: boolean;             // Edit customer, notes, and items on open orders
   canAddItemsToOrder: boolean;       // Add items to existing orders
   canDeleteOrder: boolean;           // Delete orders
   canCloseBatch: boolean;            // Close a batch
@@ -351,12 +352,13 @@ export interface OrdersPermissionConfig {
 }
 
 export const DEFAULT_ORDERS_CONFIG: OrdersPermissionConfig = {
-  canCreateOrder: false, canAddItemsToOrder: false, canDeleteOrder: false,
+  canCreateOrder: false, canEditOrder: false, canAddItemsToOrder: false, canDeleteOrder: false,
   canCloseBatch: false, canReopenBatch: false, canEditOrderAfterBatchClosed: false
 };
 
 export const ORDERS_OPERATIONS: { key: keyof OrdersPermissionConfig; label: string; icon: string; description: string }[] = [
   { key: 'canCreateOrder', label: 'Create Orders', icon: 'add_shopping_cart', description: 'Create new orders' },
+  { key: 'canEditOrder', label: 'Edit Orders', icon: 'edit', description: 'Edit the customer, notes, and items while a batch is open' },
   { key: 'canAddItemsToOrder', label: 'Add Items to Order', icon: 'add_circle', description: 'Add more items to existing orders' },
   { key: 'canDeleteOrder', label: 'Delete Orders', icon: 'delete', description: 'Delete orders' },
   { key: 'canCloseBatch', label: 'Close Batch', icon: 'lock', description: 'Close batches' },
@@ -557,6 +559,7 @@ export type AppResource =
   | 'users'
   | 'roles'
   | 'settings'
+  | 'billing'
   | 'stock_sales'
   | 'shipping'
   | 'batches';
@@ -593,6 +596,7 @@ export const APP_RESOURCE_CATALOG: AppResourceMeta[] = [
   { key: 'batches', label: 'Manage Batches', icon: 'inventory_2', description: 'Admin batch management and destructive batch cleanup.' },
   { key: 'users', label: 'Users', icon: 'manage_accounts', description: 'Team membership, role assignment, and account status controls.' },
   { key: 'roles', label: 'Roles', icon: 'admin_panel_settings', description: 'Role definitions and permission configuration.' },
+  { key: 'billing', label: 'Subscription', icon: 'workspace_premium', description: 'Subscription status, renewal payments, and billing history.' },
   { key: 'settings', label: 'Settings', icon: 'settings', description: 'Shop profile, workspace settings, and data management.' },
 ];
 
@@ -620,7 +624,7 @@ export const ADMIN_NAV_ITEMS: AppNavItem[] = [
   { route: '/batches', icon: 'inventory_2', label: 'Manage Batches', resource: 'batches' },
   { route: '/users', icon: 'manage_accounts', label: 'Users', resource: 'users' },
   { route: '/roles', icon: 'admin_panel_settings', label: 'Roles & Permissions', resource: 'roles' },
-  { route: '/subscription', icon: 'workspace_premium', label: 'Subscription', resource: 'settings' },
+  { route: '/subscription', icon: 'workspace_premium', label: 'Subscription', resource: 'billing' },
   { route: '/settings', icon: 'settings', label: 'Settings', resource: 'settings' },
 ];
 
@@ -668,9 +672,21 @@ export interface StockSaleItem {
 }
 
 export type SubscriptionStatus = 'promo' | 'active' | 'past_due' | 'suspended' | 'cancelled';
+export type SubscriptionAccessState = 'promo' | 'active' | 'grace' | 'blocked' | 'suspended' | 'cancelled';
+export type SubscriptionPaymentStatus =
+  | 'pending'
+  | 'initialized'
+  | 'pending_review'
+  | 'successful'
+  | 'failed'
+  | 'abandoned'
+  | 'rejected'
+  | 'refunded'
+  | 'reversed';
 
 export interface PricingUsage {
   status: SubscriptionStatus;
+  accessState?: SubscriptionAccessState;
   priceGhs: number;
   usageCount: number;
   promoStartedAt: string | null;
@@ -679,6 +695,11 @@ export interface PricingUsage {
   canCreateSalesRecord: boolean;
   monthStart: string;
   monthEnd: string;
+  accessEndsAt?: string | null;
+  graceEndsAt?: string | null;
+  daysRemaining?: number;
+  pendingDiscountPercent?: number | null;
+  nextAmountMinor?: number;
 }
 
 export interface PromoCodeRedemptionResult {
@@ -687,6 +708,86 @@ export interface PromoCodeRedemptionResult {
   extraPromoDays: number;
   discountPercent: number | null;
   promoEndsAt: string | null;
+}
+
+export interface SubscriptionSummary {
+  accessState: SubscriptionAccessState;
+  canCreateSalesRecord: boolean;
+  accessStartsAt: string | null;
+  accessEndsAt: string | null;
+  graceEndsAt: string | null;
+  promoEndsAt: string | null;
+  pendingDiscountPercent: number | null;
+  nextAmountMinor: number;
+  daysRemaining: number;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  shopId: string;
+  source: 'paystack' | 'manual' | 'transition' | 'admin' | 'promo';
+  provider: 'paystack' | 'manual' | 'internal';
+  providerReference: string | null;
+  providerTransactionId: string | null;
+  status: SubscriptionPaymentStatus;
+  currency: 'GHS';
+  baseAmountMinor: number;
+  discountPercent: number | null;
+  amountMinor: number;
+  channel: string | null;
+  manualSenderName: string | null;
+  manualSenderPhone: string | null;
+  manualNetwork: string | null;
+  manualReference: string | null;
+  manualPaidAt: string | null;
+  reviewNote: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  shops?: { name?: string } | null;
+}
+
+export interface BillingConfig {
+  monthlyPriceMinor: number;
+  currency: 'GHS';
+  graceDays: number;
+  manualPayment: {
+    network: string;
+    number: string;
+    accountName: string;
+  };
+}
+
+export interface ManualSubscriptionPaymentInput {
+  senderName: string;
+  senderPhone: string;
+  network: 'mtn' | 'telecel' | 'airteltigo';
+  transactionReference: string;
+  paidAt: string;
+}
+
+export interface PlatformShop {
+  id: string;
+  name: string;
+  slug: string;
+  subscriptionStatus: SubscriptionStatus;
+  promoEndsAt: string | null;
+  billingStartedAt: string | null;
+  createdAt: string;
+  subscriptionSummary: SubscriptionSummary;
+}
+
+export interface PlatformPromoCode {
+  id: string;
+  code: string;
+  description: string | null;
+  extraPromoDays: number;
+  discountPercent: number | null;
+  maxRedemptions: number | null;
+  redeemedCount: number;
+  startsAt: string;
+  expiresAt: string | null;
+  isActive: boolean;
+  createdAt: string;
 }
 
 export type ExpenseCategory =

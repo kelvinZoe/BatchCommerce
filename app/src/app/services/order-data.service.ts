@@ -108,6 +108,26 @@ export class OrderDataService extends SupabaseDataAccessService {
     return from(this.doCreateOrder(order));
   }
 
+  updateOrder(order: Order): Observable<number> {
+    const shopId = this.requireActiveShopId();
+    return from(
+      this.sb.rpc('update_order_with_items', {
+        p_shop_id: shopId,
+        p_order_id: order.id,
+        p_customer_id: order.clientId,
+        p_notes: order.notes || '',
+        p_items: order.items.map(item => ({
+          id: item.id || null,
+          product_id: item.productId,
+          quantity: item.quantity
+        }))
+      })
+    ).pipe(map(({ data, error }) => {
+      if (error) throw error;
+      return Number(data || 0);
+    }));
+  }
+
   addOrderItem(item: OrderItem): Observable<number> {
     const row = {
       shop_id: this.requireActiveShopId(),

@@ -3,6 +3,7 @@ import { CanActivateFn, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { ShopConfigService } from '../services/shop-config.service';
 import { AppResource } from '../models';
+import { BillingDataService } from '../services/billing-data.service';
 
 /**
  * Redirects to /setup if the shop hasn't been configured yet.
@@ -14,8 +15,7 @@ export const setupGuard: CanActivateFn = () => {
   if (config.isConfigured) {
     return true;
   }
-  router.navigate(['/setup']);
-  return false;
+  return router.createUrlTree(['/setup']);
 };
 
 /**
@@ -28,8 +28,7 @@ export const authGuard: CanActivateFn = async () => {
   const config = inject(ShopConfigService);
 
   if (!config.isConfigured) {
-    router.navigate(['/setup']);
-    return false;
+    return router.createUrlTree(['/setup']);
   }
 
   await auth.ensureSessionLoaded();
@@ -37,8 +36,7 @@ export const authGuard: CanActivateFn = async () => {
   if (auth.isLoggedIn) {
     return true;
   }
-  router.navigate(['/login']);
-  return false;
+  return router.createUrlTree(['/login']);
 };
 
 /**
@@ -55,16 +53,24 @@ export function permissionGuard(resource: AppResource): CanActivateFn {
     await auth.ensureSessionLoaded();
 
     if (!auth.isLoggedIn) {
-      router.navigate(['/login']);
-      return false;
+      return router.createUrlTree(['/login']);
     }
 
     if (auth.canView(resource)) {
       return true;
     }
 
-    // No permission → back to dashboard
-    router.navigate(['/dashboard']);
-    return false;
+    // Never redirect a denied dashboard back to itself. Send the user to the
+    // first page their role can view, or show a stable no-access screen when
+    // the role has not been granted any page permissions yet.
+    return router.createUrlTree([auth.getDefaultAuthenticatedRoute()]);
   };
 }
+
+export const platformAdminGuard: CanActivateFn = async () => {
+  const billing = inject(BillingDataService);
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  if (await billing.isPlatformAdmin()) return true;
+  return router.createUrlTree([auth.getDefaultAuthenticatedRoute()]);
+};

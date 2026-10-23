@@ -1,0 +1,21 @@
+-- Run after deploying subscription-reminders and storing these values in Vault.
+-- Replace the placeholders before executing in the Supabase SQL editor.
+
+select vault.create_secret('https://YOUR_PROJECT_REF.supabase.co', 'batchcommerce_project_url');
+select vault.create_secret('YOUR_CRON_SECRET', 'batchcommerce_subscription_cron_secret');
+
+select cron.schedule(
+  'batchcommerce-subscription-reminders',
+  '0 8 * * *',
+  $$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'batchcommerce_project_url')
+      || '/functions/v1/subscription-reminders',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'batchcommerce_subscription_cron_secret')
+    ),
+    body := '{}'::jsonb
+  );
+  $$
+);

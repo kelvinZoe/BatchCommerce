@@ -1168,7 +1168,7 @@ export class SettingsComponent {
 
   get pricingUsageSummary(): string {
     if (!this.pricingUsage) return '';
-    return 'Unlimited sales records. Your price stays GHS 70 per month.';
+    return 'Unlimited sales records. Your price stays GHS 100 per month.';
   }
 
   get currentUserDisplayName(): string {

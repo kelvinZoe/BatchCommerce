@@ -107,15 +107,54 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
                 batchDetailHeaderAction
                 class="bl-btn bl-btn-primary bl-btn-sm"
                 *ngIf="canSendToArrivals"
-                [disabled]="selectedArrivalIds.size === 0 || sendingToArrivals"
+                [disabled]="selectedArrivedCount === 0 || sendingToArrivals"
                 (click)="sendSelectedToArrivals()">
                 <span class="material-icons">inventory</span>
-                {{ sendingToArrivals ? 'Sending…' : 'Send to Arrivals' }}
+                {{ sendingToArrivals ? 'Sending…' : ('Send ' + selectedArrivedCount + ' to Arrivals') }}
               </button>
             </app-batch-detail-header>
 
             <!-- Stats row -->
             <app-stat-cards [config]="buyingItemStatCards"></app-stat-cards>
+
+            <div class="bl-bulk-bar" *ngIf="canBulkChangeStatus">
+              <div class="bl-bulk-copy">
+                <span class="material-icons">done_all</span>
+                <div>
+                  <strong>{{ selectedPendingCount }} pending {{ selectedPendingCount === 1 ? 'item' : 'items' }} selected</strong>
+                  <span>Select pending rows below, then apply one status to all of them.</span>
+                </div>
+              </div>
+              <div class="bl-bulk-controls">
+                <label for="bulk-buying-status">Change to</label>
+                <select
+                  id="bulk-buying-status"
+                  class="bl-bulk-select"
+                  [(ngModel)]="bulkTargetStatus"
+                  [disabled]="bulkStatusSaving">
+                  <option value="ordered">Ordered</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="arrived">Arrived</option>
+                </select>
+                <button
+                  type="button"
+                  class="bl-btn bl-btn-primary bl-btn-sm"
+                  [disabled]="selectedPendingCount === 0 || bulkStatusSaving"
+                  (click)="applyBulkStatus()">
+                  <span class="bl-spinner" *ngIf="bulkStatusSaving"></span>
+                  <span class="material-icons" *ngIf="!bulkStatusSaving">published_with_changes</span>
+                  {{ bulkStatusSaving ? 'Updating…' : 'Apply status' }}
+                </button>
+                <button
+                  type="button"
+                  class="bl-btn bl-btn-ghost bl-btn-sm"
+                  *ngIf="selectedItemIds.size > 0"
+                  [disabled]="bulkStatusSaving || sendingToArrivals"
+                  (click)="clearItemSelection()">
+                  Clear
+                </button>
+              </div>
+            </div>
 
             <app-table
               [columns]="itemColumns"
@@ -260,12 +299,14 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
 
       <ng-template #itemSelectHeaderTpl>
         <input
-          *ngIf="canSendToArrivals"
+          *ngIf="canSelectBuyingItems"
           type="checkbox"
-          [checked]="isAllArrivedSelected"
-          (change)="toggleSelectAllArrived($event)"
-          [disabled]="sendingToArrivals"
-          class="bl-checkbox" />
+          [checked]="isAllActionableSelected"
+          (change)="toggleSelectAllActionable($event)"
+          [disabled]="sendingToArrivals || bulkStatusSaving"
+          class="bl-checkbox"
+          title="Select all actionable items on this page"
+          aria-label="Select all actionable buying-list items on this page" />
       </ng-template>
 
       <!-- ══ REVERSAL CONFIRM MODAL ══ -->
@@ -322,6 +363,19 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
 
     .bl-checkbox { width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary-color, #6366f1); }
 
+    /* ── Bulk status controls ── */
+    .bl-bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 4px 0 14px; padding: 12px 14px; border: 1px solid #dbe4ef; border-radius: 12px; background: #f8fafc; }
+    .bl-bulk-copy { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .bl-bulk-copy > .material-icons { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; background: rgba(var(--primary-rgb, 99,102,241), 0.11); color: var(--primary-color, #6366f1); font-size: 19px; }
+    .bl-bulk-copy div { display: flex; flex-direction: column; min-width: 0; }
+    .bl-bulk-copy strong { color: #172033; font-size: 13px; font-weight: 700; }
+    .bl-bulk-copy span { color: #64748b; font-size: 11px; }
+    .bl-bulk-controls { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+    .bl-bulk-controls label { color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .bl-bulk-select { min-width: 112px; height: 34px; padding: 0 30px 0 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1e293b; font-size: 12px; font-weight: 600; }
+    .bl-bulk-select:focus { outline: 2px solid rgba(var(--primary-rgb, 99,102,241), 0.16); border-color: var(--primary-color, #6366f1); }
+    .bl-bulk-select:disabled { opacity: 0.6; cursor: not-allowed; }
+
     /* ── Detail Modal ── */
     .bl-detail-modal-body { display: flex; flex-direction: column; gap: 18px; }
     .bl-detail-modal-hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border: 1px solid #e6ebf2; border-radius: 16px; background: linear-gradient(135deg, rgba(var(--primary-rgb, 99,102,241), 0.05), #fff); flex-wrap: wrap; }
@@ -371,6 +425,8 @@ import { BatchProduct, BuyingListItem, BuyingStatus, OrderBatch, Product } from 
     @media (max-width: 768px) {
       .bl-header { align-items: flex-start; }
       .bl-header-actions { width: 100%; justify-content: flex-start; }
+      .bl-bulk-bar { align-items: flex-start; flex-direction: column; }
+      .bl-bulk-controls { width: 100%; justify-content: flex-start; }
     }
 
     /* ── Confirm Body & Highlight ── */
@@ -491,8 +547,10 @@ export class BuyingListComponent implements OnInit, OnDestroy {
   dateTo = '';
   statusFilter = '';
 
-  selectedArrivalIds = new Set<number>();
+  selectedItemIds = new Set<number>();
   sendingToArrivals = false;
+  bulkStatusSaving = false;
+  bulkTargetStatus: Exclude<BuyingStatus, 'pending'> = 'ordered';
   reversingArrivalIds = new Set<number>();
 
   // Pagination
@@ -511,6 +569,22 @@ export class BuyingListComponent implements OnInit, OnDestroy {
   get totalItemPages() { return Math.max(1, Math.ceil(this.itemTotal / this.itemPageSize)); }
   get canSendToArrivals(): boolean {
     return this.authService.canPerformBuyingListOperation('canSendToArrivals');
+  }
+
+  get canBulkChangeStatus(): boolean {
+    return this.authService.canPerformBuyingListOperation('canChangeStatus');
+  }
+
+  get canSelectBuyingItems(): boolean {
+    return this.canBulkChangeStatus || this.canSendToArrivals;
+  }
+
+  get selectedPendingCount(): number {
+    return this.items.filter(item => item.id && item.status === 'pending' && this.selectedItemIds.has(item.id)).length;
+  }
+
+  get selectedArrivedCount(): number {
+    return this.items.filter(item => item.id && this.isArrivalSelectable(item) && this.selectedItemIds.has(item.id)).length;
   }
 
   get canReverseFromArrivals(): boolean {
@@ -538,8 +612,8 @@ export class BuyingListComponent implements OnInit, OnDestroy {
       displayIndex: this.itemRangeStart + index,
       inStockDisplay: this.getStockForItem(item),
       orderedQuantityDraft: this.getDraftOrderedQuantity(item),
-      arrivalSelected: item.id ? this.selectedArrivalIds.has(item.id) : false,
-      arrivalSelectionDisabled: !this.isArrivalSelectable(item) || this.sendingToArrivals || item.movedToArrivals,
+      itemSelected: item.id ? this.selectedItemIds.has(item.id) : false,
+      itemSelectionDisabled: !this.isItemSelectable(item) || this.sendingToArrivals || this.bulkStatusSaving,
       arrivalSelectionBadge: item.movedToArrivals ? 'Sent' : '',
       statusDraft: this.getDraftStatus(item),
       statusDisabled: !this.canEditStatus(item) || this.isRowSaving(item),
@@ -729,13 +803,13 @@ export class BuyingListComponent implements OnInit, OnDestroy {
       { key: 'actions', label: 'Actions', type: 'actions' }
     ];
 
-    if (this.canSendToArrivals) {
+    if (this.canSelectBuyingItems) {
       columns.unshift({
-        key: 'arrivalSelected',
+        key: 'itemSelected',
         label: '',
         type: 'checkbox',
         headerTemplate: this.itemSelectHeaderTpl,
-        disabledKey: 'arrivalSelectionDisabled',
+        disabledKey: 'itemSelectionDisabled',
         badgeKey: 'arrivalSelectionBadge'
       });
     }
@@ -818,7 +892,7 @@ export class BuyingListComponent implements OnInit, OnDestroy {
       this.itemTotal = page.total;
       this.itemStats = stats;
       this.resetItemDrafts();
-      this.selectedArrivalIds.clear();
+      this.selectedItemIds.clear();
       this.loading = false;
       if (this.itemPage > this.totalItemPages) {
         this.itemPage = this.totalItemPages;
@@ -867,7 +941,7 @@ export class BuyingListComponent implements OnInit, OnDestroy {
     this.dateTo = '';
     this.statusFilter = '';
     this.movedItemIds.clear();
-    this.selectedArrivalIds.clear();
+    this.selectedItemIds.clear();
     this.resetItemDrafts();
     this.updateOutOfStockProducts();
     this.loadBatchProducts();
@@ -896,7 +970,7 @@ export class BuyingListComponent implements OnInit, OnDestroy {
   }
 
   onItemTableCheckboxChange(event: { item: BuyingListItem; checked: boolean }) {
-    this.setArrivalSelection(event.item, event.checked);
+    this.setItemSelection(event.item, event.checked);
   }
 
   onItemTableInputChange(event: { item: BuyingListItem; value: any }) {
@@ -1104,7 +1178,7 @@ export class BuyingListComponent implements OnInit, OnDestroy {
         item.orderedQty = draft.orderedQuantity;
         item.status = draft.status;
         if (!this.isArrivalSelectable(item) && item.id) {
-          this.selectedArrivalIds.delete(item.id);
+          this.selectedItemIds.delete(item.id);
         }
         this.loadItems();
       },
@@ -1118,35 +1192,75 @@ export class BuyingListComponent implements OnInit, OnDestroy {
     return item.status === 'arrived' && !item.movedToArrivals;
   }
 
-  get isAllArrivedSelected(): boolean {
-    const eligible = this.items.filter(i => i.id && this.isArrivalSelectable(i));
-    return eligible.length > 0 && eligible.every(i => this.selectedArrivalIds.has(i.id!));
+  isItemSelectable(item: BuyingListItem): boolean {
+    const pendingStatusChange = item.status === 'pending' && this.canBulkChangeStatus && this.canEditSentItem(item);
+    return pendingStatusChange || (this.canSendToArrivals && this.isArrivalSelectable(item));
   }
 
-  toggleSelectArrival(item: BuyingListItem, event: Event) {
-    if (!item.id) return;
-    this.setArrivalSelection(item, (event.target as HTMLInputElement).checked);
+  get isAllActionableSelected(): boolean {
+    const eligible = this.items.filter(item => item.id && this.isItemSelectable(item));
+    return eligible.length > 0 && eligible.every(item => this.selectedItemIds.has(item.id!));
   }
 
-  private setArrivalSelection(item: BuyingListItem, checked: boolean) {
-    if (!item.id) return;
-    if (checked) this.selectedArrivalIds.add(item.id);
-    else this.selectedArrivalIds.delete(item.id);
+  private setItemSelection(item: BuyingListItem, checked: boolean) {
+    if (!item.id || !this.isItemSelectable(item)) return;
+    if (checked) this.selectedItemIds.add(item.id);
+    else this.selectedItemIds.delete(item.id);
   }
 
-  toggleSelectAllArrived(event: Event) {
+  toggleSelectAllActionable(event: Event) {
     const checked = (event.target as HTMLInputElement).checked;
-    this.selectedArrivalIds.clear();
+    this.selectedItemIds.clear();
     if (!checked) return;
     this.items
-      .filter(i => i.id && this.isArrivalSelectable(i))
-      .forEach(i => this.selectedArrivalIds.add(i.id!));
+      .filter(item => item.id && this.isItemSelectable(item))
+      .forEach(item => this.selectedItemIds.add(item.id!));
+  }
+
+  clearItemSelection() {
+    this.selectedItemIds.clear();
+  }
+
+  applyBulkStatus() {
+    if (!this.canBulkChangeStatus || !this.selectedBatch?.id || this.bulkStatusSaving) return;
+
+    const selectedPending = this.items.filter(item =>
+      item.id && item.status === 'pending' && !item.movedToArrivals && this.selectedItemIds.has(item.id)
+    );
+    if (selectedPending.length === 0) {
+      alert('Select at least one pending item to change its status.');
+      return;
+    }
+
+    const statusLabel = this.bulkTargetStatus.charAt(0).toUpperCase() + this.bulkTargetStatus.slice(1);
+    const itemLabel = selectedPending.length === 1 ? 'item' : 'items';
+    if (!confirm(`Change ${selectedPending.length} pending ${itemLabel} to ${statusLabel}?`)) return;
+
+    this.bulkStatusSaving = true;
+    this.dbService.bulkUpdateBuyingListStatus(
+      this.selectedBatch.id,
+      selectedPending.map(item => item.id!),
+      this.bulkTargetStatus
+    ).subscribe({
+      next: updatedCount => {
+        this.bulkStatusSaving = false;
+        this.selectedItemIds.clear();
+        this.loadItems();
+        this.loadBatches();
+        this.showSuccess(`${updatedCount} ${updatedCount === 1 ? 'item' : 'items'} changed to ${statusLabel}.`);
+      },
+      error: error => {
+        this.bulkStatusSaving = false;
+        alert(error?.message || 'Failed to change the selected item statuses.');
+        this.loadItems();
+      }
+    });
   }
 
   sendSelectedToArrivals() {
     if (!this.authService.canPerformBuyingListOperation('canSendToArrivals')) return;
     if (this.sendingToArrivals) return;
-    const selected = this.items.filter(i => i.id && this.selectedArrivalIds.has(i.id));
+    const selected = this.items.filter(i => i.id && this.selectedItemIds.has(i.id));
     const eligible = selected.filter(i => this.isArrivalSelectable(i));
     if (eligible.length === 0) {
       alert('Select arrived items to send to Arrivals');
@@ -1160,7 +1274,7 @@ export class BuyingListComponent implements OnInit, OnDestroy {
           if (!ok) return;
           const item = eligible[idx];
           item.movedToArrivals = true;
-          if (item.id) this.selectedArrivalIds.delete(item.id);
+          if (item.id) this.selectedItemIds.delete(item.id);
         });
         this.sendingToArrivals = false;
         this.loadItems();
@@ -1241,7 +1355,7 @@ export class BuyingListComponent implements OnInit, OnDestroy {
         this.closeReverseConfirmModal();
         if (ok) {
           item.movedToArrivals = false;
-          this.selectedArrivalIds.delete(item.id!);
+          this.selectedItemIds.delete(item.id!);
           this.loadItems();
           this.loadBatches();
           this.showSuccess('Item successfully reversed from Arrivals.');

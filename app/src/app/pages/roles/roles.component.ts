@@ -10,6 +10,7 @@ import {
   BuyingListPermissionConfig,
   BUYING_LIST_OPERATIONS,
   DashboardComponentConfig,
+  DASHBOARD_COMPONENTS,
   DEFAULT_ARRIVALS_CONFIG,
   DEFAULT_BUYING_LIST_CONFIG,
   DEFAULT_DASHBOARD_CONFIG,
@@ -42,6 +43,7 @@ import {
 
 type CrudAction = Exclude<PermissionAction, 'view'>;
 type ConfigKey =
+  | 'dashboardConfig'
   | 'productConfig'
   | 'ordersConfig'
   | 'buyingListConfig'
@@ -89,6 +91,7 @@ interface PermissionActionGroup {
 }
 
 type ManagedPermissionPage =
+  | 'dashboard'
   | 'clients'
   | 'products'
   | 'orders'
@@ -98,6 +101,7 @@ type ManagedPermissionPage =
   | 'shipping_ledger'
   | 'stock_sales'
   | 'batches'
+  | 'billing'
   | 'roles';
 
 interface ManagedPageTab {
@@ -1751,6 +1755,8 @@ interface ManagedPageTab {
       background: linear-gradient(135deg, #53665d, #263a32);
     }
 
+    .page-choice.dashboard .material-icons,
+    .page-card-icon.dashboard { background: linear-gradient(135deg, #17745c, #0b3d32); }
     .page-choice.clients .material-icons,
     .page-card-icon.clients { background: linear-gradient(135deg, #2362a8, #153d68); }
     .page-choice.products .material-icons,
@@ -2037,6 +2043,8 @@ export class RolesComponent implements OnInit {
     { key: 'delete', label: 'Delete Client', description: 'Delete single clients or bulk selections.', icon: 'delete' }
   ];
 
+  readonly dashboardActions: ConfigActionCard[] = [...DASHBOARD_COMPONENTS];
+
   readonly productCatalogActions: CrudActionCard[] = [
     { key: 'create', label: 'Add New Product', description: 'Create new products in the catalog.', icon: 'add_box' },
     { key: 'edit', label: 'Edit Product', description: 'Edit existing catalog products.', icon: 'edit_square' },
@@ -2052,8 +2060,12 @@ export class RolesComponent implements OnInit {
   readonly stockSalesActions: ConfigActionCard[] = [...STOCK_SALES_OPERATIONS];
   readonly manageBatchesActions: ConfigActionCard[] = [...MANAGE_BATCHES_OPERATIONS];
   readonly rolesActions: ConfigActionCard[] = [...ROLES_OPERATIONS];
+  readonly billingActions: CrudActionCard[] = [
+    { key: 'create', label: 'Make Payments', description: 'Start online payments or submit MoMo payments for review.', icon: 'payments' }
+  ];
 
   readonly managedPages: ManagedPageTab[] = [
+    { key: 'dashboard', resource: 'dashboard', label: 'Dashboard', description: 'Choose the overview sections this role can see', icon: 'dashboard', accentClass: 'dashboard' },
     { key: 'clients', resource: 'clients', label: 'Clients', description: 'Manage client actions', icon: 'people', accentClass: 'clients' },
     { key: 'products', resource: 'products', label: 'Products', description: 'Manage product and batch actions', icon: 'inventory_2', accentClass: 'products' },
     { key: 'orders', resource: 'orders', label: 'Orders', description: 'Manage order and batch controls', icon: 'shopping_cart', accentClass: 'orders' },
@@ -2063,6 +2075,7 @@ export class RolesComponent implements OnInit {
     { key: 'shipping_ledger', resource: 'shipping', label: 'Shipping Ledger', description: 'Manage shipping payments and delivery handoff', icon: 'local_shipping', accentClass: 'shipping-ledger' },
     { key: 'stock_sales', resource: 'stock_sales', label: 'Stock Sales', description: 'Manage stock sale actions', icon: 'storefront', accentClass: 'stock-sales' },
     { key: 'batches', resource: 'batches', label: 'Manage Batches', description: 'Manage destructive batch admin actions', icon: 'inventory_2', accentClass: 'batches' },
+    { key: 'billing', resource: 'billing', label: 'Subscription', description: 'View billing and make renewal payments', icon: 'workspace_premium', accentClass: 'billing' },
     { key: 'roles', resource: 'roles', label: 'Roles', description: 'Manage role setup actions', icon: 'admin_panel_settings', accentClass: 'roles' }
   ];
 
@@ -2140,6 +2153,8 @@ export class RolesComponent implements OnInit {
 
   getActionGroups(page: ManagedPermissionPage): PermissionActionGroup[] {
     switch (page) {
+      case 'dashboard':
+        return [{ label: 'Dashboard sections', type: 'config', resource: 'dashboard', configKey: 'dashboardConfig', actions: this.dashboardActions }];
       case 'clients':
         return [{ label: 'Client management', type: 'crud', resource: 'clients', actions: this.clientActions }];
       case 'products':
@@ -2161,6 +2176,8 @@ export class RolesComponent implements OnInit {
         return [{ label: 'Stock sales workflow', type: 'config', resource: 'stock_sales', configKey: 'stockSalesConfig', actions: this.stockSalesActions }];
       case 'batches':
         return [{ label: 'Batch management', type: 'config', resource: 'batches', configKey: 'manageBatchesConfig', actions: this.manageBatchesActions }];
+      case 'billing':
+        return [{ label: 'Subscription billing', type: 'crud', resource: 'billing', actions: this.billingActions }];
       case 'roles':
         return [{ label: 'Role management', type: 'config', resource: 'roles', configKey: 'rolesConfig', actions: this.rolesActions }];
       default:

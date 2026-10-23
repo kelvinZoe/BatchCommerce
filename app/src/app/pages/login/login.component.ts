@@ -35,7 +35,7 @@ export class LoginComponent {
     private router: Router
   ) {
     if (this.authService.isLoggedIn) {
-      this.router.navigate(['/dashboard']);
+      this.router.navigate([this.authService.getDefaultAuthenticatedRoute()]);
     }
   }
 
@@ -89,7 +89,9 @@ export class LoginComponent {
       this.loading = false;
 
       if (result.success) {
-        this.router.navigate([result.requiresSetup ? '/setup' : '/dashboard']);
+        this.router.navigate([
+          result.requiresSetup ? '/setup' : this.authService.getDefaultAuthenticatedRoute()
+        ]);
       } else if (result.requiresPhoneVerification) {
         this.goToPhoneVerification(result.verificationPhone || this.email.trim());
       } else {

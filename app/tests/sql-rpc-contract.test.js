@@ -20,28 +20,76 @@ function assertIncludesAll(source, values, label) {
   }
 }
 
-test('flat subscription pricing stays aligned across app, migration, reset schema, and docs', () => {
+test('GHS 100 subscription pricing and one-month new-shop trial stay aligned', () => {
   const pricingService = read('app/src/app/services/pricing-data.service.ts');
   const flatPricingMigration = read('supabase/migrations/20260904130000_flat_monthly_subscription.sql');
+  const currentPricingMigration = read('supabase/migrations/20261023133000_subscription_price_100_one_month_trial.sql');
+  const edgeBilling = read('supabase/functions/_shared/billing.ts');
   const resetSchema = read('app/supabase-migration-multishop-reset.sql');
   const pricingDoc = read('PRICING_MODEL.md');
 
-  assert.match(pricingService, /monthlyPriceGhs\s*=\s*70/);
+  assert.match(pricingService, /monthlyPriceGhs\s*=\s*100/);
   assert.doesNotMatch(pricingService, /monthlyLimit|recommendedPlan|overageCount/);
 
   assertIncludesAll(flatPricingMigration, [
     "subscription_plan = 'standard'",
     "ALTER COLUMN subscription_plan SET DEFAULT 'standard'",
     "CHECK (subscription_plan = 'standard')",
-    'CHECK (plan_override IS NULL)',
-    'GHS 70 monthly subscription',
-    'Every active paid shop has the same unlimited access'
+    'CHECK (plan_override IS NULL)'
   ], 'flat-pricing migration');
 
+  assertIncludesAll(currentPricingMigration, [
+    "ALTER COLUMN promo_ends_at SET DEFAULT (now() + interval '1 month')",
+    'ALTER COLUMN base_amount_minor SET DEFAULT 10000',
+    'CREATE OR REPLACE FUNCTION public.subscription_monthly_price_minor()',
+    'SELECT 10000',
+    'public.subscription_monthly_price_minor() * (100 - COALESCE(v_discount, 0))',
+    'v_base_amount INTEGER := public.subscription_monthly_price_minor()',
+    'Renew your GHS 100 monthly subscription'
+  ], 'current subscription pricing migration');
+
   assert.match(resetSchema, /subscription_plan TEXT NOT NULL DEFAULT 'standard' CHECK \(subscription_plan = 'standard'\)/);
-  assert.match(pricingDoc, /GHS 70 per month/);
+  assert.match(resetSchema, /promo_ends_at TIMESTAMPTZ NOT NULL DEFAULT \(now\(\) \+ INTERVAL '1 month'\)/i);
+  assert.match(edgeBilling, /MONTHLY_PRICE_MINOR\s*=\s*10000/);
+  assert.match(pricingDoc, /GHS 100 per month/);
+  assert.match(pricingDoc, /one month of free access/i);
   assert.match(pricingDoc, /There are no Starter, Growth, Pro/);
   assert.doesNotMatch(pricingDoc, /GHS (150|200|300)/);
+});
+
+test('authenticated routing cannot loop when a role lacks dashboard access', () => {
+  const authService = read('app/src/app/services/auth.service.ts');
+  const authGuard = read('app/src/app/guards/auth.guard.ts');
+  const login = read('app/src/app/pages/login/login.component.ts');
+  const routes = read('app/src/app/app.routes.ts');
+
+  assertIncludesAll(authService, [
+    'getDefaultAuthenticatedRoute()',
+    "firstAccessibleItem?.route || '/access-denied'",
+    'if (this.sessionRestorePromise) return this.sessionRestorePromise',
+    'this.restoredAuthUserId === this.currentUser.authId'
+  ], 'auth service');
+
+  assertIncludesAll(authGuard, [
+    'router.createUrlTree([auth.getDefaultAuthenticatedRoute()])',
+    "router.createUrlTree(['/login'])"
+  ], 'auth guards');
+  assert.doesNotMatch(authGuard, /router\.navigate\(\['\/dashboard'\]\)/);
+  assert.match(login, /this\.authService\.getDefaultAuthenticatedRoute\(\)/);
+  assert.match(routes, /path:\s*'access-denied'/);
+});
+
+test('custom roles can grant dashboard access and select dashboard sections', () => {
+  const rolesComponent = read('app/src/app/pages/roles/roles.component.ts');
+
+  assertIncludesAll(rolesComponent, [
+    'DASHBOARD_COMPONENTS',
+    "| 'dashboardConfig'",
+    "| 'dashboard'",
+    "key: 'dashboard', resource: 'dashboard', label: 'Dashboard'",
+    "configKey: 'dashboardConfig'",
+    'actions: this.dashboardActions'
+  ], 'roles dashboard editor');
 });
 
 test('promo-code redemption RPC keeps commercial guardrails', () => {
@@ -140,6 +188,222 @@ test('catalog-first orders lazily create tenant-safe batch product rows and pres
     'includesMessage: false',
     'normalizeUsername'
   ], 'WhatsApp link service');
+});
+
+test('open-batch order editing is transactional, permission guarded, and exposed in the orders UI', () => {
+  const migration = read('supabase/migrations/20261023120000_update_orders_transactionally.sql');
+  const ordersComponent = read('app/src/app/pages/orders/orders.component.ts');
+  const orderService = read('app/src/app/services/order-data.service.ts');
+  const models = read('app/src/app/models/index.ts');
+
+  assertIncludesAll(migration, [
+    'CREATE OR REPLACE FUNCTION public.update_order_with_items',
+    'SECURITY DEFINER',
+    "public.has_shop_permission(p_shop_id, 'orders', 'edit')",
+    'public.shop_has_subscription_access(p_shop_id)',
+    "batches.status = 'open'",
+    'FOR UPDATE OF orders',
+    'public.ensure_batch_product_for_order',
+    'Each product can appear only once in an order.',
+    'DELETE FROM public.order_items',
+    'UPDATE public.orders',
+    'REVOKE ALL ON FUNCTION public.update_order_with_items',
+    'GRANT EXECUTE ON FUNCTION public.update_order_with_items'
+  ], 'order update migration');
+
+  assertIncludesAll(models, [
+    'canEditOrder: boolean',
+    "key: 'canEditOrder'",
+    "label: 'Edit Orders'"
+  ], 'orders permission model');
+
+  assertIncludesAll(orderService, [
+    'updateOrder(order: Order)',
+    "this.sb.rpc('update_order_with_items'",
+    'p_items: order.items.map'
+  ], 'order data service');
+
+  assertIncludesAll(ordersComponent, [
+    "id: 'edit'",
+    'openEditOrderModal',
+    'canEditOrderInSelectedBatch',
+    'saveEditedOrder',
+    "updated: true"
+  ], 'orders page');
+});
+
+test('reopened batches discard only untouched buying-list rows before orders become editable', () => {
+  const migration = read('supabase/migrations/20261023123000_harden_reopened_batch_edits.sql');
+  const batchService = read('app/src/app/services/batch-data.service.ts');
+
+  assertIncludesAll(migration, [
+    'CREATE OR REPLACE FUNCTION public.enforce_order_item_batch_editable',
+    'BEFORE INSERT OR UPDATE ON public.order_items',
+    'This reopened batch still has workflow records',
+    'CREATE OR REPLACE FUNCTION public.reopen_order_batch_safely',
+    "public.has_shop_permission(p_shop_id, 'orders', 'edit')",
+    "buying_list.status <> 'pending'",
+    'buying_list.ordered_qty',
+    'buying_list.moved_to_arrivals',
+    'public.arrival_items',
+    'public.shipping_invoices',
+    'DELETE FROM public.buying_list',
+    "order_status = 'pending'",
+    "delivery_status = 'not_sent'",
+    'GRANT EXECUTE ON FUNCTION public.reopen_order_batch_safely'
+  ], 'safe reopen migration');
+
+  assertIncludesAll(batchService, [
+    "this.sb.rpc('reopen_order_batch_safely'",
+    'p_shop_id: this.requireActiveShopId()',
+    'p_batch_id: batchId'
+  ], 'batch data service');
+});
+
+test('buying-list bulk status changes are atomic and limited to pending rows', () => {
+  const migration = read('supabase/migrations/20261023130000_bulk_update_buying_list_status.sql');
+  const service = read('app/src/app/services/database.service.ts');
+  const component = read('app/src/app/pages/buying-list/buying-list.component.ts');
+
+  assertIncludesAll(migration, [
+    'CREATE OR REPLACE FUNCTION public.bulk_update_buying_list_status',
+    "public.has_shop_permission(p_shop_id, 'buying_list', 'edit')",
+    "p_target_status NOT IN ('ordered', 'shipped', 'arrived')",
+    "buying_item.status = 'pending'",
+    'FOR UPDATE',
+    'v_matching_count <> v_requested_count',
+    'GET DIAGNOSTICS v_updated_count = ROW_COUNT',
+    'GRANT EXECUTE ON FUNCTION public.bulk_update_buying_list_status'
+  ], 'bulk buying-list status migration');
+
+  assertIncludesAll(service, [
+    'bulkUpdateBuyingListStatus(',
+    "this.sb.rpc('bulk_update_buying_list_status'",
+    'p_shop_id: this.requireActiveShopId()',
+    'p_item_ids: itemIds',
+    'p_target_status: targetStatus'
+  ], 'buying-list data service');
+
+  assertIncludesAll(component, [
+    'selectedPendingCount',
+    'bulkTargetStatus',
+    'applyBulkStatus()',
+    'bulkUpdateBuyingListStatus('
+  ], 'buying-list bulk status UI');
+});
+
+test('subscription billing ledger is tenant-safe, idempotent, and entitlement based', () => {
+  const migration = read('supabase/migrations/20261022120000_subscription_billing_foundation.sql');
+
+  assertIncludesAll(migration, [
+    'CREATE TABLE IF NOT EXISTS public.subscription_payments',
+    'CREATE TABLE IF NOT EXISTS public.subscription_entitlements',
+    'CREATE TABLE IF NOT EXISTS public.subscription_provider_events',
+    'CREATE TABLE IF NOT EXISTS public.subscription_reminder_deliveries',
+    'CREATE TABLE IF NOT EXISTS public.platform_admins',
+    'CREATE TABLE IF NOT EXISTS public.platform_action_audit',
+    'CREATE OR REPLACE FUNCTION public.compute_shop_subscription_summary',
+    'CREATE OR REPLACE FUNCTION public.get_shop_subscription_summary',
+    'CREATE OR REPLACE FUNCTION public.can_shop_create_sales_record',
+    'CREATE OR REPLACE FUNCTION public.create_subscription_payment',
+    'CREATE OR REPLACE FUNCTION public.apply_subscription_payment',
+    'CREATE OR REPLACE FUNCTION public.review_manual_subscription_payment',
+    "public.has_shop_permission(p_shop_id, 'billing', 'view')",
+    "now() + interval '1 month'",
+    "now() + interval '1 month 3 days'",
+    "'launch-transition:' || shop.id::TEXT",
+    "lower(auth_user.email) = 'zoeinventions@gmail.com'",
+    'REVOKE ALL ON FUNCTION public.apply_subscription_payment',
+    'GRANT EXECUTE ON FUNCTION public.apply_subscription_payment',
+    'GRANT SELECT ON public.platform_admins TO authenticated',
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON public.subscription_provider_events TO service_role',
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON public.subscription_reminder_deliveries TO service_role',
+    'GRANT USAGE, SELECT ON SEQUENCE public.damage_order_allocations_id_seq TO authenticated',
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON public.promo_codes TO service_role',
+    'TO service_role'
+  ], 'subscription billing migration');
+
+  assert.match(migration, /UNIQUE[\s\S]*provider_reference|subscription_payments_provider_reference_key/i);
+  assert.match(migration, /UNIQUE \(shop_id, reminder_key, access_ends_at, recipient_email\)/i);
+  assert.match(migration, /IF NOT public\.shop_has_subscription_access\(NEW\.shop_id\)/i);
+  assert.doesNotMatch(migration, /GRANT (INSERT|UPDATE|DELETE)[\s\S]{0,80}subscription_payments[\s\S]{0,80}authenticated/i);
+});
+
+test('subscription Edge Functions keep Paystack secrets and activation on the server', () => {
+  const initialize = read('supabase/functions/billing-initialize/index.ts');
+  const verify = read('supabase/functions/billing-verify/index.ts');
+  const webhook = read('supabase/functions/paystack-webhook/index.ts');
+  const paystack = read('supabase/functions/_shared/paystack.ts');
+  const manual = read('supabase/functions/manual-payment-submit/index.ts');
+  const admin = read('supabase/functions/platform-admin/index.ts');
+
+  assertIncludesAll(initialize, [
+    "requireShopPermission(context, shopId, 'create')",
+    "consumeRateLimit(context, 'billing_initialize'",
+    "context.admin.rpc('create_subscription_payment'",
+    'authorizationUrl'
+  ], 'payment initializer');
+  assertIncludesAll(verify, [
+    'verifyAndApplyPaystackPayment',
+    "requireShopPermission(context, payment.shop_id, 'view')",
+    "consumeRateLimit(context, 'billing_verify'"
+  ], 'payment verifier');
+  assertIncludesAll(webhook, [
+    "request.headers.get('x-paystack-signature')",
+    'verifyPaystackSignature',
+    'verifyAndApplyPaystackPayment',
+    "event?.event === 'refund.processed'",
+    "status: 'refunded'"
+  ], 'Paystack webhook');
+  assertIncludesAll(paystack, [
+    "requiredEnv('PAYSTACK_SECRET_KEY')",
+    "hash: 'SHA-512'",
+    "currency: 'GHS'",
+    "channels: ['card', 'mobile_money']"
+  ], 'Paystack client');
+  assertIncludesAll(manual, [
+    "requireShopPermission(context, shopId, 'create')",
+    "consumeRateLimit(context, 'manual_payment'",
+    "p_source: 'manual'"
+  ], 'manual payment endpoint');
+  assertIncludesAll(admin, ['requirePlatformAdmin(context)', 'platform_action_audit'], 'platform admin endpoint');
+
+  const browserFiles = [
+    read('app/src/app/services/billing-data.service.ts'),
+    read('app/src/app/pages/subscription/subscription.component.ts')
+  ].join('\n');
+  assert.doesNotMatch(browserFiles, /PAYSTACK_SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY/);
+});
+
+test('billing UI uses dedicated permissions and isolates the platform console', () => {
+  const models = read('app/src/app/models/index.ts');
+  const routes = read('app/src/app/app.routes.ts');
+  const guard = read('app/src/app/guards/auth.guard.ts');
+  const shell = read('app/src/app/app.component.ts');
+  const subscription = read('app/src/app/pages/subscription/subscription.component.ts');
+
+  assertIncludesAll(models, [
+    "| 'billing'",
+    "resource: 'billing'",
+    'SubscriptionSummary',
+    'SubscriptionPayment'
+  ], 'billing models');
+  assertIncludesAll(routes, [
+    "permissionGuard('billing')",
+    "path: 'platform-admin'",
+    'platformAdminGuard'
+  ], 'billing routes');
+  assertIncludesAll(guard, ['platformAdminGuard', 'billing.isPlatformAdmin()'], 'platform admin guard');
+  assertIncludesAll(shell, ['!isPlatformAdminRoute', '<app-subscription-banner>'], 'application shell');
+  assertIncludesAll(subscription, ['initializePayment()', 'verifyPayment(reference)', 'submitManualPayment(input)'], 'subscription page');
+
+  const platformAdmin = read('app/src/app/pages/platform-admin/platform-admin.component.html');
+  const platformAdminComponent = read('app/src/app/pages/platform-admin/platform-admin.component.ts');
+  assertIncludesAll(platformAdmin, [
+    'Standard renewal is GHS 100 per month',
+    "nextChargeGhs(shop) | number:'1.2-2'"
+  ], 'platform admin pricing UI');
+  assert.match(platformAdminComponent, /nextAmountMinor\s*\?\?\s*10000/);
 });
 
 test('product delete cascade RPC is tenant guarded and deletes all dependent product rows transactionally', () => {

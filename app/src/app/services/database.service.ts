@@ -374,6 +374,10 @@ export class DatabaseService extends SupabaseDataAccessService {
     return this.orders.createOrder(order);
   }
 
+  updateOrder(order: Order): Observable<number> {
+    return this.orders.updateOrder(order);
+  }
+
   addOrderItem(item: OrderItem): Observable<number> {
     return this.orders.addOrderItem(item);
   }
@@ -1558,6 +1562,26 @@ export class DatabaseService extends SupabaseDataAccessService {
     return from(
       this.scopeShopQuery(this.sb.from('buying_list').update(row)).eq('id', item.id)
     ).pipe(map(({ error }) => !error));
+  }
+
+  bulkUpdateBuyingListStatus(
+    batchId: number,
+    itemIds: number[],
+    targetStatus: Exclude<BuyingStatus, 'pending'>
+  ): Observable<number> {
+    const run = async () => {
+      if (!batchId || itemIds.length === 0) return 0;
+      const { data, error } = await this.sb.rpc('bulk_update_buying_list_status', {
+        p_shop_id: this.requireActiveShopId(),
+        p_batch_id: batchId,
+        p_item_ids: itemIds,
+        p_target_status: targetStatus
+      });
+      if (error) throw error;
+      return Number(data || 0);
+    };
+
+    return from(run());
   }
 
   applyBuyingListArrivalToStock(batchId: number, batchName: string): Observable<boolean> {

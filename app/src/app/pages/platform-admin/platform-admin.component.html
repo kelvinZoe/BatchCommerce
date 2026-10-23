@@ -1,0 +1,69 @@
+<div class="platform-shell">
+  <aside class="platform-rail">
+    <div class="brand"><img src="assets/batchcommerce_icon.svg" alt=""><div><strong>BatchCommerce</strong><span>Platform desk</span></div></div>
+    <nav>
+      <button [class.active]="activeTab === 'shops'" (click)="setTab('shops')"><span class="material-icons">storefront</span><span>Shops</span><mark>{{ overview.shops.length }}</mark></button>
+      <button [class.active]="activeTab === 'payments'" (click)="setTab('payments')"><span class="material-icons">payments</span><span>Payments</span><mark>{{ pendingManualPayments.length }}</mark></button>
+      <button [class.active]="activeTab === 'promos'" (click)="setTab('promos')"><span class="material-icons">local_activity</span><span>Promo codes</span><mark>{{ overview.promoCodes.length }}</mark></button>
+    </nav>
+    <div class="rail-actions"><button (click)="goToWorkspace()"><span class="material-icons">arrow_back</span>Shop workspace</button><button (click)="logout()"><span class="material-icons">logout</span>Sign out</button></div>
+  </aside>
+
+  <main class="platform-main">
+    <header class="platform-header">
+      <div><span class="kicker">Internal operations</span><h1>{{ activeTab === 'shops' ? 'Shop access' : activeTab === 'payments' ? 'Payment desk' : 'Promotion studio' }}</h1></div>
+      <div class="header-actions"><label><span class="material-icons">search</span><input [(ngModel)]="search" placeholder="Search this view"></label><button (click)="load()" [disabled]="loading"><span class="material-icons" [class.spin]="loading">refresh</span></button></div>
+    </header>
+
+    <div class="notice error" *ngIf="error"><span class="material-icons">error_outline</span>{{ error }}</div>
+    <div class="notice success" *ngIf="success"><span class="material-icons">check_circle</span>{{ success }}</div>
+
+    <section class="metrics">
+      <article><span>Shops with access</span><strong>{{ activeShopCount }}</strong><small>of {{ overview.shops.length }} workspaces</small></article>
+      <article><span>Manual reviews</span><strong>{{ pendingManualPayments.length }}</strong><small>waiting for a decision</small></article>
+      <article class="revenue"><span>Confirmed collections</span><strong><small>GHS</small> {{ collectedGhs | number:'1.2-2' }}</strong><small>recorded in the billing ledger</small></article>
+    </section>
+
+    <section class="loading-grid" *ngIf="loading && !overview.shops.length"><span></span><span></span><span></span></section>
+
+    <section *ngIf="activeTab === 'shops' && !loading" class="desk-card">
+      <div class="desk-heading"><div><span class="kicker">Workspace control</span><h2>Subscription access by shop</h2></div><p>Standard renewal is GHS 100 per month. A shop's displayed next charge includes any reserved discount.</p></div>
+      <div class="shop-list">
+        <article class="shop-row" *ngFor="let shop of filteredShops; trackBy: trackById">
+          <div class="shop-identity"><span>{{ shop.name.charAt(0) }}</span><div><strong>{{ shop.name }}</strong><small>{{ shop.slug }}</small></div></div>
+          <div class="access-cell"><mark [attr.data-state]="shop.subscriptionSummary.accessState">{{ shop.subscriptionSummary.accessState }}</mark><small>Ends {{ dateLabel(shop.subscriptionSummary.accessEndsAt) }}</small><strong>Next: GHS {{ nextChargeGhs(shop) | number:'1.2-2' }}</strong></div>
+          <label><span>Reason</span><input [(ngModel)]="shopReasons[shop.id]" placeholder="Required for changes"></label>
+          <div class="grant-cell"><input type="number" min="1" max="365" [(ngModel)]="grantDays[shop.id]" placeholder="30"><button (click)="grantAccess(shop)" [disabled]="busyId === shop.id">Grant days</button></div>
+          <div class="status-actions"><button (click)="changeShopStatus(shop, 'active')" [disabled]="busyId === shop.id">Reactivate</button><button class="danger" (click)="changeShopStatus(shop, 'suspended')" [disabled]="busyId === shop.id">Suspend</button></div>
+        </article>
+        <div class="empty" *ngIf="!filteredShops.length">No shops match your search.</div>
+      </div>
+    </section>
+
+    <ng-container *ngIf="activeTab === 'payments' && !loading">
+      <section class="review-board" *ngIf="pendingManualPayments.length">
+        <div class="desk-heading"><div><span class="kicker">Needs attention</span><h2>Manual MoMo review</h2></div><p>Match the sender and reference against the receiving wallet before approval.</p></div>
+        <div class="review-grid">
+          <article *ngFor="let payment of pendingManualPayments; trackBy: trackById">
+            <div class="review-top"><div><span>{{ payment.shops?.name || 'Shop' }}</span><strong>GHS {{ amountGhs(payment) | number:'1.2-2' }}</strong></div><mark>Pending review</mark></div>
+            <dl><div><dt>Sender</dt><dd>{{ payment.manualSenderName }}</dd></div><div><dt>MoMo number</dt><dd>{{ payment.manualSenderPhone }}</dd></div><div><dt>Network</dt><dd>{{ payment.manualNetwork }}</dd></div><div><dt>Reference</dt><dd>{{ payment.manualReference }}</dd></div><div><dt>Paid</dt><dd>{{ dateLabel(payment.manualPaidAt) }}</dd></div></dl>
+            <textarea [(ngModel)]="reviewNotes[payment.id]" placeholder="Review note (required for rejection)"></textarea>
+            <div class="review-actions"><button class="reject" (click)="review(payment, 'reject')" [disabled]="busyId === payment.id">Reject</button><button class="approve" (click)="review(payment, 'approve')" [disabled]="busyId === payment.id">Approve & add month</button></div>
+          </article>
+        </div>
+      </section>
+      <section class="desk-card payment-ledger">
+        <div class="desk-heading"><div><span class="kicker">Immutable history</span><h2>All payment attempts</h2></div></div>
+        <div class="table"><div class="table-row labels"><span>Shop / reference</span><span>Source</span><span>Amount</span><span>Date</span><span>Status</span></div><div class="table-row" *ngFor="let payment of filteredPayments; trackBy: trackById"><span><strong>{{ payment.shops?.name || 'Unknown shop' }}</strong><small>{{ payment.providerReference || payment.manualReference }}</small></span><span>{{ payment.source }}</span><span>GHS {{ amountGhs(payment) | number:'1.2-2' }}</span><span>{{ dateLabel(payment.paidAt || payment.createdAt) }}</span><span><mark [attr.data-state]="payment.status">{{ payment.status.replace('_', ' ') }}</mark></span></div></div>
+      </section>
+    </ng-container>
+
+    <section *ngIf="activeTab === 'promos' && !loading" class="desk-card">
+      <div class="desk-heading"><div><span class="kicker">Commercial controls</span><h2>Promo codes</h2></div><button class="new-promo" (click)="showPromoForm = !showPromoForm"><span class="material-icons">add</span>New code</button></div>
+      <form class="promo-form" *ngIf="showPromoForm" (ngSubmit)="savePromo()">
+        <label><span>Code</span><input name="code" [(ngModel)]="promoForm.code" required></label><label><span>Description</span><input name="description" [(ngModel)]="promoForm.description"></label><label><span>Extra promo days</span><input name="days" type="number" min="0" [(ngModel)]="promoForm.extraPromoDays"></label><label><span>Next-payment discount %</span><input name="discount" type="number" min="0" max="100" [(ngModel)]="promoForm.discountPercent"></label><label><span>Maximum redemptions</span><input name="max" type="number" min="1" [(ngModel)]="promoForm.maxRedemptions"></label><label><span>Expires</span><input name="expires" type="datetime-local" [(ngModel)]="promoForm.expiresAt"></label><button type="submit" [disabled]="busyId === 'promo-form'">Save promo code</button>
+      </form>
+      <div class="promo-list"><article *ngFor="let promo of overview.promoCodes; trackBy: trackById"><div><strong>{{ promo.code }}</strong><span>{{ promo.description || 'No description' }}</span></div><div><small>{{ promo.extraPromoDays }} extra days</small><small>{{ promo.discountPercent || 0 }}% next payment</small><small>{{ promo.redeemedCount }} used</small></div><mark [class.off]="!promo.isActive">{{ promo.isActive ? 'Active' : 'Paused' }}</mark><button (click)="togglePromo(promo)" [disabled]="busyId === promo.id">{{ promo.isActive ? 'Pause' : 'Activate' }}</button></article></div>
+    </section>
+  </main>
+</div>

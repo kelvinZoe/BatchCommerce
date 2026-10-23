@@ -261,7 +261,7 @@ CREATE TABLE shops (
   subscription_plan TEXT NOT NULL DEFAULT 'standard' CHECK (subscription_plan = 'standard'),
   subscription_status TEXT NOT NULL DEFAULT 'promo' CHECK (subscription_status IN ('promo', 'active', 'past_due', 'suspended', 'cancelled')),
   promo_started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  promo_ends_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '2 months'),
+  promo_ends_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '1 month'),
   billing_started_at TIMESTAMPTZ,
   plan_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -832,7 +832,7 @@ BEGIN
   END IF;
 
   IF COALESCE(v_shop.subscription_status, 'promo') <> 'active' THEN
-    RAISE EXCEPTION 'Your 2-month promo has ended. Activate your GHS 70 monthly subscription to continue creating sales records.';
+    RAISE EXCEPTION 'Your one-month free period has ended. Activate your GHS 100 monthly subscription to continue creating sales records.';
   END IF;
 
   -- Every active paid shop has the same unlimited access, regardless of size.

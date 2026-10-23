@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, permissionGuard } from './guards/auth.guard';
+import { authGuard, permissionGuard, platformAdminGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
   {
@@ -116,7 +116,17 @@ export const routes: Routes = [
   {
     path: 'subscription',
     loadComponent: () => import('./pages/subscription/subscription.component').then(m => m.SubscriptionComponent),
-    canActivate: [authGuard, permissionGuard('settings')]
+    canActivate: [authGuard, permissionGuard('billing')]
+  },
+  {
+    path: 'platform-admin',
+    loadComponent: () => import('./pages/platform-admin/platform-admin.component').then(m => m.PlatformAdminComponent),
+    canActivate: [authGuard, platformAdminGuard]
+  },
+  {
+    path: 'access-denied',
+    loadComponent: () => import('./pages/access-denied/access-denied.component').then(m => m.AccessDeniedComponent),
+    canActivate: [authGuard]
   },
   {
     path: 'batches',

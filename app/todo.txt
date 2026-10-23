@@ -94,13 +94,13 @@ Here’s the TODO list I’d use, in the order we should tackle it:
 - [done] Run `supabase/migrations/20260629120000_enforce_single_owner_shop.sql` against the live project.
 - [done] Implement pricing model foundation: shop plan/promo fields, monthly sales-record usage, Settings usage card, and order/stock-sale creation guards.
 - [manual] Run `supabase/migrations/20260629124500_add_pricing_plan_usage.sql` against the live project.
-- [done] Retire Starter/Growth/Pro and replace them with one unlimited GHS 70 monthly subscription.
+- [done] Retire Starter/Growth/Pro and replace them with one unlimited GHS 100 monthly subscription.
 - [manual] Run `supabase/migrations/20260904130000_flat_monthly_subscription.sql` against the live project.
 - [manual] Run `supabase/migrations/20260629130000_allow_pricing_overages.sql` against the live project.
 - [done] Add a dedicated Subscription status page for flat price, promo, subscription status, and informational usage visibility.
 - [done] Add promo-code redemption foundation: promo code tables, one-use-per-shop redemption tracking, guarded RPC, and `/subscription` apply-code UI.
 - [manual] Run `supabase/migrations/20260630090000_add_promo_codes.sql` against the live project.
-- [backlog] Add payment collection/admin subscription-management flow for activating the GHS 70 subscription after the promo.
+- [done] Add payment collection/admin subscription-management flow for activating the GHS 100 subscription after the promo.
 - [backlog] Add platform/admin promo-code management UI when we introduce a secure owner/admin surface for campaign creation.
 - [manual] Smoke test: register, bootstrap shop, create batch, add product, create client, create order, close batch.
 - [manual] Smoke test: buying list to arrivals to tracking to shipping to ledger to delivery.
