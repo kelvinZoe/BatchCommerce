@@ -1108,8 +1108,8 @@ export class OrdersComponent implements OnInit {
       actions.push({
         id: 'edit',
         label: 'Edit order',
-        icon: 'edit',
-        color: 'black'
+        icon: 'pencil-square',
+        color: 'blue'
       });
     }
 

@@ -240,6 +240,8 @@ test('open-batch order editing is transactional, permission guarded, and exposed
 
   assertIncludesAll(ordersComponent, [
     "id: 'edit'",
+    "icon: 'pencil-square'",
+    "color: 'blue'",
     'openEditOrderModal',
     'canEditOrderInSelectedBatch',
     'saveEditedOrder',
