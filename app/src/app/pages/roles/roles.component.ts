@@ -430,6 +430,11 @@ interface ManagedPageTab {
                     <span>Catalog actions are for standalone products. Batch actions are for products after they have been added to a batch.</span>
                   </div>
 
+                  <div class="page-note page-note-neutral" *ngIf="focusedPage === 'dashboard'">
+                    <span class="material-icons">shield</span>
+                    <span>Dashboard sections respect the role's existing page permissions. Give the role View access to the related page so its data can appear in that dashboard section.</span>
+                  </div>
+
                   <div class="page-note" *ngIf="focusedPage === 'orders'">
                     <span class="material-icons">edit_note</span>
                     <span><strong>Edit Order</strong> covers changing items inside an existing order.</span>
@@ -2003,6 +2008,24 @@ interface ManagedPageTab {
       .page-summary-head {
         justify-content: space-between;
       }
+    }
+
+    @media (max-width: 640px) {
+      .roles-page { gap: 11px; }
+      .roles-hero { gap: 12px; padding: 16px; border-radius: 16px; }
+      .roles-hero-copy h1 { font-size: 25px; line-height: 1.08; }
+      .hero-kicker { margin-bottom: 8px; padding: 5px 8px; font-size: 9px; }
+      .page-subtitle { margin-top: 6px; font-size: 12px; line-height: 1.45; }
+      .hero-hint { border-radius: 12px; font-size: 11px; }
+      .roles-shell, .roles-stage, .builder-grid { gap: 10px; }
+      .roles-sidebar, .builder-panel, .setup-overview, .skeleton-panel-card {
+        padding: 14px;
+        border-radius: 16px;
+      }
+      .role-list { gap: 8px; }
+      .role-card { gap: 9px; padding: 12px; border-radius: 14px; }
+      .page-access-card { padding: 12px; border-radius: 14px; }
+      .action-row { gap: 9px; padding: 10px; border-radius: 12px; }
     }
   `]
 })

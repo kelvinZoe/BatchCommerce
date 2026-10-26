@@ -194,12 +194,36 @@ export interface BatchDetailHeaderTagConfig {
 
     @media (max-width: 720px) {
       .bdh-header {
-        align-items: stretch;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 12px;
+        padding-bottom: 12px;
       }
 
-      .bdh-back-btn,
+      .bdh-back-btn {
+        width: auto;
+        padding: 8px 10px;
+        border-radius: 9px;
+        font-size: 12px;
+      }
+
       .bdh-actions {
         width: 100%;
+      }
+
+      .bdh-batch-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+      }
+
+      .bdh-title-row {
+        gap: 6px;
+      }
+
+      .bdh-tag {
+        padding: 3px 7px;
+        font-size: 9px;
       }
 
       .bdh-actions {

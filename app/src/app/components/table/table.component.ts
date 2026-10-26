@@ -1117,8 +1117,7 @@ export interface ToolbarButtonConfig {
 
       .table-toolbar__left,
       .table-toolbar__right,
-      .table-toolbar__start,
-      .table-filters {
+      .table-toolbar__start {
         width: 100%;
       }
 
@@ -1127,10 +1126,27 @@ export interface ToolbarButtonConfig {
         justify-content: stretch;
       }
 
-      .table-toolbar__action-btn,
+      .table-toolbar__action-btn {
+        width: 100%;
+      }
+
+      .table-filters {
+        width: 100%;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .table-filters::-webkit-scrollbar {
+        display: none;
+      }
+
       .table-filters__btn,
       .table-filters .btn-group {
-        width: 100%;
+        width: auto;
+        flex: 0 0 auto;
       }
 
       .table-content {

@@ -3183,10 +3183,18 @@ export class DatabaseService extends SupabaseDataAccessService {
       this.scopeTable('expenses')
         .select('*')
         .order('expense_date', { ascending: false })
-    ).pipe(map(({ data }) => (data || []).map((r: any) => ({
-      ...toCamel(r),
-      createdByName: ''
-    } as unknown as Expense))));
+    ).pipe(map(({ data, error }) => {
+      if (error) throw error;
+      return (data || []).map((r: any) => ({
+        ...toCamel(r),
+        description: r.description || r.name || '',
+        amount: Number(r.amount || 0),
+        recipient: r.recipient || '',
+        paymentMethod: r.payment_method || 'cash',
+        reference: r.reference || '',
+        createdByName: ''
+      } as Expense));
+    }));
   }
 
   getExpensesByCategory(category: string): Observable<Expense[]> {
@@ -3195,10 +3203,18 @@ export class DatabaseService extends SupabaseDataAccessService {
         .select('*')
         .eq('category', category)
         .order('expense_date', { ascending: false })
-    ).pipe(map(({ data }) => (data || []).map((r: any) => ({
-      ...toCamel(r),
-      createdByName: ''
-    } as unknown as Expense))));
+    ).pipe(map(({ data, error }) => {
+      if (error) throw error;
+      return (data || []).map((r: any) => ({
+        ...toCamel(r),
+        description: r.description || r.name || '',
+        amount: Number(r.amount || 0),
+        recipient: r.recipient || '',
+        paymentMethod: r.payment_method || 'cash',
+        reference: r.reference || '',
+        createdByName: ''
+      } as Expense));
+    }));
   }
 
   createExpense(expense: Expense): Observable<number> {
@@ -3210,40 +3226,52 @@ export class DatabaseService extends SupabaseDataAccessService {
     const row = {
       shop_id: shopId,
       category: expense.category,
-      description: expense.description,
+      name: expense.description.trim(),
+      description: expense.description.trim(),
       amount: expense.amount,
-      recipient: expense.recipient || '',
+      recipient: expense.recipient?.trim() || '',
       payment_method: expense.paymentMethod || 'cash',
-      reference: expense.reference || '',
+      reference: expense.reference?.trim() || '',
       expense_date: expense.expenseDate,
-      notes: expense.notes || '',
+      notes: expense.notes?.trim() || '',
       created_by: expense.createdBy || null
     };
     return from(
       this.sb.from('expenses').insert(row).select('id').single()
-    ).pipe(map(({ data }) => data?.id ?? 0));
+    ).pipe(map(({ data, error }) => {
+      if (error) throw error;
+      if (!data?.id) throw new Error('The expense was not created.');
+      return data.id;
+    }));
   }
 
   updateExpense(expense: Expense): Observable<boolean> {
     const row = {
       category: expense.category,
-      description: expense.description,
+      name: expense.description.trim(),
+      description: expense.description.trim(),
       amount: expense.amount,
-      recipient: expense.recipient || '',
+      recipient: expense.recipient?.trim() || '',
       payment_method: expense.paymentMethod || 'cash',
-      reference: expense.reference || '',
+      reference: expense.reference?.trim() || '',
       expense_date: expense.expenseDate,
-      notes: expense.notes || ''
+      notes: expense.notes?.trim() || ''
     };
     return from(
       this.scopeShopQuery(this.sb.from('expenses').update(row)).eq('id', expense.id)
-    ).pipe(map(({ error }) => !error));
+    ).pipe(map(({ error }) => {
+      if (error) throw error;
+      return true;
+    }));
   }
 
   deleteExpense(id: number): Observable<boolean> {
     return from(
       this.scopeShopQuery(this.sb.from('expenses').delete()).eq('id', id)
-    ).pipe(map(({ error }) => !error));
+    ).pipe(map(({ error }) => {
+      if (error) throw error;
+      return true;
+    }));
   }
 
   // =====================

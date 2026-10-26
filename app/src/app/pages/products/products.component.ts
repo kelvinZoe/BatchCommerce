@@ -741,17 +741,19 @@ interface PendingPriceUpdate {
 
     @media (max-width: 560px) {
       .pp-header {
-        padding-inline: 12px;
+        gap: 10px;
+        padding: 10px 4px 12px;
       }
 
       .pp-header-icon {
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
       }
 
       .pp-header-title {
         max-width: none;
-        font-size: 24px;
+        font-size: 20px;
       }
 
       .pp-header-sub {
@@ -765,7 +767,12 @@ interface PendingPriceUpdate {
       }
 
       .pp-card {
-        padding: 16px 12px;
+        padding: 12px;
+      }
+
+      .pp-tab-btn {
+        padding: 7px 11px;
+        font-size: 12px;
       }
     }
 

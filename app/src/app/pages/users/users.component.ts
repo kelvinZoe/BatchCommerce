@@ -759,7 +759,30 @@ import { User, Role } from '../../models';
 
     @media (max-width: 720px) {
       .u-form-row { grid-template-columns: 1fr; }
-      .u-stat-grid { grid-template-columns: 1fr; }
+      .u-page-header { align-items: stretch; flex-direction: column; padding: 10px 0 12px; }
+      .u-header-left { gap: 10px; }
+      .u-header-icon { width: 40px; height: 40px; border-radius: 10px; }
+      .u-title { font-size: 20px; }
+      .u-page-header > .u-btn { width: 100%; justify-content: center; }
+      .u-overview-shell { gap: 9px; margin-bottom: 10px; }
+      .u-scope-card { padding: 14px; }
+      .u-scope-name { margin-top: 5px; font-size: 20px; }
+      .u-scope-copy { margin-top: 7px; font-size: 11px; line-height: 1.45; }
+      .u-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .u-stat-card { gap: 8px; padding: 10px; border-radius: 12px; }
+      .u-stat-card .material-icons { width: 32px; height: 32px; border-radius: 9px; font-size: 17px; }
+      .u-stat-value { font-size: 19px; }
+      .u-stat-label { font-size: 10px; }
+      .u-card { padding: 12px; }
+      .u-toolbar { align-items: stretch; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+      .u-search-wrap { width: 100%; max-width: none; min-width: 0; box-sizing: border-box; }
+      .u-role-filter { width: 100%; }
+      .u-table-wrap { margin: 0 -12px -12px; }
+      .u-modal-overlay { align-items: flex-end; padding: 8px; }
+      .u-modal { max-width: none; max-height: 92dvh; border-radius: 16px 16px 10px 10px; }
+      .u-modal-header, .u-modal-body, .u-modal-footer { padding: 13px 14px; }
+      .u-modal-footer { flex-wrap: wrap; }
+      .u-modal-footer > .u-btn { flex: 1 1 120px; justify-content: center; }
       .u-toolbar-note { width: 100%; justify-content: center; }
       .u-pagination { flex-wrap: wrap; justify-content: center; }
     }

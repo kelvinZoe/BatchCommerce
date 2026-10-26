@@ -352,18 +352,19 @@ export class BatchSectionFooterDirective {
 
     @media (max-width: 768px) {
       .bls-toolbar {
-        align-items: stretch;
-        flex-direction: column;
+        align-items: center;
+        gap: 8px;
       }
 
       .bls-search-wrap {
         width: 100%;
         max-width: none;
         min-width: 0;
+        flex-basis: 100%;
       }
 
       .bls-toolbar-filters {
-        width: 100%;
+        width: auto;
       }
 
       .bls-grid,
@@ -378,6 +379,36 @@ export class BatchSectionFooterDirective {
 
       .bls-pg-btns {
         justify-content: space-between;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .bls-section {
+        gap: 11px;
+      }
+
+      .bls-search-input {
+        min-height: 40px;
+        padding-block: 8px;
+      }
+
+      .bls-grid,
+      .bls-skeleton-grid {
+        gap: 9px;
+      }
+
+      .bls-empty {
+        padding: 32px 14px;
+      }
+
+      .bls-empty-icon {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 12px;
+      }
+
+      .bls-skeleton-card {
+        padding: 11px 12px;
       }
     }
   `]

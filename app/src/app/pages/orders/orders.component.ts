@@ -1058,10 +1058,10 @@ export class OrdersComponent implements OnInit {
   readonly orderBatchSubtitleResolver = (batch: OrderBatch) =>
     batch.createdAt ? new Date(batch.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
   readonly orderBatchIconResolver = (batch: OrderBatch) => batch.status === 'open' ? 'folder_open' : 'folder';
-  readonly orderBatchTagResolver = (batch: OrderBatch): BatchCardTagConfig | null =>
-    batch.status === 'closed'
-      ? { tagName: 'Closed', color: 'gray', icon: 'task_alt' }
-      : null;
+  readonly orderBatchTagResolver = (batch: OrderBatch): BatchCardTagConfig =>
+    batch.status === 'open'
+      ? { tagName: 'Open', color: 'green', icon: 'check_circle' }
+      : { tagName: 'Closed', color: 'gray', icon: 'task_alt' };
   readonly orderBatchIconMutedResolver = () => false;
 
   get selectedOrderBatchHeaderTag(): BatchDetailHeaderTagConfig | null {

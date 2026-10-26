@@ -668,4 +668,297 @@ table {
   .arr-cols {
     grid-template-columns: 1fr !important;
   }
+
+  // Shared phone-density pass for operational workspace pages. These pages
+  // predate the common page shell, so their prefixed classes are normalized
+  // here until they can be moved onto the shared components.
+  :is(
+    .arr-header, .batch-header, .bl-header, .dm-page-header,
+    .dv-page-header, .ord-header, .pt-header, .sh-header,
+    .sl-header, .ss-page-header
+  ) {
+    align-items: flex-start !important;
+    gap: 10px !important;
+    margin-bottom: 14px !important;
+    padding: 8px 0 0 !important;
+  }
+
+  :is(
+    .arr-header-left, .batch-header-left, .bl-header-left, .dm-header-left,
+    .dv-header-left, .ord-header-left, .pt-header-left, .sh-header-left,
+    .sl-header-left, .ss-header-left
+  ) {
+    gap: 10px !important;
+    min-width: 0;
+  }
+
+  :is(
+    .arr-header-icon, .batch-header-icon, .bl-header-icon, .dm-header-icon,
+    .dv-header-icon, .ord-header-icon, .pt-header-icon, .sh-header-icon,
+    .sl-header-icon, .ss-header-icon
+  ) {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 10px !important;
+  }
+
+  :is(
+    .arr-header-title, .batch-header-title, .bl-header-title, .dm-title,
+    .dv-title, .ord-header-title, .pt-header-title, .sh-header-title,
+    .sl-header-title, .ss-title
+  ) {
+    font-size: 18px !important;
+    line-height: 1.2 !important;
+  }
+
+  :is(
+    .arr-header-sub, .batch-header-sub, .bl-header-sub, .dm-subtitle,
+    .dv-subtitle, .ord-header-sub, .pt-header-sub, .sh-header-sub,
+    .sl-header-sub, .ss-subtitle
+  ) {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  :is(.bl-header, .ord-header, .pt-header, .sh-header, .ss-page-header) {
+    flex-direction: column;
+  }
+
+  :is(.bl-header-actions, .ord-header-actions, .pt-header-actions, .sh-header-actions) {
+    width: 100%;
+  }
+
+  :is(.bl-header-actions, .ord-header-actions, .pt-header-actions, .sh-header-actions) > button,
+  .ss-page-header > button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  :is(
+    .arr-card, .batch-card, .bl-card, .dm-card, .dv-card,
+    .ord-card, .pt-card, .sh-card, .sl-card, .ss-card
+  ) {
+    padding: 12px !important;
+    border-radius: 14px !important;
+  }
+
+  :is(.arr-toolbar, .bl-toolbar, .dv-toolbar, .ss-toolbar) {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  :is(.arr-search-wrap, .bl-search-wrap, .dv-search-wrap, .ss-search-wrap) {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  :is(.arr-table-wrap, .dv-table-wrap, .ss-table-wrap) {
+    margin-inline: -12px !important;
+    margin-bottom: -12px !important;
+  }
+
+  :is(.arr-table, .dv-table, .ord-table, .sh-table, .ss-table) {
+    min-width: 680px;
+  }
+
+  :is(
+    .arr-detail-header, .bl-detail-header, .dm-detail-header,
+    .dv-detail-header, .pt-detail-header, .sh-detail-header,
+    .sl-detail-header
+  ) {
+    gap: 9px !important;
+    margin-bottom: 12px !important;
+    padding-bottom: 12px !important;
+  }
+
+  :is(.dv-batch-grid, .batch-grid) {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .dv-batch-card {
+    padding: 12px !important;
+  }
+
+  .dv-batch-card-header {
+    margin-bottom: 7px !important;
+  }
+
+  .dv-batch-name,
+  .dv-batch-meta {
+    margin-bottom: 6px !important;
+  }
+
+  .dv-stats-row {
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .dv-stat-card {
+    min-height: 78px;
+    padding: 10px 8px 8px !important;
+  }
+
+  .dv-stat-num {
+    font-size: 19px !important;
+  }
+
+  .dv-stat-lbl {
+    font-size: 9px !important;
+  }
+
+  :is(.arr-modal-overlay, .batch-modal-overlay, .dv-modal-overlay, .ord-modal-overlay, .ss-modal-overlay) {
+    align-items: flex-end !important;
+    padding: 8px !important;
+  }
+
+  :is(.arr-modal, .batch-modal, .dv-modal, .ord-modal, .ss-modal) {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: 92dvh !important;
+    border-radius: 16px 16px 10px 10px !important;
+  }
+
+  :is(.arr-modal-header, .batch-modal-header, .dv-modal-header, .ord-modal-header, .ss-modal-header) {
+    padding: 13px 14px !important;
+  }
+
+  :is(.arr-modal-body, .batch-modal-body, .dv-modal-body, .ord-modal-body) {
+    padding: 14px !important;
+  }
+
+  :is(.arr-modal-footer, .batch-modal-footer, .ord-modal-footer, .ss-modal-footer) {
+    padding: 11px 14px !important;
+    flex-wrap: wrap;
+  }
+
+  :is(.arr-modal-footer, .batch-modal-footer, .ord-modal-footer, .ss-modal-footer) > button {
+    flex: 1 1 120px;
+    justify-content: center;
+  }
+
+  .dv-info-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .ss-modal-body {
+    display: block !important;
+    overflow-y: auto !important;
+  }
+
+  .ss-left-panel,
+  .ss-right-panel {
+    width: auto !important;
+    padding: 14px !important;
+    overflow: visible !important;
+  }
+
+  .ss-left-panel {
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .ss-product-card {
+    padding: 10px !important;
+  }
+
+  .ss-pagination,
+  .dv-pagination {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px !important;
+  }
+
+  .ss-page-btns,
+  .dv-page-btns {
+    justify-content: space-between;
+  }
+
+  .reports-page .page-header,
+  .import-page .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .reports-page .page-header h1,
+  .import-page .page-header h1 {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  .reports-page .actions,
+  .reports-page .actions .btn,
+  .import-page .page-header .btn {
+    width: 100%;
+  }
+
+  .reports-page .filters {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .reports-page .filter-group {
+    width: 100%;
+    box-sizing: border-box;
+    flex-wrap: wrap;
+  }
+
+  .reports-page .filter-group select,
+  .reports-page .filter-group input[type="date"] {
+    flex: 1 1 120px;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .reports-page .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .reports-page .stat-card {
+    padding: 11px;
+  }
+
+  .reports-page .stat-label {
+    font-size: 11px;
+  }
+
+  .reports-page .stat-value {
+    font-size: 17px;
+  }
+
+  .reports-page .report-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .reports-page .report-card {
+    overflow-x: auto;
+    padding: 12px;
+  }
+
+  .import-page .upload-zone {
+    min-height: 180px;
+    padding: 24px 14px;
+  }
+
+  .import-page .sheet-item {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .import-page .sheet-right,
+  .import-page .type-select {
+    width: 100%;
+  }
 }

@@ -257,6 +257,7 @@ export interface Role {
 /** Controls which sections of the dashboard are visible to a role */
 export interface DashboardComponentConfig {
   stats: boolean;           // Summary cards: products, clients, orders today, pending deliveries
+  attention: boolean;       // Operational exceptions that need action
   finance: boolean;         // Finance overview: revenue, shipping, paid orders
   revenueTrend: boolean;    // 6-month revenue trend chart (requires finance)
   topProducts: boolean;     // Top 10 products by period (requires finance)
@@ -270,7 +271,7 @@ export interface DashboardComponentConfig {
 }
 
 export const DEFAULT_DASHBOARD_CONFIG: DashboardComponentConfig = {
-  stats: false, finance: false, revenueTrend: false, topProducts: false,
+  stats: false, attention: false, finance: false, revenueTrend: false, topProducts: false,
   deliveryOverview: false, batchPipeline: false, recentOrders: false,
   expenses: false, stockSales: false, damagedItems: false, inventory: false
 };
@@ -283,6 +284,7 @@ export const DASHBOARD_COMPONENTS: {
   dependsOn?: keyof DashboardComponentConfig;
 }[] = [
   { key: 'stats',           label: 'Summary Stats',     icon: 'bar_chart',              description: 'Products, clients, orders today, pending deliveries' },
+  { key: 'attention',       label: 'Needs Attention',   icon: 'notification_important', description: 'Pending buying, arrivals, damage, deliveries, and shipping balances' },
   { key: 'finance',         label: 'Finance Overview',  icon: 'account_balance',        description: 'Revenue, shipping fees, paid orders this batch' },
   { key: 'revenueTrend',    label: 'Revenue Trend',     icon: 'trending_up',            description: '6-month revenue bar chart', dependsOn: 'finance' },
   { key: 'topProducts',     label: 'Top Products',      icon: 'inventory_2',            description: 'Top 10 products by sales period', dependsOn: 'finance' },
@@ -616,6 +618,7 @@ export const MAIN_NAV_ITEMS: AppNavItem[] = [
   { route: '/deliveries', icon: 'local_shipping', label: 'Deliveries', resource: 'deliveries' },
   { route: '/stock-sales', icon: 'storefront', label: 'Stock Sales', resource: 'stock_sales' },
   { route: '/damaged-items', icon: 'report_problem', label: 'Damaged Items', resource: 'damaged_items' },
+  { route: '/expenses', icon: 'account_balance_wallet', label: 'Expenses', resource: 'expenses' },
   { route: '/reports', icon: 'analytics', label: 'Reports', resource: 'reports' },
 ];
 
@@ -794,12 +797,40 @@ export type ExpenseCategory =
   | 'salary'
   | 'rent'
   | 'utilities'
+  | 'communication'
+  | 'software'
   | 'transport'
   | 'supplies'
   | 'marketing'
   | 'maintenance'
   | 'food'
+  | 'taxes'
+  | 'insurance'
+  | 'professional_services'
+  | 'bank_fees'
   | 'other';
+
+export const EXPENSE_CATEGORIES: ReadonlyArray<{
+  value: ExpenseCategory;
+  label: string;
+  icon: string;
+}> = [
+  { value: 'salary', label: 'Salaries & Wages', icon: 'badge' },
+  { value: 'rent', label: 'Rent', icon: 'home_work' },
+  { value: 'utilities', label: 'Utilities', icon: 'bolt' },
+  { value: 'communication', label: 'Internet & Communication', icon: 'wifi' },
+  { value: 'software', label: 'Software & Subscriptions', icon: 'cloud' },
+  { value: 'transport', label: 'Transport & Delivery', icon: 'local_shipping' },
+  { value: 'supplies', label: 'Office & Shop Supplies', icon: 'inventory_2' },
+  { value: 'marketing', label: 'Marketing', icon: 'campaign' },
+  { value: 'maintenance', label: 'Repairs & Maintenance', icon: 'build' },
+  { value: 'food', label: 'Food & Staff Welfare', icon: 'restaurant' },
+  { value: 'taxes', label: 'Taxes & Levies', icon: 'account_balance' },
+  { value: 'insurance', label: 'Insurance', icon: 'health_and_safety' },
+  { value: 'professional_services', label: 'Professional Services', icon: 'handshake' },
+  { value: 'bank_fees', label: 'Bank & MoMo Fees', icon: 'payments' },
+  { value: 'other', label: 'Other', icon: 'more_horiz' }
+];
 
 export type PaymentMethod = 'cash' | 'mobile_money' | 'bank_transfer';
 

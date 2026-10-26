@@ -1126,10 +1126,23 @@ import { firstValueFrom } from 'rxjs';
     @media (max-width: 420px) {
       .settings-hero {
         gap: 12px;
+        padding: 16px;
+        border-radius: 16px;
       }
 
       .hero-copy h1 {
-        font-size: 34px;
+        font-size: 26px;
+      }
+
+      .hero-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 13px;
+      }
+
+      .settings-card {
+        padding: 14px;
+        border-radius: 16px;
       }
 
       .settings-save-bar span {

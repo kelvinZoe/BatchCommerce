@@ -1,10 +1,20 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DatabaseService } from '../../services/database.service';
+import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
-import { DashboardDataService } from '../../services/dashboard-data.service';
+import { DashboardDataBundle, DashboardDataError, DashboardDataService, DashboardDataSource } from '../../services/dashboard-data.service';
 import { ShopConfigService } from '../../services/shop-config.service';
-import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardComponentConfig } from '../../models';
+import { AppResource, Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardComponentConfig, DASHBOARD_COMPONENTS, EXPENSE_CATEGORIES } from '../../models';
+
+type DashboardPeriod = 'batch' | 'quarter' | 'year';
+
+interface AttentionItem {
+  label: string;
+  value: string;
+  icon: string;
+  tone: 'amber' | 'red' | 'blue' | 'purple';
+  route: string | null;
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -30,6 +40,26 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
         </div>
       </section>
 
+      <section class="dash-context" *ngIf="!loading && hasAnyDashboardSection">
+        <label class="context-control" *ngIf="batches.length > 0">
+          <span>Working batch</span>
+          <select [value]="selectedBatchId || ''" (change)="onBatchChange($event)">
+            <option *ngFor="let batch of batches" [value]="batch.id">
+              {{ batch.name }} · {{ batch.status }}
+            </option>
+          </select>
+        </label>
+        <div class="context-control analytics-control" *ngIf="show('topProducts') || show('deliveryOverview') || show('stockSales')">
+          <span>Analytics period</span>
+          <div class="period-tabs" role="group" aria-label="Analytics period">
+            <button type="button" [class.active]="analyticsPeriod === 'batch'" [attr.aria-pressed]="analyticsPeriod === 'batch'" (click)="onAnalyticsPeriodChange('batch')">Batch</button>
+            <button type="button" [class.active]="analyticsPeriod === 'quarter'" [attr.aria-pressed]="analyticsPeriod === 'quarter'" (click)="onAnalyticsPeriodChange('quarter')">Quarter</button>
+            <button type="button" [class.active]="analyticsPeriod === 'year'" [attr.aria-pressed]="analyticsPeriod === 'year'" (click)="onAnalyticsPeriodChange('year')">Year</button>
+          </div>
+        </div>
+        <span class="context-generated" *ngIf="lastUpdatedAt">Updated {{ lastUpdatedAt | date:'shortTime' }}</span>
+      </section>
+
       <ng-container *ngIf="loading">
         <div class="stats-grid dash-loading-stats">
           <div class="skeleton-stat-card" *ngFor="let i of [1,2,3,4]">
@@ -53,11 +83,92 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
       </ng-container>
 
       <ng-container *ngIf="!loading">
-        <ng-container *ngIf="can('finance')">
+        <section class="dash-error" *ngIf="dataErrors.length > 0" role="alert">
+          <span class="material-icons">report_problem</span>
+          <div>
+            <strong>Some dashboard sections are unavailable</strong>
+            <p>{{ unavailableSectionLabels }}. Your role may need access to the underlying workspace data.</p>
+          </div>
+          <button type="button" (click)="loadData()">Try again</button>
+        </section>
+
+        <section class="dash-empty-config" *ngIf="!hasAnyDashboardSection">
+          <span class="material-icons">dashboard_customize</span>
+          <h2>No dashboard sections assigned</h2>
+          <p>Ask a shop administrator to enable dashboard sections for your role.</p>
+        </section>
+
+        <ng-container *ngIf="show('stats')">
+          <div class="section-header skeleton-fade-in">
+            <div class="section-title">
+              <span class="material-icons">space_dashboard</span>
+              <h2>Today at a Glance</h2>
+            </div>
+            <span class="period-badge">Live workspace totals</span>
+          </div>
+          <div class="stats-grid summary-grid skeleton-fade-in">
+            <div class="stat-card compact-stat">
+              <div class="stat-icon blue"><span class="material-icons">inventory_2</span></div>
+              <div class="stat-value">{{ totalProducts }}</div>
+              <div class="stat-label">Active Products</div>
+            </div>
+            <div class="stat-card compact-stat">
+              <div class="stat-icon purple"><span class="material-icons">groups</span></div>
+              <div class="stat-value">{{ totalClients }}</div>
+              <div class="stat-label">Clients</div>
+            </div>
+            <div class="stat-card compact-stat">
+              <div class="stat-icon yellow"><span class="material-icons">shopping_cart</span></div>
+              <div class="stat-value">{{ ordersToday }}</div>
+              <div class="stat-label">Orders Today</div>
+            </div>
+            <div class="stat-card compact-stat">
+              <div class="stat-icon green"><span class="material-icons">local_shipping</span></div>
+              <div class="stat-value">{{ pendingDeliveries }}</div>
+              <div class="stat-label">Pending Deliveries</div>
+            </div>
+            <div class="stat-card compact-stat">
+              <div class="stat-icon blue"><span class="material-icons">folder_open</span></div>
+              <div class="stat-value">{{ openBatches }}</div>
+              <div class="stat-label">Open Batches</div>
+            </div>
+          </div>
+        </ng-container>
+
+        <section class="attention-card skeleton-fade-in" *ngIf="show('attention')">
+          <div class="attention-heading">
+            <div>
+              <span class="dash-kicker">Action queue</span>
+              <h2>Needs Attention</h2>
+            </div>
+            <span class="attention-count">{{ attentionItems.length }} open</span>
+          </div>
+          <div class="attention-grid" *ngIf="attentionItems.length > 0; else allClear">
+            <button
+              type="button"
+              class="attention-item"
+              *ngFor="let item of attentionItems"
+              [ngClass]="'tone-' + item.tone"
+              [disabled]="!item.route"
+              (click)="openAttention(item)">
+              <span class="attention-icon material-icons">{{ item.icon }}</span>
+              <span class="attention-copy">
+                <strong>{{ item.value }}</strong>
+                <small>{{ item.label }}</small>
+              </span>
+              <span class="material-icons attention-arrow" *ngIf="item.route">arrow_forward</span>
+            </button>
+          </div>
+          <ng-template #allClear>
+            <div class="all-clear"><span class="material-icons">task_alt</span> No operational exceptions need attention.</div>
+          </ng-template>
+        </section>
+
+        <ng-container *ngIf="show('finance')">
         <div class="section-header skeleton-fade-in">
           <div class="section-title">
             <span class="material-icons">monitoring</span>
-            <h2>Latest Batch Health</h2>
+            <h2>Selected Batch Health</h2>
           </div>
           <span class="period-badge">{{ currentBatchName }} vs {{ previousBatchName }}</span>
         </div>
@@ -78,7 +189,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
           <div class="stat-card">
             <div class="stat-icon blue"><span class="material-icons">paid</span></div>
             <div class="stat-value">GHS {{ revenueThisMonth | number:'1.0-0' }}</div>
-            <div class="stat-label">Paid Revenue</div>
+            <div class="stat-label">Paid Order Value</div>
             <div class="stat-sub" [class.positive]="revenueChange >= 0" [class.negative]="revenueChange < 0">
               {{ revenueChange >= 0 ? '\u25b2' : '\u25bc' }} {{ revenueChange >= 0 ? revenueChange : revenueChange * -1 }}% vs last batch
             </div>
@@ -86,8 +197,8 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
           <div class="stat-card">
             <div class="stat-icon purple"><span class="material-icons">pending_actions</span></div>
             <div class="stat-value">GHS {{ batchOpenPaymentValue | number:'1.0-0' }}</div>
-            <div class="stat-label">Unpaid / Partial Value</div>
-            <div class="stat-sub">{{ unpaidOrPartialOrdersThisBatch }} unpaid / partial orders</div>
+            <div class="stat-label">Open Order Value</div>
+            <div class="stat-sub">Full value of {{ unpaidOrPartialOrdersThisBatch }} unpaid / partial orders</div>
           </div>
           <div class="stat-card">
             <div class="stat-icon green"><span class="material-icons">task_alt</span></div>
@@ -98,7 +209,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
           <div class="stat-card">
             <div class="stat-icon blue"><span class="material-icons">local_shipping</span></div>
             <div class="stat-value">GHS {{ shippingThisMonth | number:'1.0-0' }}</div>
-            <div class="stat-label">Shipping Fees</div>
+            <div class="stat-label">Shipping Charges</div>
             <div class="stat-sub" [class.positive]="shippingChange >= 0" [class.negative]="shippingChange < 0">
               {{ shippingChange >= 0 ? '\u25b2' : '\u25bc' }} {{ shippingChange >= 0 ? shippingChange : shippingChange * -1 }}% vs last batch
             </div>
@@ -106,8 +217,8 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
         </div>
         </ng-container>
 
-        <div class="card full-width trend-card skeleton-fade-in" *ngIf="can('revenueTrend')">
-          <div class="card-header"><h2>Revenue Trend (Last 6 Months)</h2></div>
+        <div class="card full-width trend-card skeleton-fade-in" *ngIf="show('revenueTrend')">
+          <div class="card-header"><h2>Paid Order Value by Order Date (Last 6 Months)</h2></div>
           <div class="bar-chart">
             <div class="bar-item" *ngFor="let m of monthlyRevenueTrend">
               <div class="bar-wrapper">
@@ -119,15 +230,11 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
           </div>
         </div>
 
-        <div class="dashboard-grid skeleton-fade-in" *ngIf="can('topProducts') || can('deliveryOverview')">
-          <div class="card" *ngIf="can('topProducts')">
+        <div class="dashboard-grid skeleton-fade-in" *ngIf="show('topProducts') || show('deliveryOverview')">
+          <div class="card" *ngIf="show('topProducts')">
             <div class="card-header">
               <h2>Top 10 Products</h2>
-              <div class="period-tabs">
-                <button [class.active]="topProductsPeriod === 'batch'" (click)="onTopProductsPeriodChange('batch')">Batch</button>
-                <button [class.active]="topProductsPeriod === 'quarter'" (click)="onTopProductsPeriodChange('quarter')">Quarter</button>
-                <button [class.active]="topProductsPeriod === 'year'" (click)="onTopProductsPeriodChange('year')">Year</button>
-              </div>
+              <span class="period-badge">{{ analyticsPeriodLabel }}</span>
             </div>
             <div class="top-products-list">
               <div class="top-product" *ngFor="let p of topProducts; let i = index">
@@ -147,14 +254,10 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
             </div>
           </div>
 
-          <div class="card" *ngIf="can('deliveryOverview')">
+          <div class="card" *ngIf="show('deliveryOverview')">
             <div class="card-header">
               <h2>Delivery Overview</h2>
-              <div class="period-tabs">
-                <button [class.active]="deliveryPeriod === 'batch'" (click)="onDeliveryPeriodChange('batch')">Batch</button>
-                <button [class.active]="deliveryPeriod === 'quarter'" (click)="onDeliveryPeriodChange('quarter')">Quarter</button>
-                <button [class.active]="deliveryPeriod === 'year'" (click)="onDeliveryPeriodChange('year')">Year</button>
-              </div>
+              <span class="period-badge">{{ analyticsPeriodLabel }}</span>
             </div>
             <div class="delivery-chart">
               <div class="pie-chart" [style.background]="pieGradient">
@@ -180,14 +283,14 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
           </div>
         </div>
 
-        <div class="dashboard-grid skeleton-fade-in" *ngIf="can('batchPipeline') || can('recentOrders')">
-          <div class="card ops-card pipeline-card" *ngIf="can('batchPipeline')">
+        <div class="dashboard-grid skeleton-fade-in" *ngIf="show('batchPipeline') || show('recentOrders')">
+          <div class="card ops-card pipeline-card" *ngIf="show('batchPipeline')">
             <div class="card-header ops-card-header">
               <div>
                 <span class="dash-kicker">Batch flow</span>
                 <h2>Batch Pipeline</h2>
               </div>
-              <span class="ops-total">{{ batchPipeline.open + batchPipeline.buying + batchPipeline.delivering + batchPipeline.completed }} active</span>
+              <span class="ops-total">{{ batchPipeline.open + batchPipeline.buying + batchPipeline.delivering }} active</span>
             </div>
             <div class="pipeline">
               <div class="pipeline-stage open">
@@ -221,7 +324,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
             </div>
           </div>
 
-          <div class="card ops-card orders-card" *ngIf="can('recentOrders')">
+          <div class="card ops-card orders-card" *ngIf="show('recentOrders')">
             <div class="card-header ops-card-header">
               <div>
                 <span class="dash-kicker">Latest activity</span>
@@ -246,7 +349,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
           </div>
         </div>
 
-        <div class="card full-width trend-card skeleton-fade-in" *ngIf="can('expenses')">
+        <div class="card full-width trend-card skeleton-fade-in" *ngIf="show('expenses')">
           <div class="card-header"><h2>Monthly Expense Trends (Last 6 Months)</h2></div>
           <div class="bar-chart">
             <div class="bar-item" *ngFor="let m of monthlyExpenseTrend">
@@ -259,9 +362,9 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
           </div>
         </div>
 
-        <div class="dashboard-grid skeleton-fade-in" *ngIf="can('expenses') || can('stockSales')">
-          <div class="card" *ngIf="can('expenses')">
-            <div class="card-header"><h2>Monthly Expense Breakdown by Category</h2></div>
+        <div class="dashboard-grid skeleton-fade-in" *ngIf="show('expenses') || show('stockSales')">
+          <div class="card" *ngIf="show('expenses')">
+            <div class="card-header"><h2>This Month's Expenses by Category</h2></div>
             <div class="delivery-chart">
               <div class="pie-chart" [style.background]="expensePieGradient">
                 <div class="pie-center">
@@ -273,7 +376,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
                 <div class="legend-item" *ngFor="let e of expenseBreakdown">
                   <span class="legend-dot" [style.background]="e.color"></span>
                   <div class="legend-info">
-                    <span class="legend-label">{{ e.category }}</span>
+                    <span class="legend-label">{{ getExpenseCategoryLabel(e.category) }}</span>
                     <span class="legend-detail">GHS {{ e.amount | number:'1.0-0' }}</span>
                   </div>
                   <span class="legend-pct">{{ getExpensePercent(e.amount) }}%</span>
@@ -285,8 +388,8 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
             </div>
           </div>
 
-          <div class="card" *ngIf="can('stockSales')">
-            <div class="card-header"><h2>Stock Sales Performance</h2></div>
+          <div class="card" *ngIf="show('stockSales')">
+            <div class="card-header"><h2>Stock Sales · {{ stockSalesPeriodLabel }}</h2></div>
             <div class="stock-sales-list">
               <div class="stock-item" *ngFor="let s of topStockSales">
                 <div class="stock-info">
@@ -303,28 +406,28 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
           </div>
         </div>
 
-        <div class="dashboard-grid skeleton-fade-in" *ngIf="can('damagedItems') || can('inventory')">
-          <div class="card" *ngIf="can('damagedItems')">
+        <div class="dashboard-grid skeleton-fade-in" *ngIf="show('damagedItems') || show('inventory')">
+          <div class="card" *ngIf="show('damagedItems')">
             <div class="card-header"><h2>Damaged Items Summary</h2></div>
             <div class="damaged-items-grid">
               <div class="damage-stat">
                 <div class="damage-icon"><span class="material-icons">warning</span></div>
                 <div class="damage-info">
-                  <span class="damage-label">Total Damaged</span>
+                  <span class="damage-label">Total Damaged Units</span>
                   <span class="damage-value">{{ totalDamagedItems }}</span>
                 </div>
               </div>
               <div class="damage-stat">
                 <div class="damage-icon danger"><span class="material-icons">trending_up</span></div>
                 <div class="damage-info">
-                  <span class="damage-label">This Month</span>
+                  <span class="damage-label">Units This Month</span>
                   <span class="damage-value">{{ damagedThisMonth }}</span>
                 </div>
               </div>
               <div class="damage-stat">
                 <div class="damage-icon warning"><span class="material-icons">check_circle</span></div>
                 <div class="damage-info">
-                  <span class="damage-label">Allocated</span>
+                  <span class="damage-label">Allocated Units</span>
                   <span class="damage-value">{{ damageAllocated }}</span>
                 </div>
               </div>
@@ -340,27 +443,27 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
             </div>
           </div>
 
-          <div class="card" *ngIf="can('inventory')">
+          <div class="card" *ngIf="show('inventory')">
             <div class="card-header"><h2>Inventory Status</h2></div>
             <div class="inventory-grid">
               <div class="inventory-stat">
                 <div class="inv-icon arriving"><span class="material-icons">local_shipping</span></div>
                 <div class="inv-info">
-                  <span class="inv-label">Expected Arrivals</span>
+                  <span class="inv-label">Expected Units</span>
                   <span class="inv-value">{{ arrivalsExpected }}</span>
                 </div>
               </div>
               <div class="inventory-stat">
                 <div class="inv-icon received"><span class="material-icons">done_all</span></div>
                 <div class="inv-info">
-                  <span class="inv-label">Received This Month</span>
+                  <span class="inv-label">Units Received This Month</span>
                   <span class="inv-value">{{ arrivalsReceivedMonth }}</span>
                 </div>
               </div>
               <div class="inventory-stat">
                 <div class="inv-icon pending"><span class="material-icons">pending_actions</span></div>
                 <div class="inv-info">
-                  <span class="inv-label">Pending Items</span>
+                  <span class="inv-label">Pending Units</span>
                   <span class="inv-value">{{ arrivalsPending }}</span>
                 </div>
               </div>
@@ -369,7 +472,7 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
               <div class="arrival-item" *ngFor="let a of recentArrivals | slice:0:5">
                 <div class="arrival-info">
                   <strong>{{ a.productName }}</strong>
-                  <small>{{ a.quantity }} units from {{ a.supplier }}</small>
+                  <small>{{ a.quantity }} units · {{ a.supplier }}</small>
                 </div>
                 <span class="arrival-date">{{ a.arrivalDate }}</span>
               </div>
@@ -460,6 +563,249 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
       justify-content: flex-end;
     }
 
+    .dash-context {
+      display: flex;
+      align-items: flex-end;
+      gap: 14px;
+      margin-bottom: 18px;
+      padding: 13px 16px;
+      border: 1px solid rgba(148, 163, 184, 0.26);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.76);
+      backdrop-filter: blur(10px);
+    }
+
+    .context-control {
+      display: grid;
+      gap: 6px;
+    }
+
+    .context-control > span,
+    .context-generated {
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .context-control select {
+      min-width: 220px;
+      min-height: 38px;
+      padding: 0 34px 0 12px;
+      border: 1px solid rgba(148, 163, 184, 0.36);
+      border-radius: 11px;
+      background: #fff;
+      color: #1e293b;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .analytics-control {
+      margin-left: auto;
+    }
+
+    .context-generated {
+      align-self: center;
+      margin-left: 4px;
+      white-space: nowrap;
+    }
+
+    .dash-error {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding: 14px 16px;
+      border: 1px solid #fecaca;
+      border-radius: 16px;
+      background: #fff7f7;
+      color: #991b1b;
+    }
+
+    .dash-error > .material-icons {
+      font-size: 22px;
+    }
+
+    .dash-error strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .dash-error p {
+      margin: 3px 0 0;
+      color: #b91c1c;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .dash-error button {
+      padding: 8px 11px;
+      border: 1px solid #fecaca;
+      border-radius: 10px;
+      background: #fff;
+      color: #991b1b;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .dash-empty-config {
+      display: grid;
+      justify-items: center;
+      padding: 54px 24px;
+      border: 1px dashed rgba(100, 116, 139, 0.35);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.66);
+      text-align: center;
+    }
+
+    .dash-empty-config .material-icons {
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      border-radius: 18px;
+      background: #e0e7ff;
+      color: #4338ca;
+      font-size: 26px;
+    }
+
+    .dash-empty-config h2 {
+      margin: 14px 0 5px;
+      font-size: 18px;
+    }
+
+    .dash-empty-config p {
+      margin: 0;
+      color: #64748b;
+      font-size: 12px;
+    }
+
+    .summary-grid {
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+    }
+
+    .compact-stat {
+      min-height: 116px;
+    }
+
+    .attention-card {
+      margin: 18px 0;
+      padding: 19px;
+      border: 1px solid rgba(180, 83, 9, 0.2);
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.12), transparent 30%),
+        rgba(255, 252, 245, 0.9);
+    }
+
+    .attention-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .attention-heading h2 {
+      margin: 3px 0 0;
+      font-size: 18px;
+      letter-spacing: -0.025em;
+    }
+
+    .attention-count {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #ffedd5;
+      color: #9a3412;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .attention-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+    }
+
+    .attention-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 72px;
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 15px;
+      background: rgba(255, 255, 255, 0.86);
+      color: #334155;
+      text-align: left;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .attention-item:not(:disabled):hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    .attention-item:disabled {
+      cursor: default;
+    }
+
+    .attention-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: #fef3c7;
+      color: #b45309;
+      font-size: 20px;
+    }
+
+    .tone-red .attention-icon { background: #fee2e2; color: #b91c1c; }
+    .tone-blue .attention-icon { background: #dbeafe; color: #1d4ed8; }
+    .tone-purple .attention-icon { background: #ede9fe; color: #6d28d9; }
+
+    .attention-copy {
+      display: grid;
+      gap: 2px;
+    }
+
+    .attention-copy strong {
+      color: #0f172a;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .attention-copy small {
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .attention-arrow {
+      color: #94a3b8;
+      font-size: 17px;
+    }
+
+    .all-clear {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px;
+      border-radius: 14px;
+      background: #ecfdf5;
+      color: #047857;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
     .dash-date-chip,
     .dash-refresh {
       min-height: 40px;
@@ -490,6 +836,15 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
     .dash-refresh:disabled {
       opacity: 0.65;
       cursor: default;
+    }
+
+    .dash-refresh:focus-visible,
+    .period-tabs button:focus-visible,
+    .context-control select:focus-visible,
+    .attention-item:focus-visible,
+    .dash-error button:focus-visible {
+      outline: 3px solid rgba(var(--primary-rgb, 99,102,241), 0.28);
+      outline-offset: 2px;
     }
 
     .dash-date-chip .material-icons,
@@ -1278,6 +1633,10 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
+      .summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
       .dashboard-grid {
         grid-template-columns: 1fr;
       }
@@ -1295,6 +1654,24 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
 
       .dash-hero-actions {
         justify-content: flex-start;
+      }
+
+      .dash-context {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .analytics-control {
+        margin-left: 0;
+      }
+
+      .context-generated {
+        align-self: flex-start;
+        margin-left: 0;
+      }
+
+      .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .delivery-chart {
@@ -1331,6 +1708,20 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
         width: 100%;
       }
 
+      .context-control select,
+      .analytics-control,
+      .analytics-control .period-tabs {
+        width: 100%;
+      }
+
+      .dash-error {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+
+      .dash-error button {
+        grid-column: 1 / -1;
+      }
+
       .stats-grid,
       .damaged-items-grid,
       .inventory-grid,
@@ -1338,6 +1729,44 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
       .dash-loading-grid {
         grid-template-columns: 1fr;
       }
+
+      .summary-grid,
+      .dash-loading-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .summary-grid .compact-stat {
+        min-height: 106px;
+        padding: 13px;
+        border-radius: 17px;
+      }
+
+      .summary-grid .compact-stat:last-child:nth-child(odd) {
+        grid-column: 1 / -1;
+      }
+
+      .summary-grid .stat-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+      }
+
+      .summary-grid .stat-icon .material-icons { font-size: 18px; }
+      .summary-grid .stat-value { margin-top: 10px; font-size: 23px; }
+      .summary-grid .stat-label { margin-top: 4px; font-size: 9px; line-height: 1.3; }
+
+      .dash-context {
+        gap: 10px;
+        margin-bottom: 14px;
+        padding: 11px 12px;
+        border-radius: 15px;
+      }
+
+      .section-header { gap: 8px; margin-top: 17px; }
+      .section-title { gap: 8px; min-width: 0; }
+      .section-title h2 { font-size: 15px; }
+      .period-badge { padding: 6px 9px; font-size: 9px; white-space: nowrap; }
 
       .card {
         padding: 16px;
@@ -1379,19 +1808,28 @@ import { Order, OrderBatch, Delivery, Expense, DELIVERY_CATEGORIES, DashboardCom
 })
 export class DashboardComponent implements OnInit {
   loading = true;
+  dataErrors: DashboardDataError[] = [];
+  lastUpdatedAt: Date | null = null;
+  selectedBatchId: number | null = null;
+  analyticsPeriod: DashboardPeriod = 'batch';
 
   orders: Order[] = [];
   expenses: Expense[] = [];
   deliveries: Delivery[] = [];
   batches: OrderBatch[] = [];
+  private dashboardBundle: DashboardDataBundle | null = null;
+
+  totalProducts = 0;
+  totalClients = 0;
+  ordersToday = 0;
+  pendingDeliveries = 0;
+  openBatches = 0;
+  attentionItems: AttentionItem[] = [];
 
   revenueThisMonth = 0;
   revenueLastMonth = 0;
-  expensesThisMonth = 0;
-  expensesLastMonth = 0;
   shippingThisMonth = 0;
   shippingLastMonth = 0;
-  netThisMonth = 0;
   paidOrdersThisMonth = 0;
   ordersThisBatch = 0;
   ordersLastBatch = 0;
@@ -1402,10 +1840,8 @@ export class DashboardComponent implements OnInit {
   previousBatchName = 'Previous batch';
   private currentBatchId: number | null = null;
 
-  topProductsPeriod: 'batch' | 'quarter' | 'year' = 'batch';
   topProducts: { name: string; quantity: number; revenue: number }[] = [];
 
-  deliveryPeriod: 'batch' | 'quarter' | 'year' = 'batch';
   deliveryBreakdown: { category: string; label: string; count: number; fees: number; color: string }[] = [];
 
   batchPipeline = { open: 0, buying: 0, delivering: 0, completed: 0 };
@@ -1416,12 +1852,22 @@ export class DashboardComponent implements OnInit {
   // New properties for dashboard enhancements
   expenseBreakdown: { category: string; amount: number; color: string }[] = [];
   expenseColors: Record<string, string> = {
-    'Inventory': '#3b82f6',
-    'Shipping': '#10b981',
-    'Staff': '#f59e0b',
-    'Utilities': '#8b5cf6',
-    'Damaged': '#ef4444',
-    'Other': '#6366f1'
+    salary: '#0f766e',
+    rent: '#2563eb',
+    utilities: '#7c3aed',
+    communication: '#0284c7',
+    software: '#4f46e5',
+    transport: '#d97706',
+    supplies: '#0891b2',
+    marketing: '#db2777',
+    maintenance: '#dc2626',
+    food: '#65a30d',
+    taxes: '#ea580c',
+    insurance: '#16a34a',
+    professional_services: '#9333ea',
+    bank_fees: '#e11d48',
+    other: '#64748b',
+    general: '#64748b'
   };
   topStockSales: { quantity: number; totalAmount: number; description: string }[] = [];
   totalDamagedItems = 0;
@@ -1434,17 +1880,15 @@ export class DashboardComponent implements OnInit {
   recentArrivals: { productName: string; quantity: number; supplier: string; arrivalDate: string }[] = [];
 
   private thisMonthStart = '';
-  private lastMonthStart = '';
-  private lastMonthEnd = '';
   private thisQuarterStart = '';
   private thisYearStart = '';
   todayStr = '';
 
   constructor(
-    private dbService: DatabaseService,
     private dashboardData: DashboardDataService,
     private authService: AuthService,
-    private shopConfig: ShopConfigService
+    private shopConfig: ShopConfigService,
+    private router: Router
   ) {}
 
   get dashboardGreeting(): string {
@@ -1457,6 +1901,30 @@ export class DashboardComponent implements OnInit {
     return this.authService.canSeeDashboardComponent(component);
   }
 
+  show(component: keyof DashboardComponentConfig): boolean {
+    return this.can(component) && !this.isSectionUnavailable(component);
+  }
+
+  get hasAnyDashboardSection(): boolean {
+    return DASHBOARD_COMPONENTS.some(component => this.can(component.key));
+  }
+
+  get analyticsPeriodLabel(): string {
+    if (this.analyticsPeriod === 'batch') return this.currentBatchName;
+    return this.analyticsPeriod === 'quarter' ? 'This Quarter' : 'This Year';
+  }
+
+  get stockSalesPeriodLabel(): string {
+    return this.analyticsPeriod === 'batch' ? 'This Month' : this.analyticsPeriodLabel;
+  }
+
+  get unavailableSectionLabels(): string {
+    return DASHBOARD_COMPONENTS
+      .filter(component => this.can(component.key) && this.isSectionUnavailable(component.key))
+      .map(component => component.label)
+      .join(', ');
+  }
+
   ngOnInit() {
     this.initDates();
     this.loadData();
@@ -1467,8 +1935,6 @@ export class DashboardComponent implements OnInit {
     const fmt = (d: Date) => d.toISOString().split('T')[0];
     this.todayStr = fmt(now);
     this.thisMonthStart = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
-    this.lastMonthStart = fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-    this.lastMonthEnd = fmt(new Date(now.getFullYear(), now.getMonth(), 0));
     const qMonth = Math.floor(now.getMonth() / 3) * 3;
     this.thisQuarterStart = fmt(new Date(now.getFullYear(), qMonth, 1));
     this.thisYearStart = fmt(new Date(now.getFullYear(), 0, 1));
@@ -1476,15 +1942,20 @@ export class DashboardComponent implements OnInit {
 
   loadData() {
     this.loading = true;
+    this.dataErrors = [];
 
-    this.dashboardData.loadDashboardData().subscribe(
+    this.dashboardData.loadDashboardData(this.selectedBatchId).subscribe(
       dashboardData => {
+        this.dashboardBundle = dashboardData;
         this.orders = dashboardData.orders;
         this.expenses = dashboardData.expenses;
         this.deliveries = dashboardData.deliveries;
         this.batches = dashboardData.batches;
+        this.selectedBatchId = dashboardData.selectedBatchId;
+        this.dataErrors = dashboardData.errors;
 
-        this.computeFinance();
+        this.computeSummary(dashboardData.products, dashboardData.customerCount);
+        this.computeFinance(dashboardData.shippingBatches);
         this.computeTopProducts();
         this.computeDeliveryBreakdown();
         this.computeBatchPipeline();
@@ -1494,24 +1965,34 @@ export class DashboardComponent implements OnInit {
         this.computeTopStockSales(dashboardData.stockSales, dashboardData.stockItems);
         this.computeArrivals(this.batches, dashboardData.arrivalItems, dashboardData.products);
         this.computeDamagedItems(dashboardData.damagedItems, dashboardData.damageAllocations, dashboardData.products);
+        this.computeAttention(dashboardData);
         this.recentOrders = this.orders.slice(0, 5);
+        this.lastUpdatedAt = new Date();
         this.loading = false;
       },
       error => {
         console.error('Error loading dashboard data:', error);
+        this.dataErrors = [{ source: 'batches', message: 'The dashboard could not be loaded.' }];
         this.loading = false;
       }
     );
   }
 
-  private computeFinance() {
-    const batchesSorted = [...this.batches].sort((a, b) => {
-      const aKey = (a.closedAt || a.createdAt || '') as string;
-      const bKey = (b.closedAt || b.createdAt || '') as string;
-      return bKey.localeCompare(aKey);
-    });
-    const latestBatch = batchesSorted[0];
-    const prevBatch = batchesSorted[1];
+  private computeSummary(products: any[], customerCount: number) {
+    const today = this.todayStr;
+    this.totalProducts = products.length;
+    this.totalClients = customerCount;
+    this.ordersToday = this.orders.filter(order => (order.createdAt || '').substring(0, 10) === today).length;
+    this.pendingDeliveries = this.deliveries.filter(delivery =>
+      delivery.status === 'pending' || delivery.status === 'in_transit'
+    ).length;
+    this.openBatches = this.batches.filter(batch => batch.status === 'open').length;
+  }
+
+  private computeFinance(shippingBatches: any[]) {
+    const selectedIndex = this.batches.findIndex(batch => Number(batch.id) === Number(this.selectedBatchId));
+    const latestBatch = selectedIndex >= 0 ? this.batches[selectedIndex] : this.batches[0];
+    const prevBatch = selectedIndex >= 0 ? this.batches[selectedIndex + 1] : this.batches[1];
     this.currentBatchId = latestBatch?.id ? Number(latestBatch.id) : null;
     this.currentBatchName = latestBatch?.name || 'No batch';
     this.previousBatchName = prevBatch?.name || 'Previous batch';
@@ -1521,8 +2002,8 @@ export class DashboardComponent implements OnInit {
       return this.orders.filter(o => o.batchId === batch.id);
     };
 
-    const latestOrders = ordersForBatch(latestBatch);
-    const prevOrders = ordersForBatch(prevBatch);
+    const latestOrders = ordersForBatch(latestBatch).filter(order => order.paymentStatus !== 'refunded');
+    const prevOrders = ordersForBatch(prevBatch).filter(order => order.paymentStatus !== 'refunded');
     this.ordersThisBatch = latestOrders.length;
     this.ordersLastBatch = prevOrders.length;
     this.batchOrderValue = latestOrders
@@ -1542,27 +2023,9 @@ export class DashboardComponent implements OnInit {
       .filter(o => o.paymentStatus === 'paid')
       .reduce((s, o) => s + o.totalAmount, 0);
 
-    this.shippingThisMonth = 0;
-    this.shippingLastMonth = 0;
-    if (latestBatch && latestBatch.name) {
-      this.dbService.getBatchTotal(latestBatch.name).subscribe(total => {
-        this.shippingThisMonth = Number(total || 0);
-      }, _err => { this.shippingThisMonth = 0; });
-    }
-    if (prevBatch && prevBatch.name) {
-      this.dbService.getBatchTotal(prevBatch.name).subscribe(total => {
-        this.shippingLastMonth = Number(total || 0);
-      }, _err => { this.shippingLastMonth = 0; });
-    }
+    this.shippingThisMonth = this.shippingTotalForBatch(shippingBatches, latestBatch);
+    this.shippingLastMonth = this.shippingTotalForBatch(shippingBatches, prevBatch);
 
-    this.expensesThisMonth = this.expenses
-      .filter(e => e.expenseDate >= this.thisMonthStart)
-      .reduce((s, e) => s + e.amount, 0);
-    this.expensesLastMonth = this.expenses
-      .filter(e => e.expenseDate >= this.lastMonthStart && e.expenseDate <= this.lastMonthEnd)
-      .reduce((s, e) => s + e.amount, 0);
-
-    this.netThisMonth = this.revenueThisMonth - this.expensesThisMonth;
     this.paidOrdersThisMonth = latestOrders.filter((o: Order) => o.paymentStatus === 'paid').length;
   }
 
@@ -1572,7 +2035,6 @@ export class DashboardComponent implements OnInit {
   }
 
   get revenueChange() { return this.pctChange(this.revenueThisMonth, this.revenueLastMonth); }
-  get expenseChange() { return this.pctChange(this.expensesThisMonth, this.expensesLastMonth); }
   get shippingChange() { return this.pctChange(this.shippingThisMonth, this.shippingLastMonth); }
   get ordersChange() { return this.pctChange(this.ordersThisBatch, this.ordersLastBatch); }
   get batchPaidOrderRate() {
@@ -1603,8 +2065,8 @@ export class DashboardComponent implements OnInit {
 
   private computeExpenseBreakdown() {
     const catMap: Record<string, number> = {};
-    for (const e of this.expenses) {
-      const cat = e.category || 'Other';
+    for (const e of this.expenses.filter(expense => expense.expenseDate >= this.thisMonthStart)) {
+      const cat = (e.category || 'other').toLowerCase();
       catMap[cat] = (catMap[cat] || 0) + e.amount;
     }
     this.expenseBreakdown = Object.entries(catMap).map(([cat, amount]) => ({
@@ -1635,6 +2097,11 @@ export class DashboardComponent implements OnInit {
     return this.expenseTotal > 0 ? Math.round((amount / this.expenseTotal) * 100) : 0;
   }
 
+  getExpenseCategoryLabel(category: string): string {
+    return EXPENSE_CATEGORIES.find(item => item.value === category)?.label
+      || category.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+  }
+
   private computeExpenseTrend() {
     const now = new Date();
     const months: { label: string; amount: number; heightPercent: number }[] = [];
@@ -1654,11 +2121,11 @@ export class DashboardComponent implements OnInit {
   }
 
   computeTopProducts() {
-    const periodOrders = this.topProductsPeriod === 'batch'
+    const periodOrders = (this.analyticsPeriod === 'batch'
       ? this.orders.filter(o => !!this.currentBatchId && o.batchId === this.currentBatchId)
       : this.orders.filter(o =>
-        (o.createdAt || '').substring(0, 10) >= this.getPeriodStart(this.topProductsPeriod)
-      );
+        (o.createdAt || '').substring(0, 10) >= this.getPeriodStart(this.analyticsPeriod)
+      )).filter(order => order.paymentStatus !== 'refunded');
     const productMap: Record<number, { name: string; quantity: number; revenue: number }> = {};
     for (const order of periodOrders) {
       for (const item of (order.items || [])) {
@@ -1673,16 +2140,20 @@ export class DashboardComponent implements OnInit {
     this.topProducts = Object.values(productMap).sort((a, b) => b.quantity - a.quantity).slice(0, 10);
   }
 
-  onTopProductsPeriodChange(period: 'batch' | 'quarter' | 'year') {
-    this.topProductsPeriod = period;
+  onAnalyticsPeriodChange(period: DashboardPeriod) {
+    this.analyticsPeriod = period;
     this.computeTopProducts();
+    this.computeDeliveryBreakdown();
+    if (this.dashboardBundle) {
+      this.computeTopStockSales(this.dashboardBundle.stockSales, this.dashboardBundle.stockItems);
+    }
   }
 
   computeDeliveryBreakdown() {
-    const periodDeliveries = this.deliveryPeriod === 'batch'
-      ? this.deliveries.filter(d => !!this.currentBatchName && d.batchName === this.currentBatchName)
+    const periodDeliveries = this.analyticsPeriod === 'batch'
+      ? this.deliveries.filter(d => Number(d.batchId) === Number(this.currentBatchId))
       : this.deliveries.filter(d =>
-        (d.createdAt || '').substring(0, 10) >= this.getPeriodStart(this.deliveryPeriod)
+        (d.createdAt || '').substring(0, 10) >= this.getPeriodStart(this.analyticsPeriod)
       );
     const colors: Record<string, string> = {
       station_car_delivery: '#3b82f6', riders: '#10b981', ghana_post: '#f59e0b', unknown: '#6366f1'
@@ -1703,11 +2174,6 @@ export class DashboardComponent implements OnInit {
         color: colors[cat] || '#94a3b8'
       };
     }).sort((a, b) => b.count - a.count);
-  }
-
-  onDeliveryPeriodChange(period: 'batch' | 'quarter' | 'year') {
-    this.deliveryPeriod = period;
-    this.computeDeliveryBreakdown();
   }
 
   get pieGradient(): string {
@@ -1736,24 +2202,31 @@ export class DashboardComponent implements OnInit {
     for (const b of this.batches) {
       if (b.deliveryStatus === 'completed') {
         this.batchPipeline.completed++;
+      } else if (b.status === 'open') {
+        this.batchPipeline.open++;
       } else if (b.deliveryStatus === 'pending' || b.deliveryStatus === 'in_progress') {
         this.batchPipeline.delivering++;
-      } else if (b.buyingStatus && b.buyingStatus !== 'pending') {
-        this.batchPipeline.buying++;
       } else {
-        this.batchPipeline.open++;
+        this.batchPipeline.buying++;
       }
     }
   }
 
   private computeTopStockSales(stockSales: any[], stockItems: any[]) {
+    const periodStart = this.analyticsPeriod === 'batch'
+      ? this.thisMonthStart
+      : this.getPeriodStart(this.analyticsPeriod);
     const salesMap: Record<number, { quantity: number; totalAmount: number; description: string }> = {};
     for (const item of stockItems) {
       const saleId = item.stock_sale_id;
-      const sale = stockSales.find(s => s.id === saleId);
+      const sale = stockSales.find(s => s.id === saleId && (s.created_at || '') >= periodStart);
       if (sale) {
         if (!salesMap[saleId]) {
-          salesMap[saleId] = { quantity: 0, totalAmount: sale.total_amount || 0, description: sale.notes || 'Stock Sale' };
+          salesMap[saleId] = {
+            quantity: 0,
+            totalAmount: Number(sale.total_amount || 0),
+            description: sale.customer_name || `Stock sale #${sale.id}`
+          };
         }
         salesMap[saleId].quantity += item.quantity || 0;
       }
@@ -1764,11 +2237,13 @@ export class DashboardComponent implements OnInit {
   }
 
   private computeDamagedItems(damagedItems: any[], damageAllocations: any[], products: any[]) {
-    this.totalDamagedItems = damagedItems.length;
+    this.totalDamagedItems = damagedItems.reduce((sum, item) => sum + Number(item.damaged_qty || 0), 0);
     this.damagedThisMonth = damagedItems.filter(d =>
       (d.created_at || '').substring(0, 10) >= this.thisMonthStart
-    ).length;
-    this.damageAllocated = damageAllocations.length;
+    ).reduce((sum, item) => sum + Number(item.damaged_qty || 0), 0);
+    this.damageAllocated = damageAllocations
+      .filter(allocation => allocation.is_active !== false)
+      .reduce((sum, allocation) => sum + Number(allocation.damaged_quantity || 0), 0);
 
     const productMap: Record<number, { name: string; count: number; batches: Set<number> }> = {};
     for (const d of damagedItems) {
@@ -1779,7 +2254,7 @@ export class DashboardComponent implements OnInit {
       if (!productMap[pid]) {
         productMap[pid] = { name, count: 0, batches: new Set() };
       }
-      productMap[pid].count++;
+      productMap[pid].count += Number(d.damaged_qty || 0);
       if (batchId) productMap[pid].batches.add(batchId);
     }
     this.topDamagedProducts = Object.entries(productMap)
@@ -1796,13 +2271,24 @@ export class DashboardComponent implements OnInit {
       .filter(batch => !!batch.id)
       .map(batch => [Number(batch.id), batch.name || 'Unknown Batch']));
 
-    this.arrivalsExpected = arrivalItems.filter(item => Number(item.requested_qty || 0) > 0).length;
+    this.arrivalsExpected = arrivalItems.reduce((sum, item) => sum + Number(item.requested_qty || 0), 0);
     this.arrivalsReceivedMonth = arrivalItems.filter(item => {
       const itemStatus = item.status || 'pending';
       const itemDate = (item.updated_at || item.created_at || '').substring(0, 10);
       return receivedStatuses.has(itemStatus) && itemDate >= this.thisMonthStart;
-    }).length;
-    this.arrivalsPending = arrivalItems.filter(item => pendingStatuses.has(item.status || 'pending')).length;
+    }).reduce((sum, item) => sum + Math.max(
+      Number(item.confirmed_qty || 0),
+      Number(item.received_qty || 0)
+    ), 0);
+    this.arrivalsPending = arrivalItems
+      .filter(item => pendingStatuses.has(item.status || 'pending'))
+      .reduce((sum, item) => sum + Math.max(
+        Number(item.requested_qty || 0) - Math.max(
+          Number(item.confirmed_qty || 0),
+          Number(item.received_qty || 0)
+        ),
+        0
+      ), 0);
 
     this.recentArrivals = [...arrivalItems]
       .sort((left, right) => (right.updated_at || right.created_at || '').localeCompare(left.updated_at || left.created_at || ''))
@@ -1810,12 +2296,103 @@ export class DashboardComponent implements OnInit {
       .map(item => ({
         productName: productNameById.get(Number(item.product_id)) || `Product #${item.product_id || 'Unknown'}`,
         quantity: Number(item.confirmed_qty || item.received_qty || item.requested_qty || 0),
-        supplier: batchNameById.get(Number(item.batch_id)) || 'Unknown Batch',
+        supplier: batchNameById.get(Number(item.batch_id)) || 'Unknown batch',
         arrivalDate: (item.updated_at || item.created_at || '').substring(0, 10)
       }));
   }
 
-  private getPeriodStart(period: 'batch' | 'quarter' | 'year'): string {
+  private computeAttention(data: DashboardDataBundle) {
+    const pendingBuying = data.buyingList.length;
+    const pendingArrivalUnits = data.arrivalItems.reduce((sum, item) => sum + Math.max(
+      Number(item.requested_qty || 0) - Math.max(
+        Number(item.confirmed_qty || 0),
+        Number(item.received_qty || 0)
+      ),
+      0
+    ), 0);
+    const damagedUnits = data.damagedItems.reduce((sum, item) => sum + Number(item.damaged_qty || 0), 0);
+    const allocatedUnits = data.damageAllocations.reduce((sum, item) => sum + Number(item.damaged_quantity || 0), 0);
+    const pendingDeliveryCount = data.deliveries.filter(delivery =>
+      delivery.status === 'pending' || delivery.status === 'in_transit'
+    ).length;
+    const shippingBalance = data.shippingPayments.reduce((sum, payment) => sum + Math.max(
+      Number(payment.total_fee || 0) - Number(payment.paid_amount || 0),
+      0
+    ), 0);
+
+    const candidates: Array<AttentionItem & { resource: AppResource; numericValue: number }> = [
+      {
+        label: 'buying lines still pending', value: pendingBuying.toLocaleString(), numericValue: pendingBuying,
+        icon: 'shopping_bag', tone: 'amber', resource: 'buying_list', route: '/buying-list'
+      },
+      {
+        label: 'arrival units outstanding', value: pendingArrivalUnits.toLocaleString(), numericValue: pendingArrivalUnits,
+        icon: 'inventory', tone: 'blue', resource: 'arrivals', route: '/arrivals'
+      },
+      {
+        label: 'damaged units unallocated', value: Math.max(damagedUnits - allocatedUnits, 0).toLocaleString(),
+        numericValue: Math.max(damagedUnits - allocatedUnits, 0), icon: 'report_problem', tone: 'red',
+        resource: 'damaged_items', route: '/damaged-items'
+      },
+      {
+        label: 'deliveries still pending', value: pendingDeliveryCount.toLocaleString(), numericValue: pendingDeliveryCount,
+        icon: 'local_shipping', tone: 'purple', resource: 'deliveries', route: '/deliveries'
+      },
+      {
+        label: 'shipping balance outstanding', value: `GHS ${shippingBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
+        numericValue: shippingBalance, icon: 'payments', tone: 'amber', resource: 'shipping', route: '/shipping-ledger'
+      }
+    ];
+
+    this.attentionItems = candidates
+      .filter(item => item.numericValue > 0)
+      .map(item => ({
+        label: item.label,
+        value: item.value,
+        icon: item.icon,
+        tone: item.tone,
+        route: this.authService.canView(item.resource) ? item.route : null
+      }));
+  }
+
+  onBatchChange(event: Event) {
+    const value = Number((event.target as HTMLSelectElement).value || 0);
+    this.selectedBatchId = value > 0 ? value : null;
+    this.analyticsPeriod = 'batch';
+    this.loadData();
+  }
+
+  openAttention(item: AttentionItem) {
+    if (item.route) this.router.navigateByUrl(item.route);
+  }
+
+  private shippingTotalForBatch(shippingBatches: any[], batch?: OrderBatch): number {
+    if (!batch?.id) return 0;
+    const exact = shippingBatches.find(row => Number(row.batch_id) === Number(batch.id));
+    const legacy = shippingBatches.find(row => !row.batch_id && row.batch_name === batch.name);
+    return Number((exact || legacy)?.total_fee || 0);
+  }
+
+  private isSectionUnavailable(component: keyof DashboardComponentConfig): boolean {
+    const failed = new Set<DashboardDataSource>(this.dataErrors.map(error => error.source));
+    const dependencies: Record<keyof DashboardComponentConfig, DashboardDataSource[]> = {
+      stats: ['products', 'customers', 'orders', 'deliveries', 'batches'],
+      attention: ['buyingList', 'arrivalItems', 'damagedItems', 'damageAllocations', 'deliveries', 'shippingPayments'],
+      finance: ['orders', 'batches', 'shippingBatches'],
+      revenueTrend: ['orders'],
+      topProducts: ['orders', 'batches'],
+      deliveryOverview: ['deliveries', 'batches'],
+      batchPipeline: ['batches'],
+      recentOrders: ['orders'],
+      expenses: ['expenses'],
+      stockSales: ['stockSales', 'stockItems'],
+      damagedItems: ['damagedItems', 'damageAllocations', 'products'],
+      inventory: ['arrivalItems', 'products', 'batches']
+    };
+    return dependencies[component].some(source => failed.has(source));
+  }
+
+  private getPeriodStart(period: DashboardPeriod): string {
     switch (period) {
       case 'batch': return this.thisMonthStart;
       case 'quarter': return this.thisQuarterStart;

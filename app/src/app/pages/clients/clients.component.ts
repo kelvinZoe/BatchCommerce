@@ -18,7 +18,7 @@ import { TableComponent, TableColumn, TableMetadata, ActionOption } from '../../
       <!-- PAGE HEADER -->
       <div class="cl-page-header">
         <div class="cl-header-left">
-          <div class="cl-header-icon"><i class="ri-team-line"></i></div>
+          <div class="cl-header-icon"><span class="material-icons">groups</span></div>
           <div>
             <h1 class="cl-title">Clients</h1>
             <p class="cl-subtitle">Manage your customer contacts</p>
@@ -28,44 +28,112 @@ import { TableComponent, TableColumn, TableMetadata, ActionOption } from '../../
           class="cl-btn cl-btn-primary" 
           (click)="openAddModal()" 
           *ngIf="authService.can('create', 'clients')">
-          <i class="ri-user-add-line"></i> Add Client
+          <span class="material-icons">person_add</span> Add Client
         </button>
       </div>
 
       <!-- MAIN CARD -->
       <div class="cl-card">
-        <app-stat-cards [config]="clientStatCards"></app-stat-cards>
+        <app-stat-cards [config]="clientStatCards" [compactOnMobile]="true"></app-stat-cards>
 
         <!-- TABLE -->
-        <app-table
-          [columns]="columns"
-          [data]="clientTableRows"
-          [metadata]="metadata"
-          [showSearchRow]="true"
-          [searchDebounce]="300"
-          [searching]="loading"
-          [initialLoading]="initialLoading"
-          [filters]="[]"
-          [tableLabel]="'Client Directory'"
-          [summaryLabel]="'Clients'"
-          [summaryValue]="metadata.totalCount"
-          [baseColor]="baseColor"
-          [showToolbarEnd]="selectedClientIds.size > 0 && authService.can('delete', 'clients')"
-          (pageChange)="onPageChange($event)"
-          (checkboxChange)="onTableCheckboxChange($event)"
-          (searchChange)="onSearchChange($event)"
-          (sortChange)="onSortChange($event)"
-          (actionClick)="onActionClick($event)">
-          <button
-            table-toolbar-end
-            class="cl-btn cl-btn-danger"
-            (click)="openBulkDeleteModal()"
-            [disabled]="bulkDeleting">
-            <i *ngIf="!bulkDeleting" class="ri-delete-bin-line"></i>
-            <span *ngIf="bulkDeleting" class="cl-spinner"></span>
-            Delete {{ selectedClientIds.size }} Client{{ selectedClientIds.size !== 1 ? 's' : '' }}
-          </button>
-        </app-table>
+        <div class="cl-desktop-directory">
+          <app-table
+            [columns]="columns"
+            [data]="clientTableRows"
+            [metadata]="metadata"
+            [showSearchRow]="true"
+            [searchDebounce]="300"
+            [searching]="loading"
+            [initialLoading]="initialLoading"
+            [filters]="[]"
+            [tableLabel]="'Client Directory'"
+            [summaryLabel]="'Clients'"
+            [summaryValue]="metadata.totalCount"
+            [baseColor]="baseColor"
+            [showToolbarEnd]="selectedClientIds.size > 0 && authService.can('delete', 'clients')"
+            (pageChange)="onPageChange($event)"
+            (checkboxChange)="onTableCheckboxChange($event)"
+            (searchChange)="onSearchChange($event)"
+            (sortChange)="onSortChange($event)"
+            (actionClick)="onActionClick($event)">
+            <button
+              table-toolbar-end
+              class="cl-btn cl-btn-danger"
+              (click)="openBulkDeleteModal()"
+              [disabled]="bulkDeleting">
+              <span *ngIf="!bulkDeleting" class="material-icons">delete</span>
+              <span *ngIf="bulkDeleting" class="cl-spinner"></span>
+              Delete {{ selectedClientIds.size }} Client{{ selectedClientIds.size !== 1 ? 's' : '' }}
+            </button>
+          </app-table>
+        </div>
+
+        <section class="cl-mobile-directory" aria-label="Client directory">
+          <div class="cl-mobile-directory-head">
+            <div>
+              <span class="cl-mobile-kicker">Directory</span>
+              <h2>Clients <small>{{ metadata.totalCount }}</small></h2>
+            </div>
+            <button
+              type="button"
+              class="cl-mobile-delete"
+              *ngIf="selectedClientIds.size > 0 && authService.can('delete', 'clients')"
+              (click)="openBulkDeleteModal()">
+              Delete {{ selectedClientIds.size }}
+            </button>
+          </div>
+
+          <label class="cl-mobile-search">
+            <span class="material-icons">search</span>
+            <input
+              type="search"
+              placeholder="Search clients by name..."
+              [ngModel]="mobileSearchTerm"
+              (ngModelChange)="onMobileSearchChange($event)" />
+            <span class="cl-spinner cl-spinner-dark" *ngIf="loading"></span>
+          </label>
+
+          <div class="cl-mobile-loading" *ngIf="initialLoading">
+            <div *ngFor="let item of [1,2,3]" class="cl-mobile-skeleton"></div>
+          </div>
+
+          <div class="cl-mobile-list" *ngIf="!initialLoading && paginatedClients.length > 0">
+            <article class="cl-mobile-client" *ngFor="let client of paginatedClients">
+              <label class="cl-client-select" *ngIf="authService.can('delete', 'clients')">
+                <input
+                  type="checkbox"
+                  [checked]="!!client.id && selectedClientIds.has(client.id)"
+                  (change)="onMobileSelection(client, $any($event.target).checked)" />
+                <span class="sr-only">Select {{ client.name }}</span>
+              </label>
+              <div class="cl-client-avatar">{{ getClientInitials(client.name) }}</div>
+              <div class="cl-client-main">
+                <h3>{{ client.name }}</h3>
+                <a *ngIf="client.phone; else noPhone" [href]="'tel:' + client.phone"><span class="material-icons">phone</span>{{ client.phone }}</a>
+                <ng-template #noPhone><span class="cl-client-muted"><span class="material-icons">phone</span>No phone number</span></ng-template>
+                <span *ngIf="client.address" class="cl-client-address"><span class="material-icons">location_on</span>{{ client.address }}</span>
+                <span *ngIf="client.whatsappUsername" class="cl-client-whatsapp"><span class="material-icons">chat</span>{{ client.whatsappUsername }}</span>
+              </div>
+              <div class="cl-client-actions" *ngIf="authService.can('edit', 'clients') || authService.can('delete', 'clients')">
+                <button type="button" aria-label="Edit client" (click)="editClient(client)" *ngIf="authService.can('edit', 'clients')"><span class="material-icons">edit</span></button>
+                <button type="button" class="danger" aria-label="Delete client" (click)="deleteClient(client)" *ngIf="authService.can('delete', 'clients')"><span class="material-icons">delete</span></button>
+              </div>
+            </article>
+          </div>
+
+          <div class="cl-mobile-empty" *ngIf="!initialLoading && paginatedClients.length === 0">
+            <span class="material-icons">person_search</span>
+            <strong>No clients found</strong>
+            <span>Try a different name or add a new client.</span>
+          </div>
+
+          <div class="cl-mobile-pagination" *ngIf="!initialLoading && metadata.totalPages > 1">
+            <button type="button" [disabled]="metadata.pageNumber <= 1 || loading" (click)="onPageChange(metadata.pageNumber - 1)"><span class="material-icons">chevron_left</span> Previous</button>
+            <span>{{ metadata.pageNumber }} of {{ metadata.totalPages }}</span>
+            <button type="button" [disabled]="metadata.pageNumber >= metadata.totalPages || loading" (click)="onPageChange(metadata.pageNumber + 1)">Next <span class="material-icons">chevron_right</span></button>
+          </div>
+        </section>
       </div><!-- /cl-card -->
 
       <app-modal-shell
@@ -158,7 +226,7 @@ import { TableComponent, TableColumn, TableMetadata, ActionOption } from '../../
     .cl-card { background: #fff; border: 1px solid #ccc; border-radius: 14px; padding: 20px; overflow: hidden; }
 
     .cl-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: background 0.15s; }
-    .cl-btn i { font-size: 17px; }
+    .cl-btn .material-icons { font-size: 17px; }
     .cl-btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
     .cl-btn-primary { background: var(--primary-color, #6366f1); color: #fff; }
     .cl-btn-primary:hover:not(:disabled) { background: var(--primary-dark, #4f46e5); }
@@ -174,8 +242,205 @@ import { TableComponent, TableColumn, TableMetadata, ActionOption } from '../../
     .cl-modal-copy { color: #0f172a; font-size: 14px; margin: 0 0 12px; line-height: 1.5; }
     .cl-modal-copy-muted { color: #64748b; margin-bottom: 0; }
 
+    .cl-mobile-directory { display: none; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
     .cl-spinner { width: 14px; height: 14px; border: 2px solid rgba(255, 255, 255, 0.4); border-top-color: #fff; border-radius: 50%; animation: cl-spin 0.7s linear infinite; display: inline-block; }
+    .cl-spinner-dark { border-color: #cbd5e1; border-top-color: #475569; }
     @keyframes cl-spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 640px) {
+      .cl-page { width: 100%; min-width: 0; }
+
+      .cl-page-header {
+        align-items: center;
+        padding: 12px 0;
+        gap: 10px;
+        flex-wrap: nowrap;
+      }
+
+      .cl-header-left { min-width: 0; gap: 10px; }
+      .cl-header-icon { width: 38px; height: 38px; border-radius: 11px; font-size: 18px; }
+      .cl-title { font-size: 22px; }
+      .cl-subtitle { max-width: 21ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      .cl-page-header > .cl-btn {
+        min-height: 40px;
+        margin-left: auto;
+        padding: 8px 12px;
+        white-space: nowrap;
+      }
+
+      .cl-card {
+        padding: 12px;
+        border-radius: 16px;
+        overflow: visible;
+      }
+
+      .cl-desktop-directory { display: none; }
+      .cl-mobile-directory { display: block; }
+
+      .cl-mobile-directory-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin: 2px 0 10px;
+      }
+
+      .cl-mobile-kicker {
+        display: block;
+        color: #64748b;
+        font-size: 9px;
+        font-weight: 850;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+      }
+
+      .cl-mobile-directory-head h2 { margin: 2px 0 0; color: #0f172a; font-size: 17px; }
+      .cl-mobile-directory-head h2 small { color: #64748b; font-size: 12px; font-weight: 700; }
+
+      .cl-mobile-delete {
+        padding: 7px 10px;
+        border: 1px solid #fecaca;
+        border-radius: 9px;
+        background: #fff1f2;
+        color: #be123c;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .cl-mobile-search {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        min-height: 42px;
+        margin-bottom: 10px;
+        padding: 0 12px;
+        border: 1px solid #dbe3ee;
+        border-radius: 12px;
+        background: #f8fafc;
+        color: #94a3b8;
+      }
+
+      .cl-mobile-search input {
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: #0f172a;
+        font: inherit;
+        font-size: 13px;
+      }
+
+      .cl-mobile-list { display: grid; gap: 9px; }
+
+      .cl-mobile-client {
+        position: relative;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: start;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        background: linear-gradient(145deg, #fff, #f8fbff);
+      }
+
+      .cl-client-select { position: absolute; top: 10px; right: 10px; line-height: 1; }
+      .cl-client-select input { width: 15px; height: 15px; accent-color: var(--primary-color, #6366f1); }
+
+      .cl-client-avatar {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: rgba(var(--primary-rgb, 99,102,241), .12);
+        color: var(--primary-color, #6366f1);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .cl-client-main { display: grid; gap: 5px; min-width: 0; padding-right: 20px; }
+      .cl-client-main h3 { margin: 0 0 1px; overflow: hidden; color: #0f172a; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+      .cl-client-main a,
+      .cl-client-main span { display: flex; align-items: flex-start; gap: 6px; min-width: 0; color: #475569; font-size: 11px; line-height: 1.35; text-decoration: none; }
+      .cl-client-main .material-icons { flex-shrink: 0; color: #94a3b8; font-size: 13px; line-height: 1.1; }
+      .cl-client-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .cl-client-whatsapp { color: #047857 !important; }
+      .cl-client-muted { color: #94a3b8 !important; }
+
+      .cl-client-actions {
+        display: flex;
+        align-self: end;
+        gap: 6px;
+        grid-column: 2 / -1;
+      }
+
+      .cl-client-actions button {
+        width: 31px;
+        height: 31px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        border: 1px solid #dbe3ee;
+        border-radius: 9px;
+        background: #fff;
+        color: #475569;
+      }
+
+      .cl-client-actions button.danger { border-color: #fecaca; background: #fff1f2; color: #be123c; }
+      .cl-client-actions .material-icons { font-size: 16px; }
+
+      .cl-mobile-empty {
+        display: grid;
+        justify-items: center;
+        gap: 5px;
+        padding: 32px 16px;
+        border: 1px dashed #cbd5e1;
+        border-radius: 14px;
+        color: #64748b;
+        text-align: center;
+      }
+
+      .cl-mobile-empty .material-icons { color: #94a3b8; font-size: 28px; }
+      .cl-mobile-empty strong { color: #334155; font-size: 13px; }
+      .cl-mobile-empty span { font-size: 11px; }
+
+      .cl-mobile-loading { display: grid; gap: 9px; }
+      .cl-mobile-skeleton { height: 112px; border-radius: 14px; background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 300% 100%; animation: cl-shimmer 1.4s linear infinite; }
+
+      .cl-mobile-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 11px;
+      }
+
+      .cl-mobile-pagination button {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        min-height: 36px;
+        padding: 0 10px;
+        border: 1px solid #dbe3ee;
+        border-radius: 10px;
+        background: #fff;
+        color: #334155;
+        font-size: 11px;
+        font-weight: 750;
+      }
+
+      .cl-mobile-pagination button:disabled { opacity: .4; }
+      .cl-mobile-pagination button .material-icons { font-size: 16px; }
+      .cl-mobile-pagination span { color: #64748b; font-size: 11px; font-weight: 750; }
+      .cl-form-row { grid-template-columns: 1fr; }
+    }
+
+    @keyframes cl-shimmer { to { background-position: -300% 0; } }
   `]
 })
 export class ClientsComponent implements OnInit, OnDestroy {
@@ -222,7 +487,9 @@ export class ClientsComponent implements OnInit, OnDestroy {
   pageSize = 20;
   nameSearchTerm = '';
   addressSearchTerm = '';
+  mobileSearchTerm = '';
   baseColor: string = '#6366f1';
+  private mobileSearchTimer?: ReturnType<typeof setTimeout>;
 
   columns: TableColumn[] = [];
 
@@ -244,6 +511,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     window.removeEventListener('storage', this.onStorageChange);
+    if (this.mobileSearchTimer) clearTimeout(this.mobileSearchTimer);
   }
 
   private setupThemeListener() {
@@ -356,6 +624,30 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return;
     }
     this.selectedClientIds.delete(clientId);
+  }
+
+  onMobileSelection(client: Client, checked: boolean) {
+    this.onTableCheckboxChange({ item: client, checked });
+  }
+
+  onMobileSearchChange(value: string) {
+    this.mobileSearchTerm = value;
+    if (this.mobileSearchTimer) clearTimeout(this.mobileSearchTimer);
+    this.mobileSearchTimer = setTimeout(() => {
+      this.nameSearchTerm = value.trim();
+      this.addressSearchTerm = '';
+      this.selectedClientIds.clear();
+      this.loadClientsPage(1, false, true);
+    }, 300);
+  }
+
+  getClientInitials(name: string): string {
+    return (name || '?')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map(part => part.charAt(0).toUpperCase())
+      .join('') || '?';
   }
 
   onSearchChange(query: Record<string, string>) {

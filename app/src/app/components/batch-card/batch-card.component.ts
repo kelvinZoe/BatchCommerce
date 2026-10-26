@@ -236,6 +236,57 @@ export interface BatchCardTagConfig {
       color: #6d28d9;
       border-color: #ddd6fe;
     }
+
+    @media (max-width: 640px) {
+      .bc-card {
+        gap: 6px;
+        padding: 11px 12px;
+        border-radius: 12px;
+      }
+
+      .bc-card-leading {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .bc-card-header {
+        gap: 10px;
+      }
+
+      .bc-card-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+      }
+
+      .bc-card-icon .material-icons {
+        font-size: 18px;
+      }
+
+      .bc-card-heading {
+        gap: 2px;
+      }
+
+      .bc-card-title {
+        font-size: 13px;
+      }
+
+      .bc-tag-list {
+        flex-wrap: nowrap;
+      }
+
+      .bc-tag {
+        padding: 3px 7px;
+        font-size: 9px;
+      }
+
+      .bc-card-footer {
+        margin-top: 1px;
+        padding-top: 7px;
+      }
+    }
   `]
 })
 export class BatchCardComponent {

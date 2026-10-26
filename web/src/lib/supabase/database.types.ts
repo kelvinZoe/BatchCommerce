@@ -915,10 +915,14 @@ export type Database = {
           category: string
           created_at: string
           created_by: number | null
+          description: string
           expense_date: string
           id: number
           name: string
           notes: string | null
+          payment_method: string
+          recipient: string
+          reference: string
           shop_id: string
           updated_at: string
           updated_by: number | null
@@ -928,10 +932,14 @@ export type Database = {
           category?: string
           created_at?: string
           created_by?: number | null
+          description?: string
           expense_date?: string
           id?: number
           name: string
           notes?: string | null
+          payment_method?: string
+          recipient?: string
+          reference?: string
           shop_id: string
           updated_at?: string
           updated_by?: number | null
@@ -941,10 +949,14 @@ export type Database = {
           category?: string
           created_at?: string
           created_by?: number | null
+          description?: string
           expense_date?: string
           id?: number
           name?: string
           notes?: string | null
+          payment_method?: string
+          recipient?: string
+          reference?: string
           shop_id?: string
           updated_at?: string
           updated_by?: number | null

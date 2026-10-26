@@ -600,10 +600,10 @@ test('delivery and damage paths backfill and prefer batch_id over batch_name', (
   ], 'database delivery damage batch-id paths');
 
   assertIncludesAll(dashboardService, [
-    'shopBatchIds',
-    ".in('batch_id', shopBatchIds)",
-    ".is('batch_id', null).in('batch_name', shopBatchNames)"
-  ], 'dashboard damage allocation loader');
+    "this.scopeTable(",
+    "'damage_order_allocations'",
+    ".eq('is_active', true)"
+  ], 'dashboard active damage allocation loader');
 
   assertIncludesAll(models, [
     'batchId?: number | null',
@@ -665,16 +665,218 @@ test('shipping workflow facade delegates live RPC-backed transitions to Shipping
 test('dashboard page delegates data loading to DashboardDataService', () => {
   const dashboardPage = read('app/src/app/pages/dashboard/dashboard.component.ts');
   const dashboardService = read('app/src/app/services/dashboard-data.service.ts');
+  const orderService = read('app/src/app/services/order-data.service.ts');
 
   assertIncludesAll(dashboardPage, [
     'DashboardDataService',
-    'this.dashboardData.loadDashboardData()'
+    'this.dashboardData.loadDashboardData(this.selectedBatchId)',
+    "show('stats')",
+    "show('attention')",
+    'No dashboard sections assigned',
+    "batch.status === 'open'",
+    'Number(item.damaged_qty || 0)',
+    'This Month\'s Expenses by Category'
   ], 'dashboard page');
 
   assert.doesNotMatch(dashboardPage, /SupabaseService/);
   assert.doesNotMatch(dashboardPage, /\.from\('/);
-  assert.match(dashboardService, /loadDashboardData\(\): Observable<DashboardDataBundle>/);
+  assert.match(dashboardService, /loadDashboardData\(requestedBatchId: number \| null = null\): Observable<DashboardDataBundle>/);
   assert.match(dashboardService, /damage_order_allocations/);
+  assertIncludesAll(dashboardService, [
+    "can('stats')",
+    "can('attention')",
+    'errors: queryResults.flatMap',
+    "payment_status || 'paid'",
+    "'id, batch_id, product_id, damaged_qty, created_at'",
+    ".order('created_at', { ascending: false })"
+  ], 'dashboard data contract');
+
+  assertIncludesAll(orderService, [
+    "row.refunded ? 'refunded' : (row.payment_status || 'paid')",
+    "data as any).payment_status || 'paid'"
+  ], 'order payment status mapping');
+  assert.doesNotMatch(dashboardPage, /closedAt \|\| a\.createdAt/);
+});
+
+test('dashboard role configuration includes the operational attention queue', () => {
+  const models = read('app/src/app/models/index.ts');
+
+  assertIncludesAll(models, [
+    'attention: boolean',
+    "attention: false",
+    "key: 'attention'",
+    "label: 'Needs Attention'"
+  ], 'dashboard attention permission');
+});
+
+test('expense tracking covers core operating costs and is available from navigation', () => {
+  const models = read('app/src/app/models/index.ts');
+  const expensePage = read('app/src/app/pages/expenses/expenses.component.ts');
+  const databaseService = read('app/src/app/services/database.service.ts');
+  const migration = read('supabase/migrations/20261026123000_expand_expense_tracking.sql');
+
+  assertIncludesAll(models, [
+    "route: '/expenses'",
+    "value: 'salary'",
+    "value: 'utilities'",
+    "value: 'taxes'",
+    "value: 'professional_services'",
+    "value: 'bank_fees'"
+  ], 'expense categories and navigation');
+
+  assertIncludesAll(expensePage, [
+    'Salaries & Wages',
+    'monthlyUtilities',
+    'monthlyCategorySummary',
+    'EXPENSE_CATEGORIES',
+    'formErrorMessage',
+    '@media (max-width: 640px)',
+    'grid-template-columns: repeat(2, minmax(0, 1fr))',
+    'data-label="Amount"',
+    'flex-direction: column'
+  ], 'expense management page');
+
+  assertIncludesAll(databaseService, [
+    "name: expense.description.trim()",
+    "description: expense.description.trim()",
+    'payment_method: expense.paymentMethod',
+    "description: r.description || r.name || ''",
+    'amount: Number(r.amount || 0)'
+  ], 'expense persistence');
+
+  assertIncludesAll(migration, [
+    'ALTER TABLE public.expenses',
+    'ADD COLUMN IF NOT EXISTS description',
+    'ADD COLUMN IF NOT EXISTS recipient',
+    'ADD COLUMN IF NOT EXISTS payment_method',
+    'ADD COLUMN IF NOT EXISTS reference',
+    'SET description = name',
+    'idx_expenses_shop_category_date'
+  ], 'expanded expense schema');
+});
+
+test('dashboard and clients provide compact mobile layouts', () => {
+  const dashboard = read('app/src/app/pages/dashboard/dashboard.component.ts');
+  const clients = read('app/src/app/pages/clients/clients.component.ts');
+  const statCards = read('app/src/app/components/stat-cards/stat-cards.component.ts');
+
+  assertIncludesAll(dashboard, [
+    '@media (max-width: 640px)',
+    '.summary-grid,',
+    'grid-template-columns: repeat(2, minmax(0, 1fr))',
+    '.summary-grid .compact-stat',
+    '.summary-grid .compact-stat:last-child:nth-child(odd)'
+  ], 'dashboard mobile summary');
+
+  assertIncludesAll(clients, [
+    'cl-mobile-directory',
+    'cl-mobile-search',
+    'cl-mobile-client',
+    'onMobileSearchChange',
+    'onMobileSelection',
+    '[compactOnMobile]="true"',
+    '<span class="material-icons">groups</span>',
+    '<span class="material-icons">edit</span>',
+    '<span class="material-icons">delete</span>'
+  ], 'clients mobile directory');
+  assert.doesNotMatch(clients, /class="ri-/);
+
+  assertIncludesAll(statCards, [
+    '@Input() compactOnMobile = false',
+    'sc-grid-mobile-compact',
+    'grid-template-columns: repeat(3, minmax(0, 1fr))'
+  ], 'compact mobile stat cards');
+});
+
+test('operational pages use compact shared phone layouts', () => {
+  const globalStyles = read('app/src/styles.scss');
+  const batchCard = read('app/src/app/components/batch-card/batch-card.component.ts');
+  const batchList = read('app/src/app/components/batch-list-section/batch-list-section.component.ts');
+  const batchDetail = read('app/src/app/components/batch-detail-header/batch-detail-header.component.ts');
+  const table = read('app/src/app/components/table/table.component.ts');
+
+  assertIncludesAll(globalStyles, [
+    'Shared phone-density pass for operational workspace pages',
+    '.arr-header, .batch-header, .bl-header, .dm-page-header',
+    '.dv-page-header, .ord-header, .pt-header, .sh-header',
+    '.arr-card, .batch-card, .bl-card, .dm-card, .dv-card',
+    '.ss-modal-body',
+    '.reports-page .stats-grid',
+    '.import-page .sheet-item'
+  ], 'workspace mobile density');
+
+  assertIncludesAll(batchCard, [
+    '@media (max-width: 640px)',
+    'grid-template-columns: minmax(0, 1fr) auto',
+    'padding: 11px 12px'
+  ], 'compact mobile batch cards');
+
+  assertIncludesAll(batchList, [
+    'flex-basis: 100%',
+    '.bls-grid,',
+    'gap: 9px'
+  ], 'compact mobile batch lists');
+
+  assertIncludesAll(batchDetail, [
+    '@media (max-width: 720px)',
+    '.bdh-back-btn',
+    'width: auto'
+  ], 'compact mobile batch detail');
+
+  assertIncludesAll(table, [
+    'flex-wrap: nowrap',
+    'overflow-x: auto',
+    '.table-filters::-webkit-scrollbar'
+  ], 'compact mobile table filters');
+});
+
+test('orders batch cards label both open and closed batches', () => {
+  const orders = read('app/src/app/pages/orders/orders.component.ts');
+
+  assertIncludesAll(orders, [
+    'readonly orderBatchTagResolver = (batch: OrderBatch): BatchCardTagConfig',
+    "batch.status === 'open'",
+    "{ tagName: 'Open', color: 'green', icon: 'check_circle' }",
+    "{ tagName: 'Closed', color: 'gray', icon: 'task_alt' }"
+  ], 'orders batch status tags');
+});
+
+test('administration and billing pages avoid oversized phone cards', () => {
+  const users = read('app/src/app/pages/users/users.component.ts');
+  const roles = read('app/src/app/pages/roles/roles.component.ts');
+  const settings = read('app/src/app/pages/settings/settings.component.ts');
+  const subscription = read('app/src/app/pages/subscription/subscription.component.scss');
+  const platformAdmin = read('app/src/app/pages/platform-admin/platform-admin.component.scss');
+
+  assertIncludesAll(users, [
+    'grid-template-columns: repeat(2, minmax(0, 1fr))',
+    '.u-page-header > .u-btn',
+    '.u-modal-overlay { align-items: flex-end'
+  ], 'users mobile layout');
+
+  assertIncludesAll(roles, [
+    '@media (max-width: 640px)',
+    '.roles-hero-copy h1 { font-size: 25px',
+    '.role-card { gap: 9px; padding: 12px'
+  ], 'roles mobile layout');
+
+  assertIncludesAll(settings, [
+    '.hero-copy h1',
+    'font-size: 26px',
+    '.settings-card'
+  ], 'settings mobile layout');
+
+  assertIncludesAll(subscription, [
+    '.price-seal { justify-self:stretch',
+    'aspect-ratio:auto',
+    '.status-board article { min-height:0'
+  ], 'subscription mobile layout');
+
+  assertIncludesAll(platformAdmin, [
+    '.metrics { grid-template-columns:repeat(2,minmax(0,1fr))',
+    '.metrics article:last-child:nth-child(odd)',
+    '.review-grid { grid-template-columns:1fr'
+  ], 'platform admin mobile layout');
 });
 
 test('order CRUD facade delegates to OrderDataService', () => {

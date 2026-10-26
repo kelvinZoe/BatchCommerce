@@ -16,7 +16,7 @@ export interface StatCardConfig {
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="sc-grid" *ngIf="config?.length">
+    <div class="sc-grid" [class.sc-grid-mobile-compact]="compactOnMobile" *ngIf="config?.length">
       <div class="sc-card" *ngFor="let card of config; trackBy: trackByLabel">
         <span class="material-icons sc-icon" [ngClass]="'sc-icon-' + resolveColor(card)">{{ card.icon }}</span>
         <div class="sc-copy">
@@ -37,6 +37,7 @@ export interface StatCardConfig {
 
     .sc-card {
       min-width: 150px;
+      box-sizing: border-box;
       padding: 14px 16px;
       border-radius: 14px;
       border: 1px solid #dbe3ee;
@@ -123,10 +124,39 @@ export interface StatCardConfig {
       color: #6d28d9;
       border-color: #ddd6fe;
     }
+
+    @media (max-width: 640px) {
+      .sc-grid-mobile-compact {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        padding: 8px 0 12px;
+      }
+
+      .sc-grid-mobile-compact .sc-card {
+        min-width: 0;
+        padding: 10px;
+        border-radius: 12px;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .sc-grid-mobile-compact .sc-icon {
+        width: 27px;
+        height: 27px;
+        border-radius: 8px;
+        font-size: 15px;
+      }
+
+      .sc-grid-mobile-compact .sc-copy { gap: 3px; }
+      .sc-grid-mobile-compact .sc-name { font-size: 9px; line-height: 1.2; }
+      .sc-grid-mobile-compact .sc-value { font-size: 18px; }
+    }
   `]
 })
 export class StatCardsComponent {
   @Input() config: StatCardConfig[] = [];
+  @Input() compactOnMobile = false;
 
   resolveColor(card: StatCardConfig): StatCardColor {
     return card.color || 'base';

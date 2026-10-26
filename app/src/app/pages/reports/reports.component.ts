@@ -10,7 +10,8 @@ import {
   BuyingListItem,
   PaymentStatus,
   DeliveryStatus,
-  BuyingStatus
+  BuyingStatus,
+  EXPENSE_CATEGORIES
 } from '../../models';
 
 type SummaryRow = { label: string; count: number; amount: number };
@@ -563,15 +564,14 @@ export class ReportsComponent implements OnInit {
 
 
   private buildExpenseSummary(): SummaryRow[] {
-    const categories = ['salary', 'rent', 'utilities', 'transport', 'supplies', 'marketing', 'maintenance', 'food', 'other'];
-    return categories.map(cat => {
-      const items = this.filteredExpenses.filter(e => e.category === cat);
+    return EXPENSE_CATEGORIES.map(category => {
+      const items = this.filteredExpenses.filter(e => e.category === category.value);
       return {
-        label: this.formatLabel(cat),
+        label: category.label,
         count: items.length,
         amount: this.sum(items.map(e => e.amount || 0))
       };
-    });
+    }).filter(row => row.count > 0);
   }
 
   private buildTopProducts(): TopProductRow[] {

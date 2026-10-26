@@ -94,7 +94,7 @@ export class OrderDataService extends SupabaseDataAccessService {
         clientPhone: (data as any).customers?.whatsapp_number,
         clientWhatsappUsername: (data as any).customers?.whatsapp_username,
         items: [],
-        paymentStatus: 'paid',
+        paymentStatus: ((data as any).refunded ? 'refunded' : ((data as any).payment_status || 'paid')) as PaymentStatus,
         totalAmount: 0
       } as unknown as Order;
     }));
@@ -224,7 +224,7 @@ export class OrderDataService extends SupabaseDataAccessService {
       clientName: row.customers?.name,
       clientPhone: row.customers?.whatsapp_number,
       clientWhatsappUsername: row.customers?.whatsapp_username,
-      paymentStatus: 'paid',
+      paymentStatus: (row.refunded ? 'refunded' : (row.payment_status || 'paid')) as PaymentStatus,
       totalAmount: (row.order_items || []).reduce((sum: number, item: any) => sum + Number(item.subtotal || 0), 0),
       items: (row.order_items || []).map((item: any) => ({
         ...toCamel(item),
