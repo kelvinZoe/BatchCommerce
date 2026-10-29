@@ -890,9 +890,21 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
 
   updateReceivedQuantity(item: ArrivalItem, value: number) {
     if (!this.authService.canPerformArrivalsOperation('canChangeReceivedValue')) return;
+    const sourceItem = this.items.find(candidate => candidate.id === item.id) || item;
+    const previousValue = Number(sourceItem.receivedQuantity || 0);
+    sourceItem.receivedQuantity = value;
     item.receivedQuantity = value;
-    this.dbService.updateArrivalItem(item).subscribe(() => {
-      this.loadItems(true);
+    this.filteredStats = {
+      ...this.filteredStats,
+      received: Math.max(0, this.filteredStats.received - previousValue + value)
+    };
+
+    this.dbService.updateArrivalItem(sourceItem).subscribe(ok => {
+      if (!ok) {
+        alert('Failed to update the received quantity.');
+        this.loadItems(true);
+        return;
+      }
       this.loadBatchStats();
     });
   }
@@ -909,7 +921,12 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
     }
 
     if (event.action.id === 'confirm') {
-      this.confirmAndMove(event.item);
+      const sourceItem = this.incomingItems.find(item => item.id === event.item.id) || event.item;
+      const draftValue = Number((event.item as any).receivedQuantityDraft);
+      if (Number.isFinite(draftValue) && draftValue >= 0) {
+        sourceItem.receivedQuantity = draftValue;
+      }
+      this.confirmAndMove(sourceItem);
     }
   }
 
