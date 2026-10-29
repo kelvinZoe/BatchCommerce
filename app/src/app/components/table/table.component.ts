@@ -339,17 +339,29 @@ export interface ToolbarButtonConfig {
                 <!-- Actions -->
                 <ng-container *ngSwitchCase="'actions'">
                   <div class="actions-cell">
-                    <button
-                      *ngFor="let action of (item.actions ? item.actions : actionOptions)"
-                      type="button"
-                      [class]="'action-btn action-' + (action.color || 'black')"
-                      [disabled]="!!action.disabled"
-                      (pointerdown)="onActionPointerDown($event, action, item)"
-                      (click)="onActionClick($event, action, item)"
-                      [title]="action.label">
-                      <span *ngIf="action.loading" class="table-action-spinner"></span>
-                      <i *ngIf="!action.loading" [class]="'bi bi-' + action.icon"></i>
-                    </button>
+                    <ng-container *ngFor="let action of (item.actions ? item.actions : actionOptions)">
+                      <button
+                        *ngIf="!action.triggerOnPointerDown"
+                        type="button"
+                        [class]="'action-btn action-' + (action.color || 'black')"
+                        [disabled]="!!action.disabled"
+                        (click)="onActionClick(action, item)"
+                        [title]="action.label">
+                        <span *ngIf="action.loading" class="table-action-spinner"></span>
+                        <i *ngIf="!action.loading" [class]="'bi bi-' + action.icon"></i>
+                      </button>
+                      <button
+                        *ngIf="action.triggerOnPointerDown"
+                        type="button"
+                        [class]="'action-btn action-' + (action.color || 'black')"
+                        [disabled]="!!action.disabled"
+                        (pointerdown)="onActionPointerDown($event, action, item)"
+                        (click)="onPointerActionClick($event, action, item)"
+                        [title]="action.label">
+                        <span *ngIf="action.loading" class="table-action-spinner"></span>
+                        <i *ngIf="!action.loading" [class]="'bi bi-' + action.icon"></i>
+                      </button>
+                    </ng-container>
                   </div>
                 </ng-container>
 
@@ -1510,11 +1522,15 @@ export class TableComponent implements OnChanges {
     this.actionClick.emit({ action, item });
   }
 
-  onActionClick(event: MouseEvent, action: ActionOption, item: any): void {
+  onPointerActionClick(event: MouseEvent, action: ActionOption, item: any): void {
     // Pointer activation is emitted on pointerdown so a focused inline input
     // cannot consume the click during its blur/change cycle. Keyboard clicks
     // have detail 0 and continue through this handler for accessibility.
-    if (action.triggerOnPointerDown && event.detail > 0) return;
+    if (event.detail > 0) return;
+    this.actionClick.emit({ action, item });
+  }
+
+  onActionClick(action: ActionOption, item: any): void {
     this.actionClick.emit({ action, item });
   }
 
