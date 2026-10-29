@@ -585,6 +585,20 @@ import { User, Role } from '../../models';
     .u-table tbody tr:hover td { background:#fafafe; }
     .u-tr-selected { background:#f0f4ff; }
     .u-tr-selected:hover { background:#e8edff; }
+    .u-table th:last-child,
+    .u-table td:last-child:not([colspan]) {
+      position: sticky;
+      right: 0;
+      z-index: 2;
+      width: 1%;
+      min-width: 108px;
+      white-space: nowrap;
+      background: #fff;
+      box-shadow: -10px 0 14px -14px rgba(15,23,42,.75);
+    }
+    .u-table th:last-child { z-index: 3; background:#f8fafc; }
+    .u-table tbody tr:hover td:last-child:not([colspan]) { background:#fafafe; }
+    .u-tr-selected td:last-child:not([colspan]) { background:#f0f4ff; }
 
     /* ── Checkbox column ── */
     .u-checkbox { width:18px; height:18px; cursor:pointer; accent-color:var(--primary-color,#6366f1); }

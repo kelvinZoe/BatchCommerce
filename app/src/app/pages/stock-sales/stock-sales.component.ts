@@ -461,6 +461,19 @@ interface CartItem {
     .ss-table td    { padding:12px 16px; border-bottom:1px solid #f1f5f9; color:#334155; vertical-align:middle; }
     .ss-table tbody tr:last-child td { border-bottom:none; }
     .ss-table tbody tr:hover td { background:#fafafe; }
+    .ss-table th:last-child,
+    .ss-table td:last-child:not([colspan]) {
+      position: sticky;
+      right: 0;
+      z-index: 2;
+      width: 1%;
+      min-width: 88px;
+      white-space: nowrap;
+      background: #fff;
+      box-shadow: -10px 0 14px -14px rgba(15,23,42,.75);
+    }
+    .ss-table th:last-child { z-index: 3; background:#f8fafc; }
+    .ss-table tbody tr:hover td:last-child:not([colspan]) { background:#fafafe; }
 
     .ss-ref         { font-weight:700; color:var(--primary-color,#6366f1); font-size:12px; }
     .ss-customer-name { font-weight:600; color:#0f172a; }

@@ -188,18 +188,6 @@ interface DamageAllocationClient {
 
               </div><!-- /arr-cols -->
 
-              <!-- Pagination -->
-              <div class="arr-pagination" *ngIf="itemTotal > 0">
-                <span class="arr-pg-info">{{ itemRangeStart }}–{{ itemRangeEnd }} of {{ itemTotal }}</span>
-                <div class="arr-pg-btns">
-                  <button (click)="setItemPage(1)" [disabled]="itemPage === 1"><span class="material-icons" style="font-size:16px">first_page</span></button>
-                  <button (click)="setItemPage(itemPage - 1)" [disabled]="itemPage === 1"><span class="material-icons" style="font-size:16px">chevron_left</span></button>
-                  <span class="arr-pg-cur">{{ itemPage }} / {{ totalItemPages }}</span>
-                  <button (click)="setItemPage(itemPage + 1)" [disabled]="itemPage >= totalItemPages"><span class="material-icons" style="font-size:16px">chevron_right</span></button>
-                  <button (click)="setItemPage(totalItemPages)" [disabled]="itemPage >= totalItemPages"><span class="material-icons" style="font-size:16px">last_page</span></button>
-                </div>
-              </div>
-
           </ng-container>
         </ng-container>
 
@@ -440,15 +428,6 @@ interface DamageAllocationClient {
     .arr-product-name { font-weight: 600; color: #0f172a; }
     .arr-qty-input { width: 72px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; text-align: center; }
     .arr-qty-input:focus { outline: none; border-color: var(--primary-light, #a5b4fc); }
-    /* ── Pagination ── */
-    .arr-pagination { display: flex; align-items: center; justify-content: space-between; padding-top: 14px; margin-top: 12px; border-top: 1px solid #ccc; }
-    .arr-pg-info { font-size: 12px; color: #64748b; }
-    .arr-pg-btns { display: flex; align-items: center; gap: 4px; }
-    .arr-pg-btns button { width: 30px; height: 30px; border: 1px solid #e2e8f0; border-radius: 7px; background: #f8fafc; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #475569; transition: background 0.12s; }
-    .arr-pg-btns button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .arr-pg-btns button:hover:not(:disabled) { background: #e2e8f0; }
-    .arr-pg-cur { font-size: 12px; font-weight: 600; color: #0f172a; padding: 0 8px; }
-
     /* ── Empty state ── */
     .arr-empty { text-align: center; padding: 48px 24px; }
     .arr-empty-icon { width: 60px; height: 60px; border-radius: 16px; background: rgba(var(--primary-rgb, 99,102,241), 0.08); color: var(--primary-color, #6366f1); display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px; }
@@ -570,9 +549,6 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
   batchPage = 1;
   batchPageSize = 20;
   batchTotal = 0;
-  itemPage = 1;
-  itemPageSize = 20;
-  itemTotal = 0;
   incomingColumns: TableColumn[] = [];
   confirmedColumns: TableColumn[] = [];
 
@@ -709,8 +685,6 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
 
   get totalBatchPages() { return Math.max(1, Math.ceil(this.batchTotal / this.batchPageSize)); }
 
-  get totalItemPages() { return Math.max(1, Math.ceil(this.itemTotal / this.itemPageSize)); }
-
   get batchRangeStart() {
     if (this.batchTotal === 0) return 0;
     return (this.batchPage - 1) * this.batchPageSize + 1;
@@ -718,15 +692,6 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
 
   get batchRangeEnd() {
     return Math.min(this.batchPage * this.batchPageSize, this.batchTotal);
-  }
-
-  get itemRangeStart() {
-    if (this.itemTotal === 0) return 0;
-    return (this.itemPage - 1) * this.itemPageSize + 1;
-  }
-
-  get itemRangeEnd() {
-    return Math.min(this.itemPage * this.itemPageSize, this.itemTotal);
   }
 
   get pendingConfirmedCount() {
@@ -851,7 +816,6 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
   loadItems(silent = false) {
     if (!this.selectedBatch?.id) {
       this.items = [];
-      this.itemTotal = 0;
       this.incomingItems = [];
       this.confirmedItems = [];
       this.filteredStats = { count: 0, requested: 0, ordered: 0, received: 0, confirmed: 0 };
@@ -863,10 +827,8 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
     const dateFrom = this.dateFrom ? `${this.dateFrom}T00:00:00` : '';
     const dateTo = this.dateTo ? `${this.dateTo}T23:59:59` : '';
     forkJoin({
-      page: this.dbService.getArrivalItemsByBatchPage(
+      items: this.dbService.getAllArrivalItemsByBatch(
         this.selectedBatch.id,
-        this.itemPage,
-        this.itemPageSize,
         term,
         dateFrom,
         dateTo
@@ -877,18 +839,13 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
         '',
         ''
       )
-    }).subscribe(({ page, stats }) => {
-      this.items = page.data;
-      this.itemTotal = page.total;
+    }).subscribe(({ items, stats }) => {
+      this.items = items;
       this.filteredStats = stats;
       this.incomingItems = this.items.filter(i => !i.confirmed && !i.sentToShipping);
       this.confirmedItems = this.items.filter(i => i.confirmed);
       this.movingIds.clear();
       this.loadingItems = false;
-      if (this.itemPage > this.totalItemPages) {
-        this.itemPage = this.totalItemPages;
-        this.loadItems();
-      }
     });
   }
 
@@ -899,7 +856,6 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
     this.searchTerm = '';
     this.dateFrom = '';
     this.dateTo = '';
-    this.itemPage = 1;
     this.loadItems();
   }
 
@@ -916,7 +872,6 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
   }
 
   filterItems() {
-    this.itemPage = 1;
     this.loadItems();
   }
 
@@ -931,13 +886,6 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
     if (next === this.batchPage) return;
     this.batchPage = next;
     this.loadBatches();
-  }
-
-  setItemPage(page: number) {
-    const next = Math.max(1, Math.min(page, this.totalItemPages));
-    if (next === this.itemPage) return;
-    this.itemPage = next;
-    this.loadItems();
   }
 
   updateReceivedQuantity(item: ArrivalItem, value: number) {

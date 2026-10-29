@@ -695,6 +695,19 @@ import {
     .dv-table tbody tr:last-child { border-bottom: none; }
     .dv-table tbody tr:hover { background: #fafafe; }
     .dv-table tbody td { padding: 10px 14px; vertical-align: middle; }
+    .dv-table th:last-child,
+    .dv-table td:last-child:not([colspan]) {
+      position: sticky;
+      right: 0;
+      z-index: 2;
+      width: 1%;
+      min-width: 76px;
+      white-space: nowrap;
+      background: #fff;
+      box-shadow: -10px 0 14px -14px rgba(15,23,42,.75);
+    }
+    .dv-table th:last-child { z-index: 3; background:#f8fafc; }
+    .dv-table tbody tr:hover td:last-child:not([colspan]) { background:#fafafe; }
     .dv-client-name { font-weight: 600; font-size: 13px; }
     .dv-client-phone { font-size: 12px; color: #64748b; margin-top: 2px; }
     .dv-date-cell { white-space: nowrap; color: #64748b; }

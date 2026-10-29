@@ -830,6 +830,36 @@ test('operational pages use compact shared phone layouts', () => {
   ], 'compact mobile table filters');
 });
 
+test('table action columns stay pinned during horizontal scrolling', () => {
+  const table = read('app/src/app/components/table/table.component.ts');
+  const users = read('app/src/app/pages/users/users.component.ts');
+  const stockSales = read('app/src/app/pages/stock-sales/stock-sales.component.ts');
+  const deliveries = read('app/src/app/pages/deliveries/deliveries.component.ts');
+  const expenses = read('app/src/app/pages/expenses/expenses.component.ts');
+
+  assertIncludesAll(table, [
+    "[class.table-sticky-actions]=\"col.type === 'actions'\"",
+    '.table-sticky-actions',
+    'position: sticky',
+    'right: 0',
+    '.data-table tbody tr:hover .table-sticky-actions'
+  ], 'shared sticky actions');
+
+  for (const [source, label] of [
+    [users, 'users sticky actions'],
+    [stockSales, 'stock sales sticky actions'],
+    [deliveries, 'deliveries sticky actions'],
+    [expenses, 'expenses sticky actions']
+  ]) {
+    assertIncludesAll(source, [
+      'th:last-child',
+      'td:last-child:not([colspan])',
+      'position: sticky',
+      'right: 0'
+    ], label);
+  }
+});
+
 test('orders batch cards label both open and closed batches', () => {
   const orders = read('app/src/app/pages/orders/orders.component.ts');
 

@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { forkJoin, Observable, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { SupabaseService } from './supabase.service';
 import { AuthService } from './auth.service';
@@ -1927,6 +1927,52 @@ export class DatabaseService extends SupabaseDataAccessService {
     };
 
     return from(run());
+  }
+
+  /**
+   * Load every matching arrival item for a batch. Requests are chunked so the
+   * Arrivals page can display the complete list without depending on the
+   * project's PostgREST maximum-row setting.
+   */
+  getAllArrivalItemsByBatch(
+    batchId: number,
+    searchTerm = '',
+    dateFrom = '',
+    dateTo = ''
+  ): Observable<ArrivalItem[]> {
+    const chunkSize = 500;
+    return this.getArrivalItemsByBatchPage(
+      batchId,
+      1,
+      chunkSize,
+      searchTerm,
+      dateFrom,
+      dateTo
+    ).pipe(
+      switchMap(firstPage => {
+        const totalPages = Math.ceil(firstPage.total / chunkSize);
+        if (totalPages <= 1) return of(firstPage.data);
+
+        const remainingPages = Array.from(
+          { length: totalPages - 1 },
+          (_, index) => this.getArrivalItemsByBatchPage(
+            batchId,
+            index + 2,
+            chunkSize,
+            searchTerm,
+            dateFrom,
+            dateTo
+          )
+        );
+
+        return forkJoin(remainingPages).pipe(
+          map(pages => [
+            ...firstPage.data,
+            ...pages.flatMap(page => page.data)
+          ])
+        );
+      })
+    );
   }
 
   getArrivalItemsSummary(

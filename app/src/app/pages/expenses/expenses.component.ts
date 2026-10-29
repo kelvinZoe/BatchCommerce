@@ -441,6 +441,29 @@ import { Expense, ExpenseCategory, EXPENSE_CATEGORIES } from '../../models';
       gap: 8px;
     }
 
+    @media (min-width: 641px) {
+      .table-container th:last-child,
+      .table-container td:last-child:not([colspan]) {
+        position: sticky;
+        right: 0;
+        z-index: 2;
+        width: 1%;
+        min-width: 86px;
+        white-space: nowrap;
+        background: var(--surface-color, #fff);
+        box-shadow: -10px 0 14px -14px rgba(15, 23, 42, .75);
+      }
+
+      .table-container th:last-child {
+        z-index: 3;
+        background: var(--background-color, #f8fafc);
+      }
+
+      .table-container tbody tr:hover td:last-child:not([colspan]) {
+        background: #fafafe;
+      }
+    }
+
     .form-row {
       display: grid;
       grid-template-columns: 1fr 1fr;

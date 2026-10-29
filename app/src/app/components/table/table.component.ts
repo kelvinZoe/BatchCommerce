@@ -191,6 +191,7 @@ export interface ToolbarButtonConfig {
               *ngFor="let col of columns"
               class="table-head"
               [class.sortable]="isSortable(col)"
+              [class.table-sticky-actions]="col.type === 'actions'"
               (click)="onSort(col)">
               <ng-container *ngIf="col.headerTemplate; else defaultHeaderTpl">
                 <ng-container [ngTemplateOutlet]="col.headerTemplate"></ng-container>
@@ -204,7 +205,10 @@ export interface ToolbarButtonConfig {
 
           <!-- Search Row -->
           <tr *ngIf="showSearchRow" class="table-search-row">
-            <th *ngFor="let col of columns" class="search-cell">
+            <th
+              *ngFor="let col of columns"
+              class="search-cell"
+              [class.table-sticky-actions]="col.type === 'actions'">
               <div *ngIf="col.searchable || col.filterable" class="search-filter">
                 <div *ngIf="col.searchable" class="table-search-input-wrapper">
                   <i class="bi bi-search table-search-icon"></i>
@@ -232,7 +236,11 @@ export interface ToolbarButtonConfig {
         <!-- DATA ROWS -->
         <tbody *ngIf="data && data.length > 0; else noData" [style.pointerEvents]="isRefreshing ? 'none' : 'auto'">
           <tr *ngFor="let item of sortedData; let i = index; trackBy: trackByRow" [class]="item.rowClass || ''">
-            <td *ngFor="let col of columns; let isFirst = first; trackBy: trackByColumn" [style.display]="isFirst ? 'table-cell' : 'auto'" [class.first-cell]="isFirst">
+            <td
+              *ngFor="let col of columns; let isFirst = first; trackBy: trackByColumn"
+              [style.display]="isFirst ? 'table-cell' : 'auto'"
+              [class.first-cell]="isFirst"
+              [class.table-sticky-actions]="col.type === 'actions'">
               <ng-container [ngSwitch]="col.type">
                 <!-- Date -->
                 <ng-container *ngSwitchCase="'date'">
@@ -893,6 +901,30 @@ export interface ToolbarButtonConfig {
       display: flex;
       justify-content: center;
       gap: 6px;
+      white-space: nowrap;
+    }
+
+    .table-sticky-actions {
+      position: sticky;
+      right: 0;
+      z-index: 2;
+      width: 1%;
+      min-width: 82px;
+      background: #fff;
+      box-shadow: -10px 0 14px -14px rgba(15, 23, 42, 0.75);
+    }
+
+    thead .table-sticky-actions {
+      z-index: 4;
+      background: #faf8f9;
+    }
+
+    .table-search-row .table-sticky-actions {
+      background: #fff;
+    }
+
+    .data-table tbody tr:hover .table-sticky-actions {
+      background: #f8f9fa;
     }
 
     .action-btn {
