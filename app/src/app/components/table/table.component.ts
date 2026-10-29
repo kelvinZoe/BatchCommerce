@@ -78,6 +78,7 @@ export interface ActionOption {
   color?: 'red' | 'blue' | 'green' | 'yellow' | 'orange' | 'purple' | 'black';
   disabled?: boolean;
   loading?: boolean;
+  triggerOnPointerDown?: boolean;
 }
 
 export interface ToolbarButtonConfig {
@@ -321,7 +322,7 @@ export interface ToolbarButtonConfig {
                       [attr.placeholder]="col.inputPlaceholder || null"
                       [disabled]="isCellDisabled(item, col)"
                       (focus)="onInputFocus(col, item, $event)"
-                      (input)="col.inputUpdateOn !== 'change' && onInputValueChange(col, item, $any($event.target).value)"
+                      (input)="onInputDraftChange(col, item, $any($event.target).value); col.inputUpdateOn !== 'change' && onInputValueChange(col, item, $any($event.target).value)"
                       (change)="col.inputUpdateOn === 'change' && onInputValueChange(col, item, $any($event.target).value)" />
                   </div>
                 </ng-container>
@@ -343,7 +344,8 @@ export interface ToolbarButtonConfig {
                       type="button"
                       [class]="'action-btn action-' + (action.color || 'black')"
                       [disabled]="!!action.disabled"
-                      (click)="onActionClick(action, item)"
+                      (pointerdown)="onActionPointerDown($event, action, item)"
+                      (click)="onActionClick($event, action, item)"
                       [title]="action.label">
                       <span *ngIf="action.loading" class="table-action-spinner"></span>
                       <i *ngIf="!action.loading" [class]="'bi bi-' + action.icon"></i>
@@ -1425,14 +1427,25 @@ export class TableComponent implements OnChanges {
   }
 
   onInputValueChange(column: TableColumn, item: any, value: any): void {
-    const normalizedValue =
-      column.inputType === 'number'
-        ? (value === '' || value === null ? '' : Number(value))
-        : value;
-    if (item && column.key) {
-      item[column.key] = normalizedValue;
-    }
+    const normalizedValue = this.normalizeInputValue(column, value);
+    this.setInputDraft(column, item, normalizedValue);
     this.inputChange.emit({ column, item, value: normalizedValue });
+  }
+
+  onInputDraftChange(column: TableColumn, item: any, value: any): void {
+    this.setInputDraft(column, item, this.normalizeInputValue(column, value));
+  }
+
+  private normalizeInputValue(column: TableColumn, value: any): any {
+    return column.inputType === 'number'
+      ? (value === '' || value === null ? '' : Number(value))
+      : value;
+  }
+
+  private setInputDraft(column: TableColumn, item: any, value: any): void {
+    if (item && column.key) {
+      item[column.key] = value;
+    }
   }
 
   onInputFocus(column: TableColumn, item: any, event: FocusEvent): void {
@@ -1491,7 +1504,17 @@ export class TableComponent implements OnChanges {
     }
   }
 
-  onActionClick(action: ActionOption, item: any): void {
+  onActionPointerDown(event: PointerEvent, action: ActionOption, item: any): void {
+    if (!action.triggerOnPointerDown || event.button !== 0) return;
+    event.preventDefault();
+    this.actionClick.emit({ action, item });
+  }
+
+  onActionClick(event: MouseEvent, action: ActionOption, item: any): void {
+    // Pointer activation is emitted on pointerdown so a focused inline input
+    // cannot consume the click during its blur/change cycle. Keyboard clicks
+    // have detail 0 and continue through this handler for accessibility.
+    if (action.triggerOnPointerDown && event.detail > 0) return;
     this.actionClick.emit({ action, item });
   }
 

@@ -652,7 +652,8 @@ export class ArrivalsComponent implements OnInit, OnDestroy {
           icon: 'arrow-right',
           color: 'blue',
           disabled: !this.authService.canPerformArrivalsOperation('canConfirmReceivedItems') || this.movingIds.has(item.id) || this.reversingToBuyingIds.has(item.id || 0),
-          loading: this.movingIds.has(item.id)
+          loading: this.movingIds.has(item.id),
+          triggerOnPointerDown: true
         }
       ] as ActionOption[]
     }));
