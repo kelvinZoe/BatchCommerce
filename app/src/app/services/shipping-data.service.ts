@@ -537,6 +537,7 @@ export class ShippingDataService extends SupabaseDataAccessService {
   ): Promise<ShippingLedgerRow[]> {
     if (!this.activeShopId) return [];
     const term = (searchTerm || '').trim();
+    const selectedBatch = batchName ? await this.resolveBatchByName(batchName) : null;
     let clientIdsByName: number[] = [];
 
     if (term) {
@@ -551,6 +552,10 @@ export class ShippingDataService extends SupabaseDataAccessService {
         .select('client_id, batch_id, batch_name, fee, quantity, delivery_id')
     );
 
+    if (batchName) {
+      feeQuery = this.applyResolvedBatchFilter(feeQuery, selectedBatch, batchName);
+    }
+
     if (term) {
       if (clientIdsByName.length > 0) {
         feeQuery = feeQuery.or(`batch_name.ilike.%${term}%,client_id.in.(${clientIdsByName.join(',')})`);
@@ -562,7 +567,6 @@ export class ShippingDataService extends SupabaseDataAccessService {
     const { data: fees, error: feeError } = await feeQuery;
     if (feeError || !fees || fees.length === 0) return [];
 
-    const selectedBatch = batchName ? await this.resolveBatchByName(batchName) : null;
     const aggregated: Record<string, { clientId: number; batchId: number | null; batchName: string | null; totalFee: number; totalCount: number; sentCount: number }> = {};
     (fees || []).forEach((feeRow: any) => {
       const clientId = Number(feeRow.client_id || 0);
@@ -591,9 +595,13 @@ export class ShippingDataService extends SupabaseDataAccessService {
       usernameMap[client.id] = client.whatsapp_username || '';
     });
 
-    const { data: payments } = await this.scopeShopQuery(
+    let paymentQuery: any = this.scopeShopQuery(
       this.sb.from('shipping_payments').select('client_id, batch_id, batch_name, paid_amount, total_fee, status')
     ).in('client_id', clientIds);
+    if (batchName) {
+      paymentQuery = this.applyResolvedBatchFilter(paymentQuery, selectedBatch, batchName);
+    }
+    const { data: payments } = await paymentQuery;
     const paymentMap: Record<string, any> = {};
     (payments || []).forEach((payment: any) => {
       const paymentBatchId = Number(payment.batch_id || 0) || null;
@@ -640,12 +648,6 @@ export class ShippingDataService extends SupabaseDataAccessService {
         hasAllocation: damagedQty > 0
       };
     });
-
-    if (batchName) {
-      const currentRows = rows.filter(row => selectedBatch ? row.batchId === selectedBatch.id : row.batchName === batchName);
-      const previousRows = rows.filter(row => (selectedBatch ? row.batchId !== selectedBatch.id : row.batchName !== batchName) && row.status !== 'paid');
-      rows = [...currentRows, ...previousRows];
-    }
 
     if (statusFilter && statusFilter !== 'all') {
       rows = rows.filter(row => row.status === statusFilter);

@@ -951,6 +951,22 @@ test('shipping queue and ledger facade delegates to ShippingDataService', () => 
     'doSaveClientPayments',
     'damage_order_allocations'
   ], 'shipping data service');
+
+  assert.match(
+    shippingService,
+    /feeQuery\s*=\s*this\.applyResolvedBatchFilter\(feeQuery, selectedBatch, batchName\)/,
+    'shipping ledger fees must be scoped to the selected batch'
+  );
+  assert.match(
+    shippingService,
+    /paymentQuery\s*=\s*this\.applyResolvedBatchFilter\(paymentQuery, selectedBatch, batchName\)/,
+    'shipping ledger payments must be scoped to the selected batch'
+  );
+  assert.doesNotMatch(
+    shippingService,
+    /const previousRows = rows\.filter/,
+    'shipping ledger must not append unpaid rows from other batches'
+  );
 });
 
 test('all app-triggered authentication emails use the BatchCommerce Resend sender', () => {
