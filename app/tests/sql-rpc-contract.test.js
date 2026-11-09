@@ -827,6 +827,7 @@ test('operational pages use compact shared phone layouts', () => {
   const batchList = read('app/src/app/components/batch-list-section/batch-list-section.component.ts');
   const batchDetail = read('app/src/app/components/batch-detail-header/batch-detail-header.component.ts');
   const table = read('app/src/app/components/table/table.component.ts');
+  const deliveries = read('app/src/app/pages/deliveries/deliveries.component.ts');
 
   assertIncludesAll(globalStyles, [
     'Shared phone-density pass for operational workspace pages',
@@ -861,6 +862,17 @@ test('operational pages use compact shared phone layouts', () => {
     'overflow-x: auto',
     '.table-filters::-webkit-scrollbar'
   ], 'compact mobile table filters');
+
+  assertIncludesAll(deliveries, [
+    '<app-batch-list-section',
+    '<app-batch-detail-header',
+    '<app-stat-cards',
+    '[compactOnMobile]="true"',
+    'visibleDeliveryBatches',
+    'deliveryBatchTagsResolver',
+    '@media (max-width: 720px)',
+    '.dv-page { padding: 0; }'
+  ], 'deliveries shared operational layout');
 });
 
 test('table action columns stay pinned during horizontal scrolling', () => {

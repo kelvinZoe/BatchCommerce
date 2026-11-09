@@ -3,6 +3,14 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DateFilterComponent } from '../../components/date-filter/date-filter.component';
 import { DropdownComponent } from '../../components/dropdown/dropdown.component';
+import {
+  BatchListSectionComponent,
+  BatchSectionBodyDirective,
+  BatchSectionFooterDirective
+} from '../../components/batch-list-section/batch-list-section.component';
+import { BatchCardTagConfig } from '../../components/batch-card/batch-card.component';
+import { BatchDetailHeaderComponent } from '../../components/batch-detail-header/batch-detail-header.component';
+import { StatCardConfig, StatCardsComponent } from '../../components/stat-cards/stat-cards.component';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
 import {
@@ -14,7 +22,17 @@ import {
 @Component({
   selector: 'app-deliveries',
   standalone: true,
-  imports: [CommonModule, FormsModule, DateFilterComponent, DropdownComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    DateFilterComponent,
+    DropdownComponent,
+    BatchListSectionComponent,
+    BatchSectionBodyDirective,
+    BatchSectionFooterDirective,
+    BatchDetailHeaderComponent,
+    StatCardsComponent
+  ],
   template: `
     <div class="dv-page">
 
@@ -34,93 +52,59 @@ import {
 
       <!-- BATCH GRID VIEW -->
       <ng-container *ngIf="!selectedBatch">
-
-        <div class="dv-batch-grid" *ngIf="loading">
-          <div class="dv-batch-card dv-skeleton-card" *ngFor="let i of [1,2,3,4,5,6]">
-            <div class="dv-sk dv-sk-title"></div>
-            <div class="dv-sk dv-sk-line"></div>
-            <div class="dv-sk dv-sk-line" style="width:60%"></div>
-            <div class="dv-sk dv-sk-chip"></div>
-          </div>
-        </div>
-
-        <div class="dv-empty" *ngIf="!loading && deliveryBatches.length === 0">
-          <span class="material-icons">local_shipping</span>
-          <h3>No delivery batches yet</h3>
-          <p>Items will appear here after clients are sent to deliveries from the Shipping Ledger.</p>
-        </div>
-
-        <div class="dv-batch-grid" *ngIf="!loading && deliveryBatches.length > 0">
-          <div
-            class="dv-batch-card"
-            *ngFor="let batch of deliveryBatches"
-            (click)="openBatch(batch)"
-            [class.dv-batch-completed]="batch.deliveryStatus === 'completed'"
-          >
-            <div class="dv-batch-card-header">
-              <div class="dv-batch-icon">
-                <span class="material-icons">inventory_2</span>
+        <app-batch-list-section
+          [loading]="loading"
+          [items]="visibleDeliveryBatches"
+          [page]="deliveryBatchPage"
+          [pageSize]="deliveryBatchPageSize"
+          [total]="filteredDeliveryBatches.length"
+          [searchTerm]="deliveryBatchSearchTerm"
+          [selectedMonth]="deliveryBatchMonth"
+          [selectedYear]="deliveryBatchYear"
+          [currentYear]="currentYear"
+          [emptyTitle]="'No delivery batches yet'"
+          [emptyDescription]="'Items will appear after clients are sent from the Shipping Ledger.'"
+          [titleResolver]="deliveryBatchTitleResolver"
+          [subtitleResolver]="deliveryBatchSubtitleResolver"
+          [iconResolver]="deliveryBatchIconResolver"
+          [tagsResolver]="deliveryBatchTagsResolver"
+          [activeResolver]="deliveryBatchActiveResolver"
+          (searchTermChange)="onDeliveryBatchSearch($event)"
+          (dateSelectionChange)="onDeliveryBatchDateChange($event)"
+          (pageChange)="deliveryBatchPage = $event"
+          (cardClick)="openBatch($event)">
+          <ng-template batchSectionBody let-batch>
+            <div class="dv-card-progress-row">
+              <div class="dv-card-progress-copy">
+                <span>Delivery progress</span>
+                <strong>{{ getDeliveredPct(batch) }}%</strong>
               </div>
-              <span class="dv-batch-status-chip" [class]="'dv-dstatus-' + (batch.deliveryStatus || 'pending')">
-                {{ getBatchStatusLabel(batch.deliveryStatus) }}
-              </span>
+              <div class="dv-batch-progress">
+                <div class="dv-batch-progress-fill" [style.width.%]="getDeliveredPct(batch)"></div>
+              </div>
             </div>
-            <div class="dv-batch-name">{{ batch.name }}</div>
-            <div class="dv-batch-meta">
-              <span><span class="material-icons dv-meta-icon">people</span>{{ batchDeliveryStats[batch.name].clients || 0 }} clients</span>
-              <span><span class="material-icons dv-meta-icon">check_circle</span>{{ batchDeliveryStats[batch.name].delivered || 0 }} delivered</span>
-            </div>
-            <div class="dv-batch-progress">
-              <div class="dv-batch-progress-fill" [style.width.%]="getDeliveredPct(batch)"></div>
-            </div>
-          </div>
-        </div>
+          </ng-template>
+          <ng-template batchSectionFooter let-batch>
+            <button class="dv-card-action-btn" (click)="$event.stopPropagation(); openBatch(batch)">
+              Open Deliveries <span class="material-icons">chevron_right</span>
+            </button>
+          </ng-template>
+        </app-batch-list-section>
 
       </ng-container>
 
       <!-- BATCH DETAIL VIEW -->
       <ng-container *ngIf="selectedBatch">
 
-        <div class="dv-detail-header">
-          <button class="dv-back-btn" (click)="goBack()">
-            <span class="material-icons">arrow_back</span>
-          </button>
-          <div class="dv-detail-icon">
-            <span class="material-icons">inventory_2</span>
-          </div>
-          <div class="dv-detail-title-wrap">
-            <h2 class="dv-detail-title">{{ selectedBatch.name }}</h2>
-            <p class="dv-detail-sub">Batch deliveries</p>
-          </div>
-        </div>
+        <app-batch-detail-header
+          [backLabel]="'Batches'"
+          [title]="selectedBatch.name"
+          [subtitle]="selectedBatch.createdAt ? (selectedBatch.createdAt | date:'mediumDate') : 'Customer deliveries'"
+          [icon]="'local_shipping'"
+          (backClick)="goBack()">
+        </app-batch-detail-header>
 
-        <div class="dv-stats-row">
-          <div class="dv-stat-card dv-stat-pending">
-            <span class="material-icons">hourglass_empty</span>
-            <div class="dv-stat-num">{{ statusCounts.pending }}</div>
-            <div class="dv-stat-lbl">Pending</div>
-          </div>
-          <div class="dv-stat-card dv-stat-packaged">
-            <span class="material-icons">inventory_2</span>
-            <div class="dv-stat-num">{{ statusCounts.packaged }}</div>
-            <div class="dv-stat-lbl">Packaged</div>
-          </div>
-          <div class="dv-stat-card dv-stat-delivering">
-            <span class="material-icons">local_shipping</span>
-            <div class="dv-stat-num">{{ statusCounts.delivering }}</div>
-            <div class="dv-stat-lbl">Delivering</div>
-          </div>
-          <div class="dv-stat-card dv-stat-delivered">
-            <span class="material-icons">check_circle</span>
-            <div class="dv-stat-num">{{ statusCounts.delivered }}</div>
-            <div class="dv-stat-lbl">Delivered</div>
-          </div>
-          <div class="dv-stat-card dv-stat-fees">
-            <span class="material-icons">payments</span>
-            <div class="dv-stat-num dv-stat-num-fee">GHS {{ totalDeliveryFee | number:'1.2-2' }}</div>
-            <div class="dv-stat-lbl">Total Fees</div>
-          </div>
-        </div>
+        <app-stat-cards [config]="deliveryStatCards" [compactOnMobile]="true"></app-stat-cards>
 
         <div class="dv-toolbar">
           <div class="dv-search-wrap">
@@ -381,7 +365,7 @@ import {
     </div>
   `,
   styles: [`
-    .dv-page { max-width: 1400px; }
+    .dv-page { padding: 0; }
 
     .dv-card {
       background: #fff;
@@ -395,7 +379,7 @@ import {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
     .dv-header-left {
       display: flex;
@@ -426,63 +410,7 @@ import {
       background-size: 200% 100%;
       animation: dv-shimmer 1.4s infinite;
     }
-    .dv-sk-title  { height: 18px; width: 70%; margin-bottom: 10px; }
-    .dv-sk-line   { height: 13px; margin-bottom: 8px; }
-    .dv-sk-chip   { height: 22px; width: 80px; border-radius: 20px; margin-top: 4px; }
     .dv-sk-cell   { height: 16px; }
-    .dv-skeleton-card { pointer-events: none; }
-
-    .dv-batch-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 16px;
-    }
-    .dv-batch-card {
-      background: #fff;
-      border: 1px solid #ccc;
-      border-radius: 14px;
-      padding: 20px;
-      cursor: pointer;
-      transition: border-color 0.18s, transform 0.18s;
-    }
-    .dv-batch-card:hover {
-      border-color: var(--primary-color, #6366f1);
-      transform: translateY(-2px);
-    }
-    .dv-batch-completed { opacity: 0.7; }
-    .dv-batch-card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-    .dv-batch-icon {
-      width: 36px;
-      height: 36px;
-      background: #ede9fe;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .dv-batch-icon .material-icons { font-size: 20px; color: #7c3aed; }
-    .dv-batch-name {
-      font-size: 15px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .dv-batch-meta {
-      display: flex;
-      gap: 12px;
-      font-size: 12px;
-      color: #64748b;
-      margin-bottom: 10px;
-    }
-    .dv-batch-meta span { display: flex; align-items: center; gap: 3px; }
-    .dv-meta-icon { font-size: 14px !important; }
     .dv-batch-progress {
       height: 4px;
       background: #f1f5f9;
@@ -495,124 +423,34 @@ import {
       border-radius: 4px;
       transition: width 0.3s;
     }
-    .dv-batch-status-chip {
+    .dv-card-progress-row { display: flex; flex-direction: column; gap: 7px; }
+    .dv-card-progress-copy {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
       font-size: 11px;
-      font-weight: 600;
-      padding: 3px 9px;
-      border-radius: 20px;
+      color: #64748b;
     }
-    .dv-dstatus-pending    { background: #fef3c7; color: #92400e; }
-    .dv-dstatus-in_progress{ background: #dbeafe; color: #1e40af; }
-    .dv-dstatus-completed  { background: #d1fae5; color: #065f46; }
-    .dv-dstatus-not_sent   { background: #f1f5f9; color: #475569; }
-
-    .dv-empty {
-      text-align: center;
-      padding: 64px 24px;
-      color: #94a3b8;
-    }
-    .dv-empty .material-icons { font-size: 48px; margin-bottom: 12px; display: block; }
-    .dv-empty h3 { margin: 0 0 8px; color: #475569; font-size: 16px; }
-    .dv-empty p  { margin: 0; font-size: 14px; }
-
-    .dv-detail-header {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding-bottom: 18px;
-      border-bottom: 1px solid #ccc;
-      margin-bottom: 18px;
-      flex-wrap: wrap;
-    }
-    .dv-back-btn {
-      width: 36px;
-      height: 36px;
-      display: flex;
+    .dv-card-progress-copy strong { color: #0f172a; font-size: 12px; }
+    .dv-card-action-btn {
+      width: 100%;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: #f8fafc;
-      border: 1px solid #ccc;
-      border-radius: 10px;
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: background 0.15s;
-    }
-    .dv-back-btn:hover { background: #e2e8f0; }
-    .dv-back-btn .material-icons { font-size: 20px; }
-    .dv-detail-icon {
-      width: 40px;
-      height: 40px;
-      background: #ede9fe;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    .dv-detail-icon .material-icons { font-size: 20px; color: #7c3aed; }
-    .dv-detail-title-wrap { flex: 1; min-width: 0; }
-    .dv-detail-title { margin: 0; font-size: 17px; font-weight: 700; }
-    .dv-detail-sub { margin: 2px 0 0; font-size: 12px; color: #64748b; }
-    .dv-detail-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-    .dv-chip {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .dv-chip .material-icons { font-size: 14px; }
-    .dv-chip-pending    { background: #fef3c7; color: #92400e; }
-    .dv-chip-packaged   { background: #e0e7ff; color: #3730a3; }
-    .dv-chip-delivering { background: #dbeafe; color: #1e40af; }
-    .dv-chip-delivered  { background: #d1fae5; color: #065f46; }
-
-    .dv-stats-row {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-    @media (max-width: 900px) { .dv-stats-row { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 560px) { .dv-stats-row { grid-template-columns: repeat(2, 1fr); } }
-    .dv-stat-card {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 16px 12px 12px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
       gap: 5px;
-      text-align: center;
+      padding: 7px 12px;
+      border: 1px solid var(--primary-color, #6366f1);
+      border-radius: 8px;
+      background: var(--primary-color, #6366f1);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.15s;
     }
-    .dv-stat-card .material-icons { font-size: 22px; }
-    .dv-stat-num { font-size: 24px; font-weight: 700; line-height: 1.1; }
-    .dv-stat-num-fee { font-size: 15px; }
-    .dv-stat-lbl { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
-
-    .dv-stat-pending   { border-top: 3px solid #f59e0b; }
-    .dv-stat-pending   .material-icons { color: #f59e0b; }
-    .dv-stat-pending   .dv-stat-num    { color: #92400e; }
-
-    .dv-stat-packaged  { border-top: 3px solid #6366f1; }
-    .dv-stat-packaged  .material-icons { color: #6366f1; }
-    .dv-stat-packaged  .dv-stat-num    { color: #3730a3; }
-
-    .dv-stat-delivering { border-top: 3px solid #3b82f6; }
-    .dv-stat-delivering .material-icons { color: #3b82f6; }
-    .dv-stat-delivering .dv-stat-num    { color: #1e40af; }
-
-    .dv-stat-delivered  { border-top: 3px solid #10b981; }
-    .dv-stat-delivered  .material-icons { color: #10b981; }
-    .dv-stat-delivered  .dv-stat-num    { color: #065f46; }
-
-    .dv-stat-fees       { border-top: 3px solid #8b5cf6; }
-    .dv-stat-fees       .material-icons { color: #8b5cf6; }
-    .dv-stat-fees       .dv-stat-num    { color: #5b21b6; }
-
+    .dv-card-action-btn:hover { background: var(--primary-dark, #4f46e5); transform: translateY(-1px); }
+    .dv-card-action-btn .material-icons { font-size: 16px; }
     .dv-action-cell { white-space: nowrap; display: flex; align-items: center; gap: 6px; }
     .dv-edit-btn {
       width: 32px; height: 32px;
@@ -951,6 +789,36 @@ import {
     }
     .dv-damage-btn .material-icons { font-size: 16px; }
     .dv-damage-btn:hover { background: #dc2626; }
+
+    @media (max-width: 720px) {
+      .dv-page-header { margin-bottom: 12px; }
+      .dv-header-left { gap: 11px; min-width: 0; }
+      .dv-header-icon { width: 42px; height: 42px; border-radius: 11px; }
+      .dv-title { font-size: 18px; }
+      .dv-subtitle {
+        max-width: 245px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .dv-card { padding: 12px; border-radius: 14px; }
+      .dv-toolbar { gap: 8px; margin-bottom: 12px; }
+      .dv-search-wrap { flex: 1 0 100%; min-width: 0; }
+      .dv-search { min-height: 42px; }
+      .dv-table-wrap { margin: 0 -12px -12px; }
+      .dv-table { min-width: 790px; }
+      .dv-table thead th,
+      .dv-table tbody td { padding-left: 12px; padding-right: 12px; }
+      .dv-pagination { position: sticky; left: 0; min-width: calc(100vw - 48px); background: #fff; }
+      .dv-modal-overlay { padding: 10px; align-items: flex-end; }
+      .dv-modal { max-height: 92vh; border-radius: 18px 18px 10px 10px; }
+      .dv-modal-header { padding: 15px 16px 12px; }
+      .dv-modal-body { padding: 16px; }
+      .dv-info-grid { grid-template-columns: 1fr; }
+      .dv-damage-row { align-items: stretch; flex-direction: column; gap: 5px; }
+      .dv-damage-row label { width: auto; }
+      .dv-damage-row input[type="number"] { max-width: none; text-align: left; }
+    }
   `]
 })
 export class DeliveriesComponent implements OnInit {
@@ -963,6 +831,12 @@ export class DeliveriesComponent implements OnInit {
   filteredDeliveries: Delivery[] = [];
 
   selectedBatch: OrderBatch | null = null;
+  deliveryBatchSearchTerm = '';
+  deliveryBatchMonth: number | null = null;
+  deliveryBatchYear: number | null = null;
+  deliveryBatchPage = 1;
+  deliveryBatchPageSize = 20;
+  currentYear = new Date().getFullYear();
 
   searchTerm = '';
   statusFilter = 'all';
@@ -1033,6 +907,74 @@ export class DeliveriesComponent implements OnInit {
     private dbService: DatabaseService,
     public authService: AuthService
   ) {}
+
+  readonly deliveryBatchTitleResolver = (batch: OrderBatch) => batch.name;
+  readonly deliveryBatchSubtitleResolver = (batch: OrderBatch) =>
+    batch.createdAt
+      ? new Date(batch.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+      : 'Delivery batch';
+  readonly deliveryBatchIconResolver = () => 'local_shipping';
+  readonly deliveryBatchActiveResolver = (batch: OrderBatch) => batch.id === this.selectedBatch?.id;
+  readonly deliveryBatchTagsResolver = (batch: OrderBatch): BatchCardTagConfig[] => {
+    const stats = this.batchDeliveryStats[batch.name] || { clients: 0, delivered: 0 };
+    const status = batch.deliveryStatus || 'pending';
+    return [
+      {
+        tagName: this.getBatchStatusLabel(status),
+        color: status === 'completed' ? 'green' : status === 'in_progress' ? 'blue' : status === 'pending' ? 'orange' : 'gray',
+        icon: status === 'completed' ? 'check_circle' : 'schedule'
+      },
+      {
+        tagName: `${stats.clients} ${stats.clients === 1 ? 'Client' : 'Clients'}`,
+        color: stats.clients > 0 ? 'blue' : 'gray',
+        icon: 'people'
+      },
+      {
+        tagName: `${stats.delivered} Delivered`,
+        color: stats.delivered > 0 ? 'green' : 'gray',
+        icon: 'done_all'
+      }
+    ];
+  };
+
+  get filteredDeliveryBatches(): OrderBatch[] {
+    const term = this.deliveryBatchSearchTerm.trim().toLowerCase();
+    return this.deliveryBatches.filter(batch => {
+      if (term && !batch.name.toLowerCase().includes(term)) return false;
+      if (!this.deliveryBatchMonth && !this.deliveryBatchYear) return true;
+      const created = batch.createdAt ? new Date(batch.createdAt) : null;
+      if (!created || Number.isNaN(created.getTime())) return false;
+      if (this.deliveryBatchMonth && created.getMonth() + 1 !== this.deliveryBatchMonth) return false;
+      if (this.deliveryBatchYear && created.getFullYear() !== this.deliveryBatchYear) return false;
+      return true;
+    });
+  }
+
+  get visibleDeliveryBatches(): OrderBatch[] {
+    const start = (this.deliveryBatchPage - 1) * this.deliveryBatchPageSize;
+    return this.filteredDeliveryBatches.slice(start, start + this.deliveryBatchPageSize);
+  }
+
+  get deliveryStatCards(): StatCardConfig[] {
+    return [
+      { icon: 'hourglass_empty', statName: 'Pending', statValue: this.statusCounts.pending, color: 'orange' },
+      { icon: 'inventory_2', statName: 'Packaged', statValue: this.statusCounts.packaged, color: 'violet' },
+      { icon: 'local_shipping', statName: 'Delivering', statValue: this.statusCounts.delivering, color: 'blue' },
+      { icon: 'check_circle', statName: 'Delivered', statValue: this.statusCounts.delivered, color: 'green' },
+      { icon: 'payments', statName: 'Total Fees', statValue: `GHS ${this.totalDeliveryFee.toFixed(2)}`, color: 'base' }
+    ];
+  }
+
+  onDeliveryBatchSearch(term: string) {
+    this.deliveryBatchSearchTerm = term;
+    this.deliveryBatchPage = 1;
+  }
+
+  onDeliveryBatchDateChange(selection: { month: number | null; year: number | null }) {
+    this.deliveryBatchMonth = selection.month;
+    this.deliveryBatchYear = selection.year;
+    this.deliveryBatchPage = 1;
+  }
 
   ngOnInit() { 
     this.loadData();
