@@ -324,6 +324,7 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
   recentlySaved = new Set<string>();
   successMessage: string | null = null;
   private successTimer: any = null;
+  private shippingPaymentNumber = '';
 
   get paginatedDisplayRows() { const s = (this.itemPage-1)*this.itemPageSize; return this.displayRows.slice(s, s+this.itemPageSize); }
 
@@ -447,10 +448,18 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void { 
+    this.loadShippingPaymentNumber();
     this.loadBatches();
     // Reload batches when a batch is deleted elsewhere
     this.db.batchDeleted$.subscribe(() => {
       this.loadBatches();
+    });
+  }
+
+  private loadShippingPaymentNumber(): void {
+    this.db.getShippingPaymentNumber().subscribe({
+      next: paymentNumber => this.shippingPaymentNumber = String(paymentNumber || '').trim(),
+      error: () => this.shippingPaymentNumber = ''
     });
   }
 
@@ -742,7 +751,11 @@ export class ShippingLedgerComponent implements OnInit, OnDestroy {
     const total = Number(row.totalFee || 0);
     const paid = Number(row.paidAmount || 0);
     const bal = total - paid;
-    body += `\nTotal: ${total.toFixed(2)}\nPaid: ${paid.toFixed(2)}\nBalance: ${bal.toFixed(2)}\n\nThank you.`;
+    body += `\nTotal: ${total.toFixed(2)}\nPaid: ${paid.toFixed(2)}\nBalance: ${bal.toFixed(2)}\n`;
+    if (bal > 0 && this.shippingPaymentNumber) {
+      body += `\nPlease pay the balance of GHS ${bal.toFixed(2)} to:\nShipping payment number: ${this.shippingPaymentNumber}\n`;
+    }
+    body += `\nThank you.`;
     return body;
   }
 

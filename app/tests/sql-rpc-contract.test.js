@@ -969,6 +969,39 @@ test('shipping queue and ledger facade delegates to ShippingDataService', () => 
   );
 });
 
+test('shipping fee messages use the shop payment number configured in Settings', () => {
+  const migration = read('supabase/migrations/20261109120000_add_shipping_payment_number.sql');
+  const resetSchema = read('app/supabase-migration-multishop-reset.sql');
+  const databaseService = read('app/src/app/services/database.service.ts');
+  const settings = read('app/src/app/pages/settings/settings.component.ts');
+  const ledger = read('app/src/app/pages/shipping-ledger/shipping-ledger.component.ts');
+
+  assertIncludesAll(migration, [
+    'ALTER TABLE public.shops',
+    "ADD COLUMN IF NOT EXISTS shipping_payment_number TEXT NOT NULL DEFAULT ''",
+    "NOTIFY pgrst, 'reload schema'"
+  ], 'shipping payment number migration');
+  assert.match(resetSchema, /shipping_payment_number TEXT NOT NULL DEFAULT ''/);
+  assertIncludesAll(databaseService, [
+    'getShippingPaymentNumber()',
+    'updateShippingPaymentNumber(paymentNumber: string)',
+    ".select('shipping_payment_number')",
+    '.update({ shipping_payment_number: normalizedNumber })',
+    ".select('id')"
+  ], 'shop shipping payment settings');
+  assertIncludesAll(settings, [
+    'Customer payment number',
+    'settings.shippingPaymentNumber',
+    'this.loadShippingPaymentNumber()',
+    'this.dbService.updateShippingPaymentNumber(sanitizedSettings.shippingPaymentNumber)'
+  ], 'shipping payment settings UI');
+  assertIncludesAll(ledger, [
+    'this.loadShippingPaymentNumber()',
+    'Please pay the balance of GHS',
+    'Shipping payment number: ${this.shippingPaymentNumber}'
+  ], 'shipping ledger customer message');
+});
+
 test('all app-triggered authentication emails use the BatchCommerce Resend sender', () => {
   const authService = read('app/src/app/services/auth.service.ts');
   const adminServer = read('server/index.js');

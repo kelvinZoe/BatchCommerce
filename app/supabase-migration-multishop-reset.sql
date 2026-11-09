@@ -264,6 +264,7 @@ CREATE TABLE shops (
   promo_ends_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '1 month'),
   billing_started_at TIMESTAMPTZ,
   plan_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  shipping_payment_number TEXT NOT NULL DEFAULT '',
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

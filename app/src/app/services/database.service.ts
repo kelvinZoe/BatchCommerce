@@ -118,6 +118,38 @@ export class DatabaseService extends SupabaseDataAccessService {
     return this.pricing.redeemPromoCode(code);
   }
 
+  getShippingPaymentNumber(): Observable<string> {
+    const shopId = this.activeShopId;
+    if (!shopId) return of('');
+
+    return from(
+      this.sb.from('shops')
+        .select('shipping_payment_number')
+        .eq('id', shopId)
+        .maybeSingle()
+    ).pipe(map(({ data, error }: any) => {
+      if (error) throw new Error(error.message || 'Could not load the shipping payment number.');
+      return String(data?.shipping_payment_number || '').trim();
+    }));
+  }
+
+  updateShippingPaymentNumber(paymentNumber: string): Observable<boolean> {
+    const shopId = this.requireActiveShopId();
+    const normalizedNumber = String(paymentNumber || '').trim();
+
+    return from(
+      this.sb.from('shops')
+        .update({ shipping_payment_number: normalizedNumber })
+        .eq('id', shopId)
+        .select('id')
+        .maybeSingle()
+    ).pipe(map(({ data, error }: any) => {
+      if (error) throw new Error(error.message || 'Could not save the shipping payment number.');
+      if (!data?.id) throw new Error('You do not have permission to update this shop setting.');
+      return true;
+    }));
+  }
+
   private async assertCanCreateSalesRecord(recordLabel: 'order' | 'stock sale'): Promise<void> {
     return this.pricing.assertCanCreateSalesRecord(recordLabel);
   }

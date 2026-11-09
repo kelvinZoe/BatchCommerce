@@ -66,6 +66,7 @@ export interface Shop {
   id?: string;
   name: string;
   slug: string;
+  shippingPaymentNumber?: string;
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;

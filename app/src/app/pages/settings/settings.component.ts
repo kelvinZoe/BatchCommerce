@@ -117,6 +117,38 @@ import { firstValueFrom } from 'rxjs';
             </div>
           </section>
 
+          <section class="settings-card shipping-payment-card">
+            <div class="card-heading">
+              <div>
+                <span class="eyebrow">Shipping payments</span>
+                <h2>Customer payment number</h2>
+                <p>This number is added to shipping-fee messages sent from the Shipping Ledger.</p>
+              </div>
+              <div class="shipping-payment-icon" aria-hidden="true">
+                <span class="material-icons">phone_iphone</span>
+              </div>
+            </div>
+
+            <div class="shipping-payment-layout">
+              <div class="form-group">
+                <label for="shipping-payment-number">Shipping fee number</label>
+                <input id="shipping-payment-number"
+                       type="tel"
+                       inputmode="tel"
+                       maxlength="30"
+                       [(ngModel)]="settings.shippingPaymentNumber"
+                       placeholder="e.g. 024 123 4567" />
+                <small class="field-note">Leave this blank to omit payment instructions from customer messages.</small>
+              </div>
+
+              <div class="shipping-message-preview">
+                <span>Message preview</span>
+                <p>Please pay your shipping balance to:</p>
+                <strong>{{ settings.shippingPaymentNumber || 'Your configured number' }}</strong>
+              </div>
+            </div>
+          </section>
+
           <section class="settings-card">
             <div class="card-heading">
               <div>
@@ -723,6 +755,70 @@ import { firstValueFrom } from 'rxjs';
       background: #ffffff;
     }
 
+    .shipping-payment-card {
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 100% 0%, rgba(20, 184, 166, 0.13), transparent 36%),
+        #fff;
+    }
+
+    .shipping-payment-icon {
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border: 1px solid #99f6e4;
+      border-radius: 14px;
+      background: #ecfdf5;
+      color: #0f766e;
+    }
+
+    .shipping-payment-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(210px, 0.7fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .field-note {
+      color: var(--set-muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .shipping-message-preview {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      padding: 16px;
+      border: 1px solid #ccfbf1;
+      border-radius: 18px;
+      background: rgba(240, 253, 250, 0.86);
+    }
+
+    .shipping-message-preview span {
+      color: #0f766e;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .shipping-message-preview p {
+      margin: 8px 0 4px;
+      color: #475569;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .shipping-message-preview strong {
+      color: #134e4a;
+      font-size: 18px;
+      overflow-wrap: anywhere;
+    }
+
     .appearance-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(190px, 230px);
@@ -1075,6 +1171,7 @@ import { firstValueFrom } from 'rxjs';
       .settings-hero,
       .subscription-grid,
       .form-grid,
+      .shipping-payment-layout,
       .appearance-row,
       .settings-side {
         grid-template-columns: 1fr;
@@ -1156,6 +1253,7 @@ export class SettingsComponent {
     businessName: 'Batch Commerce',
     phone: '',
     whatsapp: '',
+    shippingPaymentNumber: '',
     address: '',
     currency: 'GHS',
     enableOrderAlerts: true,
@@ -1225,6 +1323,7 @@ export class SettingsComponent {
     private excelService: ExcelService
   ) {
     this.loadSettings();
+    this.loadShippingPaymentNumber();
     this.loadPricingUsage();
     this.primaryColor = this.themeService.primaryColor;
   }
@@ -1284,6 +1383,17 @@ export class SettingsComponent {
     this.settings.businessName = (this.settings.businessName || this.shopConfig.shopName || '').trim() || this.shopConfig.shopName;
   }
 
+  loadShippingPaymentNumber() {
+    this.dbService.getShippingPaymentNumber().subscribe({
+      next: paymentNumber => {
+        this.settings.shippingPaymentNumber = paymentNumber;
+      },
+      error: () => {
+        // Retain the locally cached value until the database migration is available.
+      }
+    });
+  }
+
   async saveSettings() {
     const businessName = String(this.settings.businessName || '').trim();
     if (!businessName) {
@@ -1296,6 +1406,7 @@ export class SettingsComponent {
       businessName,
       phone: String(this.settings.phone || '').trim(),
       whatsapp: String(this.settings.whatsapp || '').trim(),
+      shippingPaymentNumber: String(this.settings.shippingPaymentNumber || '').trim(),
       address: String(this.settings.address || '').trim(),
       currency: String(this.settings.currency || 'GHS').trim() || 'GHS'
     };
@@ -1310,7 +1421,10 @@ export class SettingsComponent {
       const existing = this.shopConfig.config;
       const desiredSlug = this.normalizeShopSlug(existing?.shopSlug || businessName);
 
-      const result = await firstValueFrom(this.authService.updateActiveShopProfile(businessName, desiredSlug));
+      const [result] = await Promise.all([
+        firstValueFrom(this.authService.updateActiveShopProfile(businessName, desiredSlug)),
+        firstValueFrom(this.dbService.updateShippingPaymentNumber(sanitizedSettings.shippingPaymentNumber))
+      ]);
       this.settings.businessName = result.shopName;
 
       this.setStatus('Settings saved and synced successfully.', 'success');
