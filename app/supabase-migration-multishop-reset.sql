@@ -1746,6 +1746,47 @@ $$;
 REVOKE ALL ON FUNCTION ensure_batch_product_for_order(UUID, BIGINT, BIGINT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION ensure_batch_product_for_order(UUID, BIGINT, BIGINT) TO authenticated;
 
+-- Delivery rows hold workflow state; their products remain in shipping_fees.
+-- This permission-aware reader lets delivery roles see assigned item lines
+-- without exposing the complete shipping ledger.
+CREATE OR REPLACE FUNCTION get_delivery_item_lines(
+  p_shop_id UUID,
+  p_batch_id BIGINT DEFAULT NULL
+)
+RETURNS TABLE (
+  delivery_id BIGINT,
+  product_id BIGINT,
+  product_name TEXT,
+  quantity INTEGER
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+BEGIN
+  IF NOT has_shop_permission(p_shop_id, 'deliveries', 'view')
+     AND NOT has_shop_permission(p_shop_id, 'shipping', 'view') THEN
+    RAISE EXCEPTION 'You do not have permission to view deliveries for this shop.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN QUERY
+  SELECT fee.delivery_id, fee.product_id, fee.product_name, fee.quantity
+  FROM shipping_fees AS fee
+  JOIN deliveries AS delivery
+    ON delivery.id = fee.delivery_id
+   AND delivery.shop_id = fee.shop_id
+  WHERE fee.shop_id = p_shop_id
+    AND fee.delivery_id IS NOT NULL
+    AND (p_batch_id IS NULL OR delivery.batch_id = p_batch_id)
+  ORDER BY fee.delivery_id, fee.id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION get_delivery_item_lines(UUID, BIGINT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION get_delivery_item_lines(UUID, BIGINT) TO authenticated;
+
 -- ============================================================
 -- END OF SCHEMA
 -- ============================================================

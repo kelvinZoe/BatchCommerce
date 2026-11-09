@@ -1202,6 +1202,7 @@ export class DeliveriesComponent implements OnInit {
   }
 
   getItemCount(delivery: Delivery): number {
+    if (delivery.deliveryItems) return delivery.deliveryItems.length;
     if (!delivery.items) return 0;
     return delivery.items.split(',').filter(s => s.trim()).length;
   }
@@ -1225,9 +1226,11 @@ export class DeliveriesComponent implements OnInit {
 
   viewDeliveryItems(delivery: Delivery) {
     this.viewingDelivery = delivery;
-    this.viewingDeliveryItemsList = delivery.items
-      ? delivery.items.split(',').map(s => s.trim()).filter(Boolean)
-      : [];
+    this.viewingDeliveryItemsList = delivery.deliveryItems?.length
+      ? delivery.deliveryItems.map(item => `${item.productName} × ${item.quantity}`)
+      : delivery.items
+        ? delivery.items.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
     this.showItemsModal = true;
   }
 

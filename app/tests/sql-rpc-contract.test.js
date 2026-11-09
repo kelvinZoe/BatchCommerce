@@ -545,6 +545,39 @@ test('shipping workflow RPCs guard tenant transitions and keep handoffs transact
   assert.match(normalized, /batches SET delivery_status = 'pending'/i);
 });
 
+test('delivery reads load assigned shipping-fee item lines with delivery permissions', () => {
+  const sql = read('supabase/migrations/20261109123000_get_delivery_item_lines.sql');
+  const dbService = read('app/src/app/services/database.service.ts');
+  const deliveriesPage = read('app/src/app/pages/deliveries/deliveries.component.ts');
+  const models = read('app/src/app/models/index.ts');
+
+  assertIncludesAll(sql, [
+    'UPDATE public.shipping_fees AS fee',
+    'CREATE OR REPLACE FUNCTION public.get_delivery_item_lines',
+    "public.has_shop_permission(p_shop_id, 'deliveries', 'view')",
+    'JOIN public.deliveries AS delivery',
+    'delivery.id = fee.delivery_id',
+    'GRANT EXECUTE ON FUNCTION public.get_delivery_item_lines(UUID, BIGINT)'
+  ], 'delivery item lines migration');
+
+  assertIncludesAll(dbService, [
+    "rpc('get_delivery_item_lines'",
+    'deliveryItems',
+    'this.enrichDeliveryRows(data || [])',
+    'this.enrichDeliveryRows(data || [], batch?.id ?? null)'
+  ], 'delivery item loading');
+
+  assertIncludesAll(deliveriesPage, [
+    'if (delivery.deliveryItems) return delivery.deliveryItems.length',
+    'delivery.deliveryItems.map(item =>'
+  ], 'delivery item display');
+
+  assertIncludesAll(models, [
+    'export interface DeliveryLine',
+    'deliveryItems?: DeliveryLine[]'
+  ], 'delivery item model');
+});
+
 test('shipping batch totals use batch_id as the canonical upsert key', () => {
   const sql = read('supabase/migrations/20260710140000_prefer_batch_id_for_shipping_totals.sql');
   const dbService = read('app/src/app/services/database.service.ts');

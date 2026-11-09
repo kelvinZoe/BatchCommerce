@@ -170,7 +170,11 @@ export interface Delivery {
   clientName?: string;
   clientPhone?: string;
   clientAddress?: string;
+  /** Derived from the shipping-fee rows assigned to this delivery. */
+  deliveryItems?: DeliveryLine[];
+  /** Legacy display value retained for older consumers. */
   items: string;
+  /** Total quantity across the assigned delivery lines. */
   quantity: number;
   deliveryFee: number;
   deliveryCategory?: DeliveryCategory;
@@ -182,6 +186,12 @@ export interface Delivery {
   batchName?: string;
   notes?: string;
   createdAt?: string;
+}
+
+export interface DeliveryLine {
+  productId?: number | null;
+  productName: string;
+  quantity: number;
 }
 
 export interface BuyingListItem {

@@ -22,6 +22,7 @@ import {
   OrderBatch,
   OrderBatchStatus,
   Delivery,
+  DeliveryLine,
   DeliveryCategory,
   BuyingListItem,
   ArrivalItem,
@@ -566,21 +567,67 @@ export class DatabaseService extends SupabaseDataAccessService {
     } as unknown as Delivery;
   }
 
+  private async getDeliveryItemLines(batchId: number | null = null): Promise<Map<number, DeliveryLine[]>> {
+    const shopId = this.requireActiveShopId();
+    const { data, error } = await this.sb.rpc('get_delivery_item_lines', {
+      p_shop_id: shopId,
+      p_batch_id: batchId
+    });
+    if (error) throw error;
+
+    const linesByDelivery = new Map<number, DeliveryLine[]>();
+    for (const row of data || []) {
+      const deliveryId = Number(row.delivery_id);
+      if (!Number.isFinite(deliveryId)) continue;
+      const lines = linesByDelivery.get(deliveryId) || [];
+      lines.push({
+        productId: row.product_id == null ? null : Number(row.product_id),
+        productName: String(row.product_name || 'Item'),
+        quantity: Number(row.quantity || 0)
+      });
+      linesByDelivery.set(deliveryId, lines);
+    }
+    return linesByDelivery;
+  }
+
+  private async enrichDeliveryRows(rows: any[], batchId: number | null = null): Promise<Delivery[]> {
+    if (!rows.length) return [];
+    const linesByDelivery = await this.getDeliveryItemLines(batchId);
+    return rows.map((row: any) => {
+      const delivery = this.mapDeliveryRow(row);
+      const deliveryItems = linesByDelivery.get(Number(row.id)) || [];
+      return {
+        ...delivery,
+        deliveryItems,
+        items: deliveryItems.map(item => `${item.productName} × ${item.quantity}`).join(', '),
+        quantity: deliveryItems.reduce((total, item) => total + item.quantity, 0)
+      };
+    });
+  }
+
   getDeliveries(): Observable<Delivery[]> {
-    return from(
-      this.scopeTable('deliveries')
-        .select('*, customers(name, whatsapp_number, address)')
-        .order('created_at', { ascending: false })
-    ).pipe(map(({ data }) => (data || []).map((r: any) => this.mapDeliveryRow(r))));
+    return from(this.doGetDeliveries());
+  }
+
+  private async doGetDeliveries(): Promise<Delivery[]> {
+    const { data, error } = await this.scopeTable('deliveries')
+      .select('*, customers(name, whatsapp_number, address)')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return this.enrichDeliveryRows(data || []);
   }
 
   getPendingDeliveries(): Observable<Delivery[]> {
-    return from(
-      this.scopeTable('deliveries')
-        .select('*, customers(name, whatsapp_number, address)')
-        .in('status', ['pending', 'in_transit'])
-        .order('created_at', { ascending: false })
-    ).pipe(map(({ data }) => (data || []).map((r: any) => this.mapDeliveryRow(r))));
+    return from(this.doGetPendingDeliveries());
+  }
+
+  private async doGetPendingDeliveries(): Promise<Delivery[]> {
+    const { data, error } = await this.scopeTable('deliveries')
+      .select('*, customers(name, whatsapp_number, address)')
+      .in('status', ['pending', 'in_transit'])
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return this.enrichDeliveryRows(data || []);
   }
 
   createDelivery(delivery: Delivery): Observable<number> {
@@ -759,8 +806,9 @@ export class DatabaseService extends SupabaseDataAccessService {
       batch,
       batchName
     ).order('created_at', { ascending: false });
-    const { data } = await query;
-    return (data || []).map((r: any) => this.mapDeliveryRow(r));
+    const { data, error } = await query;
+    if (error) throw error;
+    return this.enrichDeliveryRows(data || [], batch?.id ?? null);
   }
 
   // =====================
