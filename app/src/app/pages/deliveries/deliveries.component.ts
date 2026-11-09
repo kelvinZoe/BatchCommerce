@@ -11,6 +11,7 @@ import {
 import { BatchCardTagConfig } from '../../components/batch-card/batch-card.component';
 import { BatchDetailHeaderComponent } from '../../components/batch-detail-header/batch-detail-header.component';
 import { StatCardConfig, StatCardsComponent } from '../../components/stat-cards/stat-cards.component';
+import { ModalShellComponent } from '../../components/modal-shell/modal-shell.component';
 import { DatabaseService } from '../../services/database.service';
 import { AuthService } from '../../services/auth.service';
 import {
@@ -31,7 +32,8 @@ import {
     BatchSectionBodyDirective,
     BatchSectionFooterDirective,
     BatchDetailHeaderComponent,
-    StatCardsComponent
+    StatCardsComponent,
+    ModalShellComponent
   ],
   template: `
     <div class="dv-page">
@@ -276,91 +278,129 @@ import {
       </div><!-- /dv-card -->
 
       <!-- DELIVERY ITEMS MODAL -->
-      <div class="dv-modal-overlay" *ngIf="showItemsModal" (click)="closeItemsModal()">
-        <div class="dv-modal" (click)="$event.stopPropagation()">
-          <div class="dv-modal-header">
-            <div class="dv-modal-title-row">
-              <span class="material-icons dv-modal-icon">person</span>
+      <app-modal
+        *ngIf="showItemsModal"
+        size="lg"
+        [title]="viewingDelivery?.clientName || 'Client delivery'"
+        [subtitle]="viewingDelivery?.clientPhone || 'No phone number'"
+        icon="local_shipping"
+        (closeRequested)="closeItemsModal()">
+        <div modal-body class="dv-delivery-modal-body">
+          <div class="dv-info-grid">
+            <div class="dv-info-item">
+              <span class="material-icons dv-info-icon">location_on</span>
               <div>
-                <h3 class="dv-modal-title">{{ viewingDelivery?.clientName || 'Client' }}</h3>
-                <p class="dv-modal-sub">{{ viewingDelivery?.clientPhone || '—' }}</p>
+                <span class="dv-info-label">Address</span>
+                <span class="dv-info-value">{{ viewingDelivery?.clientAddress || viewingDelivery?.deliveryAddress || 'Not provided' }}</span>
               </div>
             </div>
-            <button class="dv-close-btn" (click)="closeItemsModal()">
-              <span class="material-icons">close</span>
-            </button>
-          </div>
-
-          <div class="dv-modal-body">
-            <div class="dv-info-grid">
-              <div class="dv-info-item">
-                <span class="dv-info-label">Address</span>
-                <span class="dv-info-value">{{ viewingDelivery?.clientAddress || viewingDelivery?.deliveryAddress || '—' }}</span>
-              </div>
-              <div class="dv-info-item">
+            <div class="dv-info-item">
+              <span class="material-icons dv-info-icon">route</span>
+              <div>
                 <span class="dv-info-label">Delivery Type</span>
-                <span class="dv-info-value">{{ viewingDelivery?.deliveryCategory ? getDeliveryCategoryLabel(viewingDelivery!.deliveryCategory) : '—' }}</span>
+                <span class="dv-info-value">{{ viewingDelivery?.deliveryCategory ? getDeliveryCategoryLabel(viewingDelivery!.deliveryCategory) : 'Not selected' }}</span>
               </div>
-              <div class="dv-info-item">
+            </div>
+            <div class="dv-info-item">
+              <span class="material-icons dv-info-icon">payments</span>
+              <div>
                 <span class="dv-info-label">Delivery Fee</span>
                 <span class="dv-info-value">GHS {{ (viewingDelivery?.deliveryFee || 0) | number:'1.2-2' }}</span>
               </div>
-              <div class="dv-info-item">
-                <span class="dv-info-label">Status</span>
+            </div>
+            <div class="dv-info-item">
+              <span class="material-icons dv-info-icon">fact_check</span>
+              <div>
+                <span class="dv-info-label">Current Status</span>
                 <span [class]="'dv-istatus-pill dv-istatus-pill-' + (viewingDelivery?.deliveryItemStatus || 'pending')">
                   {{ viewingDelivery?.deliveryItemStatus || 'pending' }}
                 </span>
               </div>
             </div>
-
-            <div class="dv-modal-section">
-              <h4 class="dv-modal-section-title">Items Ordered</h4>
-              <div class="dv-items-chips">
-                <span class="dv-item-chip" *ngFor="let item of viewingDeliveryItemsList">{{ item }}</span>
-                <span class="dv-dash" *ngIf="viewingDeliveryItemsList.length === 0">No items</span>
-              </div>
-            </div>
-
-            <div class="dv-modal-section" *ngIf="authService.can('edit','deliveries') && viewingDelivery?.deliveryItemStatus !== 'delivered'">
-              <h4 class="dv-modal-section-title">Update Status</h4>
-              <div class="dv-status-btns">
-                <button
-                  *ngFor="let s of ['pending','packaged','delivering','delivered']"
-                  [class]="'dv-qstatus-btn dv-qstatus-' + s"
-                  [class.dv-qstatus-active]="viewingDelivery?.deliveryItemStatus === s"
-                  (click)="quickUpdateStatus(s)"
-                >
-                  {{ s | titlecase }}
-                </button>
-              </div>
-            </div>
-
-            <div class="dv-modal-section dv-damage-section" *ngIf="authService.can('edit','damaged_items')">
-              <h4 class="dv-modal-section-title">Report Damaged Item</h4>
-              <div class="dv-damage-form">
-                <div class="dv-damage-row">
-                  <label>Product</label>
-                  <select [(ngModel)]="damageProductId">
-                    <option [ngValue]="null">Select product</option>
-                    <option *ngFor="let p of products" [ngValue]="p.id">{{ p.name }}</option>
-                  </select>
-                </div>
-                <div class="dv-damage-row">
-                  <label>Quantity</label>
-                  <input type="number" [(ngModel)]="damageQuantity" min="1" />
-                </div>
-                <div class="dv-damage-row">
-                  <label>Note</label>
-                  <input type="text" [(ngModel)]="damageNote" placeholder="Optional note" />
-                </div>
-                <button class="dv-damage-btn" (click)="reportDamagedFromDelivery()">
-                  <span class="material-icons">warning</span> Record Damaged
-                </button>
-              </div>
-            </div>
           </div>
+
+          <section class="dv-modal-section">
+            <div class="dv-section-heading">
+              <div>
+                <h4 class="dv-modal-section-title">Items Ordered</h4>
+                <p>Products assigned to this delivery</p>
+              </div>
+              <span class="dv-section-count">{{ getItemCount(viewingDelivery!) }}</span>
+            </div>
+
+            <div class="dv-item-list" *ngIf="viewingDelivery?.deliveryItems?.length; else legacyDeliveryItems">
+              <div class="dv-item-row" *ngFor="let item of viewingDelivery!.deliveryItems; let i = index">
+                <span class="dv-item-index">{{ i + 1 }}</span>
+                <span class="dv-item-name">{{ item.productName }}</span>
+                <span class="dv-item-qty">{{ item.quantity }} pc{{ item.quantity === 1 ? '' : 's' }}</span>
+              </div>
+            </div>
+            <ng-template #legacyDeliveryItems>
+              <div class="dv-item-list" *ngIf="viewingDeliveryItemsList.length; else noDeliveryItems">
+                <div class="dv-item-row" *ngFor="let item of viewingDeliveryItemsList; let i = index">
+                  <span class="dv-item-index">{{ i + 1 }}</span>
+                  <span class="dv-item-name">{{ item }}</span>
+                </div>
+              </div>
+            </ng-template>
+            <ng-template #noDeliveryItems>
+              <div class="dv-modal-empty">
+                <span class="material-icons">inventory_2</span>
+                <span>No items assigned to this delivery.</span>
+              </div>
+            </ng-template>
+          </section>
+
+          <section class="dv-modal-section" *ngIf="authService.can('edit','deliveries') && viewingDelivery?.deliveryItemStatus !== 'delivered'">
+            <div class="dv-section-heading">
+              <div>
+                <h4 class="dv-modal-section-title">Update Status</h4>
+                <p>Move this delivery through its fulfilment stages</p>
+              </div>
+            </div>
+            <div class="dv-status-btns">
+              <button
+                *ngFor="let step of deliveryStatusSteps"
+                [class]="'dv-qstatus-btn dv-qstatus-' + step.value"
+                [class.dv-qstatus-active]="viewingDelivery?.deliveryItemStatus === step.value"
+                (click)="quickUpdateStatus(step.value)">
+                <span class="material-icons">{{ step.icon }}</span>
+                {{ step.label }}
+              </button>
+            </div>
+          </section>
+
+          <section class="dv-modal-section dv-damage-section" *ngIf="authService.can('edit','damaged_items')">
+            <div class="dv-section-heading dv-damage-heading">
+              <div>
+                <h4 class="dv-modal-section-title">Report Damaged Item</h4>
+                <p>Record an item that cannot be delivered</p>
+              </div>
+              <span class="material-icons">warning_amber</span>
+            </div>
+            <div class="dv-damage-grid">
+              <label class="dv-field dv-field-product">
+                <span>Product</span>
+                <select [(ngModel)]="damageProductId">
+                  <option [ngValue]="null">Select product</option>
+                  <option *ngFor="let p of products" [ngValue]="p.id">{{ p.name }}</option>
+                </select>
+              </label>
+              <label class="dv-field">
+                <span>Quantity</span>
+                <input type="number" [(ngModel)]="damageQuantity" min="1" />
+              </label>
+              <label class="dv-field dv-field-note">
+                <span>Note</span>
+                <input type="text" [(ngModel)]="damageNote" placeholder="Optional note" />
+              </label>
+            </div>
+            <button class="dv-damage-btn" (click)="reportDamagedFromDelivery()">
+              <span class="material-icons">report_problem</span> Record Damaged Item
+            </button>
+          </section>
         </div>
-      </div>
+      </app-modal>
 
     </div>
   `,
@@ -659,94 +699,137 @@ import {
     .dv-page-btns button:hover:not([disabled]) { background: #f1f5f9; }
     .dv-page-num { font-size: 13px; padding: 0 6px; }
 
-    .dv-modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.45);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      padding: 16px;
-    }
-    .dv-modal {
-      background: #fff;
-      border-radius: 16px;
-      width: 100%;
-      max-width: 600px;
-      max-height: 85vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .dv-modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 18px 20px 14px;
-      border-bottom: 1px solid #e2e8f0;
-      flex-shrink: 0;
-    }
-    .dv-modal-title-row { display: flex; align-items: center; gap: 12px; }
-    .dv-modal-icon { color: var(--primary-color, #6366f1); font-size: 28px !important; }
-    .dv-modal-title { margin: 0; font-size: 16px; font-weight: 700; }
-    .dv-modal-sub { margin: 2px 0 0; font-size: 12px; color: #64748b; }
-    .dv-close-btn {
-      width: 32px; height: 32px;
-      display: flex; align-items: center; justify-content: center;
-      background: #f1f5f9;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-    .dv-close-btn .material-icons { font-size: 18px; color: #64748b; }
-    .dv-close-btn:hover { background: #e2e8f0; }
-    .dv-modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+    .dv-delivery-modal-body { display: flex; flex-direction: column; gap: 18px; }
     .dv-info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      background: #f8fafc;
-      border-radius: 10px;
-      padding: 14px;
-      margin-bottom: 18px;
+      gap: 10px;
     }
-    .dv-info-item { display: flex; flex-direction: column; gap: 2px; }
-    .dv-info-label { font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
-    .dv-info-value { font-size: 13px; font-weight: 500; }
-    .dv-modal-section { margin-bottom: 18px; padding-top: 14px; border-top: 1px solid #f1f5f9; }
-    .dv-modal-section-title { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: #475569; }
-    .dv-items-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .dv-item-chip {
-      background: #f1f5f9;
+    .dv-info-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      min-width: 0;
+      padding: 12px;
       border: 1px solid #e2e8f0;
-      padding: 5px 12px;
-      border-radius: 20px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #fff, #f8fafc);
+    }
+    .dv-info-icon {
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      border-radius: 9px;
+      background: rgba(var(--primary-rgb, 99,102,241), 0.1);
+      color: var(--primary-color, #6366f1);
+      font-size: 17px;
+    }
+    .dv-info-item > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .dv-info-label { font-size: 10px; color: #94a3b8; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+    .dv-info-value { font-size: 13px; font-weight: 700; color: #1e293b; overflow-wrap: anywhere; }
+    .dv-modal-section { padding-top: 18px; border-top: 1px solid #e8edf3; }
+    .dv-section-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .dv-modal-section-title { margin: 0; font-size: 14px; font-weight: 800; color: #1e293b; }
+    .dv-section-heading p { margin: 3px 0 0; font-size: 11px; color: #94a3b8; }
+    .dv-section-count {
+      min-width: 28px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(var(--primary-rgb, 99,102,241), 0.1);
+      color: var(--primary-color, #6366f1);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .dv-item-list { display: flex; flex-direction: column; gap: 7px; }
+    .dv-item-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #f8fafc;
+    }
+    .dv-item-index {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: #e2e8f0;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .dv-item-name { min-width: 0; flex: 1; color: #1e293b; font-size: 13px; font-weight: 600; }
+    .dv-item-qty {
+      flex-shrink: 0;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #e0e7ff;
+      color: #4338ca;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .dv-modal-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      padding: 24px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      color: #94a3b8;
       font-size: 12px;
     }
-    .dv-status-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .dv-modal-empty .material-icons { font-size: 26px; }
+    .dv-status-btns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
     .dv-qstatus-btn {
-      padding: 6px 14px;
-      border-radius: 8px;
-      border: 1.5px solid transparent;
-      font-size: 13px;
-      font-weight: 600;
+      min-width: 0;
+      padding: 9px 8px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: #fff;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 800;
       cursor: pointer;
-      transition: opacity 0.15s, transform 0.12s;
+      transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
     }
-    .dv-qstatus-btn:hover { opacity: 0.85; transform: translateY(-1px); }
-    .dv-qstatus-active { outline: 2px solid #6366f1; outline-offset: 2px; }
-    .dv-qstatus-pending    { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
-    .dv-qstatus-packaged   { background: #e0e7ff; color: #3730a3; border-color: #6366f1; }
-    .dv-qstatus-delivering { background: #dbeafe; color: #1e40af; border-color: #3b82f6; }
-    .dv-qstatus-delivered  { background: #d1fae5; color: #065f46; border-color: #10b981; }
+    .dv-qstatus-btn .material-icons { font-size: 16px; }
+    .dv-qstatus-btn:hover { border-color: #a5b4fc; color: var(--primary-color, #6366f1); transform: translateY(-1px); }
+    .dv-qstatus-pending.dv-qstatus-active { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
+    .dv-qstatus-packaged.dv-qstatus-active { background: #e0e7ff; color: #3730a3; border-color: #818cf8; }
+    .dv-qstatus-delivering.dv-qstatus-active { background: #dbeafe; color: #1e40af; border-color: #60a5fa; }
+    .dv-qstatus-delivered.dv-qstatus-active { background: #d1fae5; color: #065f46; border-color: #34d399; }
 
     .dv-istatus-pill {
-      display: inline-block;
-      padding: 3px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 600;
+      display: inline-flex;
+      width: fit-content;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: capitalize;
     }
     .dv-istatus-pill-pending    { background: #fef3c7; color: #92400e; }
     .dv-istatus-pill-packaged   { background: #e0e7ff; color: #3730a3; }
@@ -754,38 +837,43 @@ import {
     .dv-istatus-pill-delivered  { background: #d1fae5; color: #065f46; }
 
     .dv-damage-section {
-      background: #fff7ed;
+      padding: 16px;
       border: 1px solid #fed7aa;
-      border-radius: 10px;
-      padding: 14px;
+      border-radius: 14px;
+      background: #fffaf5;
     }
-    .dv-damage-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-    .dv-damage-row label { width: 90px; font-size: 12px; font-weight: 600; color: #92400e; flex-shrink: 0; }
-    .dv-damage-row select,
-    .dv-damage-row input {
-      flex: 1;
-      padding: 7px 10px;
+    .dv-damage-heading .material-icons { color: #d97706; font-size: 22px; }
+    .dv-damage-grid { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 10px; }
+    .dv-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .dv-field > span { font-size: 11px; font-weight: 800; color: #92400e; }
+    .dv-field-note { grid-column: 1 / -1; }
+    .dv-field select,
+    .dv-field input {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      padding: 9px 10px;
       border: 1px solid #fed7aa;
-      border-radius: 8px;
+      border-radius: 9px;
       background: #fff;
       font-size: 13px;
     }
-    .dv-damage-row select:focus,
-    .dv-damage-row input:focus { outline: none; border-color: #f59e0b; }
-    .dv-damage-row input[type="number"] { max-width: 100px; text-align: right; }
+    .dv-field select:focus,
+    .dv-field input:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.12); }
     .dv-damage-btn {
-      display: flex;
+      display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 6px;
-      padding: 8px 14px;
+      padding: 9px 13px;
       background: #ef4444;
       color: #fff;
       border: none;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
+      border-radius: 9px;
+      font-size: 12px;
+      font-weight: 800;
       cursor: pointer;
-      margin-top: 6px;
+      margin-top: 12px;
     }
     .dv-damage-btn .material-icons { font-size: 16px; }
     .dv-damage-btn:hover { background: #dc2626; }
@@ -810,14 +898,12 @@ import {
       .dv-table thead th,
       .dv-table tbody td { padding-left: 12px; padding-right: 12px; }
       .dv-pagination { position: sticky; left: 0; min-width: calc(100vw - 48px); background: #fff; }
-      .dv-modal-overlay { padding: 10px; align-items: flex-end; }
-      .dv-modal { max-height: 92vh; border-radius: 18px 18px 10px 10px; }
-      .dv-modal-header { padding: 15px 16px 12px; }
-      .dv-modal-body { padding: 16px; }
       .dv-info-grid { grid-template-columns: 1fr; }
-      .dv-damage-row { align-items: stretch; flex-direction: column; gap: 5px; }
-      .dv-damage-row label { width: auto; }
-      .dv-damage-row input[type="number"] { max-width: none; text-align: left; }
+      .dv-status-btns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dv-qstatus-btn { min-height: 42px; }
+      .dv-damage-grid { grid-template-columns: 1fr; }
+      .dv-field-note { grid-column: auto; }
+      .dv-damage-btn { width: 100%; min-height: 42px; }
     }
   `]
 })
@@ -855,6 +941,13 @@ export class DeliveriesComponent implements OnInit {
     { value: 'station_car_delivery', label: 'Station Car' },
     { value: 'riders',               label: 'Riders'      },
     { value: 'ghana_post',           label: 'Ghana Post'  },
+  ];
+
+  readonly deliveryStatusSteps: Array<{ value: DeliveryItemStatus; label: string; icon: string }> = [
+    { value: 'pending', label: 'Pending', icon: 'schedule' },
+    { value: 'packaged', label: 'Packaged', icon: 'inventory_2' },
+    { value: 'delivering', label: 'Delivering', icon: 'local_shipping' },
+    { value: 'delivered', label: 'Delivered', icon: 'check_circle' }
   ];
 
   get statusFilterLabel() {
@@ -1179,6 +1272,9 @@ export class DeliveriesComponent implements OnInit {
   closeItemsModal() {
     this.showItemsModal = false;
     this.viewingDelivery = null;
+    this.damageProductId = null;
+    this.damageQuantity = 1;
+    this.damageNote = '';
   }
 
   quickUpdateStatus(status: string) {

@@ -870,6 +870,11 @@ test('operational pages use compact shared phone layouts', () => {
     '[compactOnMobile]="true"',
     'visibleDeliveryBatches',
     'deliveryBatchTagsResolver',
+    '<app-modal',
+    'size="lg"',
+    'deliveryStatusSteps',
+    'dv-item-row',
+    'dv-damage-grid',
     '@media (max-width: 720px)',
     '.dv-page { padding: 0; }'
   ], 'deliveries shared operational layout');
